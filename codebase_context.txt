@@ -1,0 +1,1139 @@
+# CODEBASE CONTEXT
+# Generated from: C:\Users\Niino\Desktop\repomap-patch-studio
+
+==================================================
+FILE PATH: .env.example
+==================================================
+# GEMINI_API_KEY: Required for Gemini AI API calls.
+# AI Studio automatically injects this at runtime from user secrets.
+# Users configure this via the Secrets panel in the AI Studio UI.
+GEMINI_API_KEY="MY_GEMINI_API_KEY"
+
+# APP_URL: The URL where this applet is hosted.
+# AI Studio automatically injects this at runtime with the Cloud Run service URL.
+# Used for self-referential links, OAuth callbacks, and API endpoints.
+APP_URL="MY_APP_URL"
+
+
+==================================================
+FILE PATH: .gitignore
+==================================================
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+
+==================================================
+FILE PATH: index.html
+==================================================
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Google AI Studio App</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
+
+
+==================================================
+FILE PATH: metadata.json
+==================================================
+{
+  "name": "RepoMap Patch Studio",
+  "description": "A developer-focused GUI for managing AI code edits using a copy-paste workflow with Repo Maps and Git safety.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
+
+
+==================================================
+FILE PATH: package.json
+==================================================
+{
+  "name": "react-example",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"vite --port=3000\" \"node server.js\"",
+    "server": "tsx server.js",
+    "build": "vite build",
+    "preview": "vite preview",
+    "clean": "rm -rf dist server.js",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@google/genai": "^2.4.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "@vitejs/plugin-react": "^5.0.4",
+    "lucide-react": "latest",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "express": "^4.21.2",
+    "dotenv": "^17.2.3",
+    "motion": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "autoprefixer": "^10.4.21",
+    "concurrently": "^9.1.2",
+    "esbuild": "^0.25.0",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.3",
+    "@types/express": "^4.17.21"
+  }
+}
+
+
+==================================================
+FILE PATH: README.md
+==================================================
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+</div>
+
+# Run and deploy your AI Studio app
+
+This contains everything you need to run your app locally.
+
+View your app in AI Studio: https://ai.studio/apps/7f9c9154-e175-4b62-88d4-e6012c5b7019
+
+## Run Locally
+
+**Prerequisites:**  Node.js
+
+
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`
+
+
+==================================================
+FILE PATH: server.js
+==================================================
+// server.js
+import express from 'express';
+import fs from 'fs';
+import path from 'path';
+import { execSync } from 'child_process';
+
+const app = express();
+app.use(express.json());
+
+let targetRepoPath = process.cwd();
+
+// Helper to recursively get files
+const getAllFiles = (dir, basePath = dir, fileList = []) => {
+  if (!fs.existsSync(dir)) return fileList;
+  const files = fs.readdirSync(dir);
+  for (const file of files) {
+    const filePath = path.join(dir, file);
+    const stat = fs.statSync(filePath);
+    if (stat.isDirectory()) {
+      if (!['node_modules', '.git', 'dist', 'build', 'coverage', '.vscode', '.idea'].includes(file)) {
+        getAllFiles(filePath, basePath, fileList);
+      }
+    } else {
+      fileList.push(path.relative(basePath, filePath).replace(/\\/g, '/'));
+    }
+  }
+  return fileList;
+};
+
+// AST-Lite Heuristic Parser (Strips implementation details, extracts signatures like Aider)
+const generateRepoMap = (basePath, filesList) => {
+  let mapOutput = "";
+  for (const file of filesList) {
+    const fullPath = path.join(basePath, file);
+    const ext = path.extname(file).toLowerCase();
+    let content;
+    try { content = fs.readFileSync(fullPath, 'utf-8'); } catch (e) { continue; }
+
+    let symbols = [];
+    const lines = content.split('\n');
+    
+    for (let line of lines) {
+      const trimmed = line.trim();
+      if (['.js', '.jsx', '.ts', '.tsx'].includes(ext)) {
+        // Extract Classes, Functions, Interfaces, Types
+        let match = trimmed.match(/^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function|class|interface|type)\s+([A-Za-z0-9_]+)/);
+        if (match) { symbols.push(trimmed.replace(/\s*\{.*$/, '')); continue; }
+        // Extract Arrow Functions assigned to variables
+        match = trimmed.match(/^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_]+)\s*=>/);
+        if (match) { symbols.push(trimmed.replace(/\s*=>.*$/, '=> { ... }')); continue; }
+      } else if (['.py'].includes(ext)) {
+        if (/^(?:async\s+)?(?:def|class)\s+[A-Za-z0-9_]+/.test(trimmed)) { symbols.push(trimmed.replace(/:.*$/, '')); }
+      } else if (['.go'].includes(ext)) {
+        if (/^func\s+[A-Za-z0-9_]+/.test(trimmed) || /^type\s+[A-Za-z0-9_]+\s+(?:struct|interface)/.test(trimmed)) { symbols.push(trimmed.replace(/\{.*$/, '')); }
+      }
+    }
+
+    if (symbols.length > 0) {
+      mapOutput += file + ":\n";
+      symbols.forEach(s => mapOutput += "│ " + s + "\n");
+    } else {
+      mapOutput += file + "\n";
+    }
+  }
+  return mapOutput.trim();
+};
+
+// API: Get Current Repo Path, Files & Repo Map
+app.get('/api/repo', (req, res) => {
+  try {
+    const files = getAllFiles(targetRepoPath);
+    const repoMap = generateRepoMap(targetRepoPath, files);
+    res.json({ success: true, path: targetRepoPath, files, repoMap });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// API: Change Repo Path
+app.post('/api/repo', (req, res) => {
+  const { newPath } = req.body;
+  if (fs.existsSync(newPath) && fs.statSync(newPath).isDirectory()) {
+    targetRepoPath = path.resolve(newPath);
+    const files = getAllFiles(targetRepoPath);
+    const repoMap = generateRepoMap(targetRepoPath, files);
+    res.json({ success: true, path: targetRepoPath, files, repoMap });
+  } else {
+    res.status(400).json({ success: false, error: 'Invalid or missing directory path.' });
+  }
+});
+
+// API: Fetch File Contents for Prompt Assembly
+app.post('/api/files', (req, res) => {
+  const { files } = req.body;
+  const contents = {};
+  files.forEach(f => {
+    try { contents[f] = fs.readFileSync(path.join(targetRepoPath, f), 'utf-8'); } catch(e){}
+  });
+  res.json({ success: true, contents });
+});
+
+// 1. API: Apply Changes & Commit to Git
+app.post('/api/apply', (req, res) => {
+  const { blocks, commitMessage } = req.body;
+
+  try {
+    // Git Safety Checkpoint BEFORE editing (wrapped in try/catch to not crash if nothing to commit)
+    try { execSync('git add . && git commit -m "pre-ai-edit"', { cwd: targetRepoPath, stdio: 'ignore' }); } catch (e) { /* ignore */ }
+
+    // Apply each diff block to the real file system
+    for (const block of blocks) {
+      const fullPath = path.resolve(targetRepoPath, block.file);
+
+      // Handle Full Overwrites or Empty Search Blocks
+      if (!block.search.trim()) {
+        fs.writeFileSync(fullPath, block.replace, 'utf-8');
+      } else {
+        // Handle Partial Search & Replace
+        let content = fs.readFileSync(fullPath, 'utf-8');
+        if (content.includes(block.search)) {
+          content = content.replace(block.search, block.replace);
+          fs.writeFileSync(fullPath, content, 'utf-8');
+        }
+      }
+    }
+
+    // Git Commit AFTER editing
+    execSync(`git add . && git commit -m "${commitMessage || 'ai-edit: updated files'}"`, { cwd: targetRepoPath, stdio: 'ignore' });
+    res.json({ success: true, message: 'Changes applied and committed to Git!' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2. API: Git Reset / Undo Last Edit
+app.post('/api/undo', (req, res) => {
+  try {
+    execSync('git reset --hard HEAD~1', { cwd: targetRepoPath, stdio: 'ignore' });
+    res.json({ success: true, message: 'Hard reset to previous commit successful!' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.listen(3001, () => console.log('🚀 Local Patch Backend running on http://localhost:3001'));
+
+==================================================
+FILE PATH: tsconfig.json
+==================================================
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "module": "ESNext",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "allowJs": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    },
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  }
+}
+
+
+==================================================
+FILE PATH: vite.config.ts
+==================================================
+import tailwindcss from '@tailwindcss/vite';
+import react from '@vitejs/plugin-react';
+import path from 'path';
+import {defineConfig} from 'vite';
+
+export default defineConfig(() => {
+  return {
+    plugins: [react(), tailwindcss()],
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, '.'),
+      },
+    },
+    server: {
+      proxy: {
+      '/api': 'http://localhost:3001'
+      },
+      // HMR is disabled in AI Studio via DISABLE_HMR env var.
+      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
+      hmr: process.env.DISABLE_HMR !== 'true',
+      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
+      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+    },
+  };
+});
+
+
+==================================================
+FILE PATH: assets\.aistudio\.gitignore
+==================================================
+*
+
+
+==================================================
+FILE PATH: src\App.tsx
+==================================================
+import { useState, useEffect } from 'react';
+import { Header } from './components/Header';
+import { PromptPanel } from './components/PromptPanel';
+import { DiffPanel } from './components/DiffPanel';
+import { Footer } from './components/Footer';
+import { Toast } from './components/Toast';
+import { DiffBlock, HistoryLog } from './types';
+import { parseDiffBlocks } from './utils/diffParser';
+
+export default function App() {
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [pastedContent, setPastedContent] = useState('');
+  const [diffBlocks, setDiffBlocks] = useState<DiffBlock[]>([]);
+  const [repoPath, setRepoPath] = useState<string>('Loading...');
+  const [repoFiles, setRepoFiles] = useState<string[]>([]);
+  const [repoMap, setRepoMap] = useState<string>('');
+
+  useEffect(() => {
+    fetch('/api/repo')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setRepoPath(data.path);
+          setRepoFiles(data.files);
+          setRepoMap(data.repoMap);
+        }
+      })
+      .catch(err => console.error('Failed to fetch repo context:', err));
+  }, []);
+
+  const handleChangeRepo = async () => {
+    const newPath = prompt('Enter absolute path to your repository:', repoPath);
+    if (!newPath || newPath === repoPath) return;
+
+    try {
+      const res = await fetch('/api/repo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPath })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRepoPath(data.path);
+        setRepoFiles(data.files);
+        setRepoMap(data.repoMap);
+        setToastMessage('Repository context updated successfully!');
+      } else {
+        alert('Error: ' + data.error);
+      }
+    } catch (err) {
+      alert('Failed to update repository path. Ensure backend is running.');
+    }
+  };
+  
+  // Mock data for when user clicks paste
+  const mockBlocks: DiffBlock[] = [
+    {
+      id: '1',
+      file: 'src/components/Navbar.tsx',
+      status: 'match',
+      search: '  return (\n    <nav className="bg-white">\n      <Logo />\n    </nav>\n  );',
+      replace: '  return (\n    <nav className="bg-white dark:bg-zinc-950 transition-colors">\n      <Logo />\n      <ThemeToggle />\n    </nav>\n  );'
+    },
+    {
+      id: '2',
+      file: 'src/theme.ts',
+      status: 'no-match',
+      search: 'export const theme = {\n  mode: "light"\n};',
+      replace: 'export const theme = {\n  mode: "dark",\n  toggle: () => {}\n};'
+    }
+  ];
+
+  const mockLogs: HistoryLog[] = [
+    { id: 'c4f2a91', timestamp: '10 mins ago', files: ['src/App.tsx'], message: 'ai-edit: Add routing to App.tsx' },
+    { id: '8a1b3c4', timestamp: '1 hour ago', files: ['src/components/Button.tsx'], message: 'ai-edit: fix button padding' },
+    { id: 'f2d4e56', timestamp: '2 hours ago', files: ['tailwind.config.js'], message: 'ai-edit: add custom colors' },
+    { id: '1e2f3a4', timestamp: 'Yesterday', files: ['package.json'], message: 'ai-edit: install lucide-react' },
+  ];
+
+  const handleCopy = async (promptText: string) => {
+    await navigator.clipboard.writeText(promptText);
+    setToastMessage('Context and Prompt copied to clipboard!');
+  };
+
+  const handleCopyMap = async (mapText: string) => {
+    await navigator.clipboard.writeText(mapText);
+    setToastMessage('Raw Repo Map copied to clipboard!');
+  };
+
+  const handlePaste = async () => {
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+      setPastedContent(clipboardText);
+      const parsed = parseDiffBlocks(clipboardText);
+      setDiffBlocks(parsed);
+    } catch (err) {
+      console.error('Failed to read clipboard text: ', err);
+      setToastMessage('Failed to read clipboard.');
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-screen w-full bg-zinc-950 overflow-hidden font-sans text-zinc-300 selection:bg-cyan-500/30 antialiased">
+      <Header repoPath={repoPath} onChangeRepo={handleChangeRepo} />
+      
+      <main className="flex-1 flex overflow-hidden">
+        <aside className="w-[420px] flex-shrink-0">
+          <PromptPanel onCopy={handleCopy} onCopyMap={handleCopyMap} files={repoFiles} repoMap={repoMap} />
+        </aside>
+        
+        <section className="flex-1 flex-shrink-0">
+          <DiffPanel 
+            pastedContent={pastedContent}
+            parsedBlocks={pastedContent ? (diffBlocks.length > 0 ? diffBlocks : mockBlocks) : []} 
+            onPaste={handlePaste}
+          />
+        </section>
+      </main>
+
+      <Footer 
+        logs={mockLogs} 
+        hasChanges={pastedContent.length > 0} 
+        diffBlocks={diffBlocks.length > 0 ? diffBlocks : mockBlocks}
+      />
+      
+      <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
+    </div>
+  );
+}
+
+
+==================================================
+FILE PATH: src\index.css
+==================================================
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+
+@theme {
+  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 10px;
+}
+
+
+==================================================
+FILE PATH: src\main.tsx
+==================================================
+import {StrictMode} from 'react';
+import {createRoot} from 'react-dom/client';
+import App from './App.tsx';
+import './index.css';
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);
+
+
+==================================================
+FILE PATH: src\types.ts
+==================================================
+export interface DiffBlock {
+  id: string;
+  file: string;
+  status: 'match' | 'no-match';
+  search: string;
+  replace: string;
+}
+
+export interface HistoryLog {
+  id: string;
+  timestamp: string;
+  files: string[];
+  message: string;
+}
+
+
+==================================================
+FILE PATH: src\components\DiffPanel.tsx
+==================================================
+import { useState } from 'react';
+import { ClipboardPaste } from 'lucide-react';
+import { DiffBlock } from '../types';
+
+interface DiffPanelProps {
+  parsedBlocks: DiffBlock[];
+  onPaste: () => void;
+  pastedContent: string;
+}
+
+export function DiffPanel({ parsedBlocks, onPaste, pastedContent }: DiffPanelProps) {
+  const [ignoredBlocks, setIgnoredBlocks] = useState<Set<string>>(new Set());
+
+  const toggleBlock = (id: string) => {
+    const newIgnored = new Set(ignoredBlocks);
+    if (newIgnored.has(id)) {
+      newIgnored.delete(id);
+    } else {
+      newIgnored.add(id);
+    }
+    setIgnoredBlocks(newIgnored);
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-zinc-950 p-4 space-y-4">
+      <div className="flex items-center justify-between bg-zinc-900 p-2 rounded-lg border border-zinc-800">
+        <div className="flex items-center space-x-3">
+          {parsedBlocks.length > 0 && (
+            <div className="bg-emerald-500/10 text-emerald-500 px-2 py-1 rounded text-[10px] font-bold">
+              {parsedBlocks.length} BLOCKS DETECTED
+            </div>
+          )}
+          <span className="text-xs text-zinc-400">Paste AI response below to review diffs</span>
+        </div>
+        {parsedBlocks.length > 0 && (
+          <button className="text-xs bg-zinc-800 px-3 py-1 rounded text-zinc-200 hover:bg-zinc-700 transition-colors">
+            Clear
+          </button>
+        )}
+      </div>
+
+      <div className="flex-1 flex flex-col space-y-4 overflow-hidden">
+        {!pastedContent ? (
+          <div 
+            onClick={onPaste}
+            className="flex-1 border-2 border-dashed border-zinc-800 rounded-xl flex items-center justify-center cursor-pointer hover:bg-zinc-900/30 transition-colors group"
+          >
+            <div className="flex flex-col items-center text-zinc-600 group-hover:text-zinc-500 transition-colors">
+              <ClipboardPaste className="w-8 h-8 mb-2" />
+              <span className="text-xs uppercase font-bold tracking-widest">Click to paste response</span>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4">
+              {parsedBlocks.map((block) => {
+                const isIgnored = ignoredBlocks.has(block.id);
+                return (
+                <div key={block.id} className={`bg-zinc-900/30 border border-zinc-800 rounded-xl flex flex-col overflow-hidden transition-opacity ${isIgnored ? 'opacity-50 grayscale' : ''}`}>
+                  <div className="px-4 py-2 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs font-mono text-zinc-300">{block.file}</span>
+                      {block.status === 'match' ? (
+                        <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase">
+                          Match Found
+                        </span>
+                      ) : (
+                        <span className="bg-rose-500/20 text-rose-400 text-[10px] px-1.5 py-0.5 rounded border border-rose-500/20 font-bold uppercase">
+                          Not Found
+                        </span>
+                      )}
+                    </div>
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <span className={`text-[10px] font-bold uppercase ${!isIgnored ? 'text-cyan-500' : 'text-zinc-500'}`}>
+                        {isIgnored ? 'Ignored' : 'Accepted'}
+                      </span>
+                      <div className={`w-8 h-4 rounded-full flex items-center transition-colors p-0.5 ${!isIgnored ? 'bg-cyan-500' : 'bg-zinc-700'}`}>
+                        <div className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${!isIgnored ? 'translate-x-4' : 'translate-x-0'}`} />
+                      </div>
+                      <input 
+                        type="checkbox" 
+                        className="hidden" 
+                        checked={!isIgnored} 
+                        onChange={() => toggleBlock(block.id)} 
+                      />
+                    </label>
+                  </div>
+                  
+                  <div className="p-4 font-mono text-[11px] overflow-x-auto custom-scrollbar leading-relaxed">
+                    <div className="text-rose-500 opacity-50 select-none">{"<<<<<<< SEARCH"}</div>
+                    <div className="pl-4 text-zinc-500 whitespace-pre">
+                      {block.search}
+                    </div>
+                    <div className="text-emerald-500 opacity-50 select-none">{"======="}</div>
+                    <div className="pl-4 text-zinc-200 whitespace-pre">
+                      {block.replace}
+                    </div>
+                    <div className="text-emerald-500 opacity-50 select-none">{">>>>>>> REPLACE"}</div>
+                  </div>
+                </div>
+              )})}
+            </div>
+            
+            <div 
+              onClick={onPaste}
+              className="h-24 shrink-0 border-2 border-dashed border-zinc-800 rounded-xl flex items-center justify-center cursor-pointer hover:bg-zinc-900/30 transition-colors"
+            >
+              <div className="flex flex-col items-center text-zinc-600">
+                <ClipboardPaste className="w-6 h-6 mb-1" />
+                <span className="text-[11px] uppercase font-bold tracking-widest">Paste additional block</span>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+==================================================
+FILE PATH: src\components\Footer.tsx
+==================================================
+import { useState } from 'react';
+import { GitCommit, History, RotateCcw } from 'lucide-react';
+import { DiffBlock, HistoryLog } from '../types';
+
+interface FooterProps {
+  logs: HistoryLog[];
+  hasChanges: boolean;
+  diffBlocks?: DiffBlock[];
+  onApplySuccess?: () => void;
+}
+
+export function Footer({ logs, hasChanges, diffBlocks = [], onApplySuccess }: FooterProps) {
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [commitMessage, setCommitMessage] = useState('ai-edit: updated files');
+  const [isApplying, setIsApplying] = useState(false);
+
+  // 1. The Apply Changes Handler (calls /api/apply on your Express backend)
+  const handleApplyChanges = async () => {
+    if (diffBlocks.length === 0) {
+      alert('No diff blocks detected to apply!');
+      return;
+    }
+
+    setIsApplying(true);
+    try {
+      const response = await fetch('/api/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blocks: diffBlocks, commitMessage })
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        alert('✅ Edits written to disk & committed to Git!');
+        if (onApplySuccess) onApplySuccess();
+      } else {
+        alert('❌ Error applying edits: ' + (data.error || 'Unknown error'));
+      }
+    } catch (err) {
+      alert('❌ Failed to connect to local server. Ensure server.js is running!');
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
+  return (
+    <footer className="relative shrink-0 flex flex-col z-10">
+      {/* History Drawer */}
+      {drawerOpen && (
+        <div className="absolute bottom-full left-0 right-0 h-64 bg-zinc-950 border-t border-zinc-800 overflow-y-auto z-0 custom-scrollbar">
+          <div className="p-4 space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500 mb-4 sticky top-0 bg-zinc-950 py-1">Recent AI Edits</h3>
+            {logs.map((log) => (
+              <div key={log.id} className="flex items-start justify-between bg-zinc-900 p-3 rounded-lg border border-zinc-800 group hover:border-zinc-700 transition-colors">
+                <div>
+                  <div className="flex items-center text-xs text-zinc-400 mb-1">
+                    <span className="font-mono mr-3 text-cyan-400/80">{log.id}</span>
+                    <span>{log.timestamp}</span>
+                  </div>
+                  <div className="text-sm text-zinc-200 mb-1">{log.message}</div>
+                  <div className="text-xs font-mono text-zinc-500">{log.files.join(', ')}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Main Footer Bar */}
+      <div className="h-20 border-t border-zinc-800 bg-zinc-950 flex items-center px-6 space-x-6 shrink-0 z-10">
+        <div className="flex-1 flex flex-col space-y-1">
+          <label className="text-[10px] text-zinc-500 uppercase font-bold">Commit Message</label>
+          <input 
+            type="text" 
+            value={commitMessage}
+            onChange={(e) => setCommitMessage(e.target.value)}
+            disabled={!hasChanges || isApplying}
+            className="bg-transparent border-none p-0 text-sm focus:ring-0 focus:outline-none text-zinc-100 placeholder-zinc-700 font-mono disabled:opacity-50" 
+            placeholder="Commit message..."
+          />
+        </div>
+        <div className="flex items-center space-x-4">
+          <button 
+            onClick={() => setDrawerOpen(!drawerOpen)}
+            className="flex flex-col items-center justify-center px-4 py-2 hover:bg-zinc-900 rounded-md transition-colors"
+          >
+            <History className="w-4 h-4 text-zinc-500" />
+            <span className="text-[10px] mt-1 text-zinc-500">History ({logs.length})</span>
+          </button>
+          
+          {/* 2. Connected onClick={handleApplyChanges} to the Green Apply Button */}
+          <button 
+            onClick={handleApplyChanges}
+            disabled={!hasChanges || isApplying}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 h-12 rounded-lg font-bold shadow-lg shadow-emerald-500/10 flex items-center space-x-2 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <span>{isApplying ? 'Applying...' : 'Apply Changes & Commit'}</span>
+            <GitCommit className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+==================================================
+FILE PATH: src\components\Header.tsx
+==================================================
+import React, { useState } from 'react';
+
+interface HeaderProps {
+  onUndoSuccess?: () => void;
+  repoPath: string;
+  onChangeRepo: () => void;
+}
+
+export function Header({ onUndoSuccess, repoPath, onChangeRepo }: HeaderProps) {
+  const [isUndoing, setIsUndoing] = useState(false);
+
+  // 1. The Undo Handler (calls the /api/undo endpoint on your Express backend)
+  const handleUndo = async () => {
+    if (!confirm('Are you sure you want to hard reset to the previous Git commit? Uncommitted changes will be lost.')) {
+      return;
+    }
+
+    setIsUndoing(true);
+    try {
+      const response = await fetch('/api/undo', { method: 'POST' });
+      const data = await response.json();
+
+      if (data.success) {
+        alert('🔄 Git reset successful!');
+        if (onUndoSuccess) onUndoSuccess();
+      } else {
+        alert('❌ Error resetting: ' + (data.error || 'Unknown error'));
+      }
+    } catch (err) {
+      alert('❌ Failed to reach backend server. Make sure node server.js is running.');
+    } finally {
+      setIsUndoing(false);
+    }
+  };
+
+  return (
+    <header className="h-12 border-b border-zinc-800 flex items-center justify-between px-4 bg-zinc-950 shrink-0">
+      <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2">
+          <div className="w-6 h-6 bg-cyan-500 rounded flex items-center justify-center font-bold text-zinc-950">
+            R
+          </div>
+          <span className="font-bold text-zinc-100 tracking-tight text-sm">RepoMap Patch Studio</span>
+        </div>
+        
+        <div className="h-4 w-[1px] bg-zinc-800 mx-2"></div>
+        
+        <div className="flex items-center space-x-2 bg-zinc-900 border border-zinc-800 px-2 py-1 rounded text-xs max-w-[300px]">
+          <span className="text-zinc-500 truncate" title={repoPath}>{repoPath}</span>
+          <button onClick={onChangeRepo} className="text-cyan-500 hover:text-cyan-400 font-medium px-1 shrink-0">
+            Change
+          </button>
+        </div>
+      </div>
+
+      <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2">
+          <span className="flex h-2 w-2 rounded-full bg-emerald-500"></span>
+          <span className="text-[11px] font-mono text-zinc-400">
+            git: <span className="text-emerald-500">main</span> (Clean)
+          </span>
+        </div>
+
+        {/* 2. Connected onClick={handleUndo} to the Undo Button */}
+        <button 
+          onClick={handleUndo}
+          disabled={isUndoing}
+          className="flex items-center space-x-2 bg-rose-950/30 border border-rose-500/30 text-rose-500 px-3 py-1.5 rounded-md text-xs font-medium hover:bg-rose-500/10 transition-colors group relative disabled:opacity-50"
+          title="git reset --hard HEAD~1"
+        >
+          <span>{isUndoing ? 'Undoing...' : 'Undo Last Edit (git reset)'}</span>
+          <div className="absolute top-full right-0 mt-2 w-48 p-2 bg-zinc-800 text-zinc-300 text-[10px] rounded border border-zinc-700 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-xl">
+            Hard reset to previous commit. Uncommitted changes will be lost.
+          </div>
+        </button>
+      </div>
+    </header>
+  );
+}
+
+==================================================
+FILE PATH: src\components\PromptPanel.tsx
+==================================================
+import { useState, useEffect } from 'react';
+import { Copy, Map, Eye, X } from 'lucide-react';
+
+interface PromptPanelProps {
+  onCopy: () => void;
+  onCopyMap: () => void;
+  files: string[];
+}
+
+export function PromptPanel({ onCopy, onCopyMap, files }: PromptPanelProps) {
+  const [request, setRequest] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+  
+  // Reset selected files when the repository context changes
+  useEffect(() => {
+    setSelectedFiles(new Set());
+  }, [files]);
+
+  const toggleFile = (file: string) => {
+    const newFiles = new Set(selectedFiles);
+    if (newFiles.has(file)) {
+      newFiles.delete(file);
+    } else {
+      newFiles.add(file);
+    }
+    setSelectedFiles(newFiles);
+  };
+
+  return (
+    <div className="border-r border-zinc-800 flex flex-col h-full p-4 space-y-4 bg-zinc-950/50">
+      <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-lg flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="p-2 bg-cyan-500/10 rounded">
+            <Map className="w-4 h-4 text-cyan-500" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-zinc-200">Repo Map Ready</p>
+            <p className="text-[10px] text-zinc-500">~{(files.length * 95).toLocaleString()} tokens / {files.length} files parsed</p>
+          </div>
+        </div>
+        <div className="flex items-center space-x-3">
+          <button 
+            onClick={() => setIsMapModalOpen(true)}
+            className="text-zinc-400 hover:text-zinc-200 transition-colors p-1 rounded hover:bg-zinc-800"
+            title="Preview Repo Map"
+          >
+            <Eye className="w-4 h-4" />
+          </button>
+          <span className="text-[10px] text-zinc-500 font-mono italic">updated 2m ago</span>
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col space-y-2 min-h-0">
+        <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold">Context Selection</label>
+        <div className="flex-1 bg-zinc-900/50 border border-zinc-800 rounded-md overflow-hidden flex flex-col">
+          <div className="p-2 space-y-1 overflow-y-auto custom-scrollbar">
+            {files.map((file, i) => {
+              const isSelected = selectedFiles.has(file);
+              return (
+                <label 
+                  key={file} 
+                  className={`flex items-center p-1.5 rounded text-xs cursor-pointer ${isSelected ? 'bg-zinc-800/50' : 'opacity-60 hover:opacity-100'}`}
+                >
+                  <input 
+                    type="checkbox" 
+                    checked={isSelected}
+                    onChange={() => toggleFile(file)}
+                    className="mr-2 accent-cyan-500" 
+                  />
+                  <span className="text-zinc-300">{file}</span>
+                  {isSelected && <span className="ml-auto text-[10px] text-zinc-600">4.2kb</span>}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold">User Request</label>
+        <textarea 
+          className="w-full h-28 bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-sm text-zinc-300 focus:outline-none focus:border-cyan-500/50 resize-none font-sans"
+          placeholder="Describe the changes needed..."
+          value={request}
+          onChange={(e) => setRequest(e.target.value)}
+        />
+      </div>
+
+      <div className="space-y-2 text-xs text-zinc-300">
+        <label className="flex items-center space-x-2 cursor-pointer">
+          <input type="checkbox" defaultChecked className="accent-cyan-500" />
+          <span>Enforce SEARCH/REPLACE blocks</span>
+        </label>
+      </div>
+
+      <button 
+        onClick={async () => {
+          setIsCopying(true);
+          try {
+            const res = await fetch('/api/files', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ files: Array.from(selectedFiles) })
+            });
+            const data = await res.json();
+            
+            let activeFilesText = "";
+            if (selectedFiles.size > 0) {
+              for (const f of selectedFiles) {
+                activeFilesText += `--- START OF FILE ${f} ---\n${data.contents[f] || ''}\n--- END OF FILE ${f} ---\n\n`;
+              }
+            } else {
+              activeFilesText = "No specific files selected.";
+            }
+
+            const finalPrompt = `ROLE: Senior Software Architect & Elite Developer
+You write clean, production-grade, type-safe, and secure code, keeping system architecture and long-term maintainability in mind.
+
+ADVISORY PROTOCOL:
+If the user requests a code change that is unoptimized or violates best practices:
+1. Fully comply with and implement the exact requested change.
+2. At the end of your response, briefly suggest the industry-standard alternative and why it is better, without being preachy or refusing the request.
+
+OUTPUT FORMAT & GUARDRAILS:
+You must output code modifications using exact SEARCH/REPLACE blocks.
+
+1. FORMAT RULE: Every modification MUST specify the file path and use this exact delimiter:
+   FILE: path/to/file.ext
+   <<<<<<< SEARCH
+   [exact existing code to replace]
+   =======
+   [new code]
+   >>>>>>> REPLACE
+
+2. THE 80% OVERWRITE RULE (Token Optimization):
+   - For partial edits (<80% of file changing): Use targeted SEARCH/REPLACE blocks.
+   - For NEW files OR total file rewrites (>80% of file changing): Leave the SEARCH block EMPTY (\`<<<<<<< SEARCH\\n=======\\n[new code]\\n>>>>>>> REPLACE\`) so you do not waste output tokens repeating old code.
+
+3. ANCHOR RULE (Keep SEARCH blocks small):
+   - Copy only 2-3 unique lines at the top/bottom of the edit area ("anchors") to keep blocks minimal.
+
+4. EXACT WHITESPACE RULE:
+   - Code inside SEARCH MUST match the original file's indentation, spaces, and tabs 100% exactly.
+
+5. SELF-UPDATING KNOWLEDGE BASE (Optional):
+   - If a complex bug or architectural rule is resolved during this request, output an additional SEARCH/REPLACE block updating \`ai_context_guide.md\` with the lesson learned under \`<casos_resolvidos_aprendizados>\`.
+
+==================================================
+REPO MAP (Project Blueprint):
+${repoMap || 'No map generated.'}
+
+==================================================
+ACTIVE FILES CONTEXT:
+${activeFilesText}
+==================================================
+USER REQUEST:
+${request}`;
+
+            onCopy(finalPrompt);
+          } finally {
+            setIsCopying(false);
+          }
+        }}
+        disabled={isCopying}
+        className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold py-3 rounded-lg shadow-lg shadow-cyan-500/10 flex items-center justify-center space-x-2 active:scale-[0.98] transition-all disabled:opacity-50"
+      >
+        <Copy className="w-4 h-4" />
+        <span>{isCopying ? 'Assembling...' : 'Copy Context + Prompt'}</span>
+      </button>
+
+      {isMapModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-2xl flex flex-col overflow-hidden shadow-2xl">
+            <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900">
+              <h2 className="text-sm font-bold text-zinc-200">Repo Map Context Preview (~{(files.length * 95).toLocaleString()} tokens)</h2>
+              <button 
+                onClick={() => setIsMapModalOpen(false)}
+                className="text-zinc-400 hover:text-zinc-200 p-1 rounded-md hover:bg-zinc-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-4 overflow-y-auto max-h-[60vh] custom-scrollbar">
+              <pre className="font-mono text-xs text-zinc-300 bg-zinc-900 p-4 rounded-lg border border-zinc-800 whitespace-pre-wrap">
+                {repoMap || 'Generating Repo Map...'}
+              </pre>
+            </div>
+            
+            <div className="p-4 border-t border-zinc-800 bg-zinc-900 flex justify-end space-x-3">
+              <button 
+                onClick={() => setIsMapModalOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors border border-zinc-700"
+              >
+                Close
+              </button>
+              <button 
+                onClick={() => {
+                  onCopyMap(repoMap);
+                  setIsMapModalOpen(false);
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-500 rounded-lg transition-colors shadow-lg shadow-cyan-900/20"
+              >
+                Copy Raw Map
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+==================================================
+FILE PATH: src\components\Toast.tsx
+==================================================
+import { Check } from 'lucide-react';
+import { useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+
+interface ToastProps {
+  message: string | null;
+  onClose: () => void;
+}
+
+export function Toast({ message, onClose }: ToastProps) {
+  useEffect(() => {
+    if (message) {
+      const timer = setTimeout(onClose, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [message, onClose]);
+
+  return (
+    <AnimatePresence>
+      {message && (
+        <motion.div
+          initial={{ opacity: 0, y: 50, scale: 0.9 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+          className="fixed bottom-24 right-8 z-50 flex items-center px-4 py-3 bg-zinc-800 border border-zinc-700 text-zinc-100 rounded-lg shadow-2xl"
+        >
+          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 mr-3">
+            <Check className="w-3.5 h-3.5" />
+          </div>
+          <span className="text-sm font-medium">{message}</span>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+
+==================================================
+FILE PATH: src\utils\diffParser.ts
+==================================================
+// src/utils/diffParser.ts
+import { DiffBlock } from '../types';
+
+export function parseDiffBlocks(rawText: string): DiffBlock[] {
+  // 1. Clean up markdown code fences if Gemini wrapped the output in ```tsx ... ```
+  let text = rawText.replace(/```[a-zA-Z]*\n/g, '').replace(/```/g, '');
+
+  const blocks: DiffBlock[] = [];
+  let index = 1;
+
+  // 2. BULLETPROOF REGEX: Matches both 3+ chevrons (<<<< SEARCH) AND XML tags (<search>)
+  const blockRegex = /(?:FILE:\s*|OVERWRITE FILE:\s*|path=")?([^\n\r"]+)"?\s*\n(?:<{3,}\s*SEARCH|<search>)\n([\s\S]*?)\n(?:={3,}|<\/search>\s*<replace>)\n([\s\S]*?)\n(?:>{3,}\s*REPLACE|<\/replace>)/gi;
+
+  let match;
+  while ((match = blockRegex.exec(text)) !== null) {
+    const filePath = match[1].trim().replace(/^["']|["']$/g, '');
+    const searchContent = match[2];
+    const replaceContent = match[3];
+
+    blocks.push({
+      id: String(index++),
+      file: filePath,
+      status: 'match',
+      search: searchContent,
+      replace: replaceContent
+    });
+  }
+
+  return blocks;
+}
+
