@@ -433,12 +433,47 @@ export default function App() {
     setToastMessage('Raw Repo Map copied to clipboard!');
   };
 
+  const handleClear = () => {
+    setPastedContent('');
+    setDiffBlocks([]);
+  };
+
   const handlePaste = async () => {
     try {
       const clipboardText = await navigator.clipboard.readText();
+      if (!clipboardText) return;
+      
       setPastedContent(clipboardText);
       const parsed = parseDiffBlocks(clipboardText);
-      setDiffBlocks(parsed);
+      
+      if (parsed.length === 0) {
+        setDiffBlocks([]);
+        return;
+      }
+
+      // Fetch actual file contents to validate the SEARCH blocks
+      const uniqueFiles = Array.from(new Set(parsed.map(b => b.file)));
+      const res = await fetch('/api/files', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files: uniqueFiles })
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        const validatedBlocks = parsed.map(block => {
+          // Empty search implies a full file overwrite or new file creation (always valid)
+          if (!block.search.trim()) return { ...block, status: 'match' as const };
+          
+          const content = data.contents[block.file];
+          // Check if the exact search string exists in the real file
+          const isMatch = content && content.includes(block.search);
+          return { ...block, status: isMatch ? 'match' as const : 'no-match' as const };
+        });
+        setDiffBlocks(validatedBlocks);
+      } else {
+        setDiffBlocks(parsed);
+      }
     } catch (err) {
       console.error('Failed to read clipboard text: ', err);
       setToastMessage('Failed to read clipboard.');
@@ -457,16 +492,18 @@ export default function App() {
         <section className="flex-1 flex-shrink-0">
           <DiffPanel 
             pastedContent={pastedContent}
-            parsedBlocks={pastedContent ? (diffBlocks.length > 0 ? diffBlocks : mockBlocks) : []} 
+            parsedBlocks={diffBlocks} 
             onPaste={handlePaste}
+            onClear={handleClear}
           />
         </section>
       </main>
 
       <Footer 
         logs={mockLogs} 
-        hasChanges={pastedContent.length > 0} 
-        diffBlocks={diffBlocks.length > 0 ? diffBlocks : mockBlocks}
+        hasChanges={diffBlocks.length > 0} 
+        diffBlocks={diffBlocks}
+        onApplySuccess={handleClear}
       />
       
       <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
@@ -538,13 +575,22 @@ import { useState } from 'react';
 import { ClipboardPaste } from 'lucide-react';
 import { DiffBlock } from '../types';
 
-interface DiffPanelProps {
-  parsedBlocks: DiffBlock[];
-  onPaste: () => void;
-  pastedContent: string;
-}
+<section className="flex-1 flex-shrink-0">
+          <DiffPanel 
+            pastedContent={pastedContent}
+            parsedBlocks={diffBlocks} 
+            onPaste={handlePaste}
+            onClear={handleClear}
+          />
+        </section>
+      </main>
 
-export function DiffPanel({ parsedBlocks, onPaste, pastedContent }: DiffPanelProps) {
+      <Footer 
+        logs={mockLogs} 
+        hasChanges={diffBlocks.length > 0} 
+        diffBlocks={diffBlocks}
+        onApplySuccess={handleClear}
+      />
   const [ignoredBlocks, setIgnoredBlocks] = useState<Set<string>>(new Set());
 
   const toggleBlock = (id: string) => {
@@ -568,8 +614,11 @@ export function DiffPanel({ parsedBlocks, onPaste, pastedContent }: DiffPanelPro
           )}
           <span className="text-xs text-zinc-400">Paste AI response below to review diffs</span>
         </div>
-        {parsedBlocks.length > 0 && (
-          <button className="text-xs bg-zinc-800 px-3 py-1 rounded text-zinc-200 hover:bg-zinc-700 transition-colors">
+        {pastedContent && (
+          <button 
+            onClick={onClear}
+            className="text-xs bg-zinc-800 px-3 py-1 rounded text-zinc-200 hover:bg-zinc-700 transition-colors cursor-pointer"
+          >
             Clear
           </button>
         )}

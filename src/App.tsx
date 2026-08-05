@@ -51,24 +51,6 @@ export default function App() {
       alert('Failed to update repository path. Ensure backend is running.');
     }
   };
-  
-  // Mock data for when user clicks paste
-  const mockBlocks: DiffBlock[] = [
-    {
-      id: '1',
-      file: 'src/components/Navbar.tsx',
-      status: 'match',
-      search: '  return (\n    <nav className="bg-white">\n      <Logo />\n    </nav>\n  );',
-      replace: '  return (\n    <nav className="bg-white dark:bg-zinc-950 transition-colors">\n      <Logo />\n      <ThemeToggle />\n    </nav>\n  );'
-    },
-    {
-      id: '2',
-      file: 'src/theme.ts',
-      status: 'no-match',
-      search: 'export const theme = {\n  mode: "light"\n};',
-      replace: 'export const theme = {\n  mode: "dark",\n  toggle: () => {}\n};'
-    }
-  ];
 
   const mockLogs: HistoryLog[] = [
     { id: 'c4f2a91', timestamp: '10 mins ago', files: ['src/App.tsx'], message: 'ai-edit: Add routing to App.tsx' },
@@ -87,12 +69,47 @@ export default function App() {
     setToastMessage('Raw Repo Map copied to clipboard!');
   };
 
+  const handleClear = () => {
+    setPastedContent('');
+    setDiffBlocks([]);
+  };
+
   const handlePaste = async () => {
     try {
       const clipboardText = await navigator.clipboard.readText();
+      if (!clipboardText) return;
+      
       setPastedContent(clipboardText);
       const parsed = parseDiffBlocks(clipboardText);
-      setDiffBlocks(parsed);
+      
+      if (parsed.length === 0) {
+        setDiffBlocks([]);
+        return;
+      }
+
+      // Fetch actual file contents to validate the SEARCH blocks
+      const uniqueFiles = Array.from(new Set(parsed.map(b => b.file)));
+      const res = await fetch('/api/files', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files: uniqueFiles })
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        const validatedBlocks = parsed.map(block => {
+          // Empty search implies a full file overwrite or new file creation (always valid)
+          if (!block.search.trim()) return { ...block, status: 'match' as const };
+          
+          const content = data.contents[block.file];
+          // Check if the exact search string exists in the real file
+          const isMatch = content && content.includes(block.search);
+          return { ...block, status: isMatch ? 'match' as const : 'no-match' as const };
+        });
+        setDiffBlocks(validatedBlocks);
+      } else {
+        setDiffBlocks(parsed);
+      }
     } catch (err) {
       console.error('Failed to read clipboard text: ', err);
       setToastMessage('Failed to read clipboard.');
@@ -111,16 +128,18 @@ export default function App() {
         <section className="flex-1 flex-shrink-0">
           <DiffPanel 
             pastedContent={pastedContent}
-            parsedBlocks={pastedContent ? (diffBlocks.length > 0 ? diffBlocks : mockBlocks) : []} 
+            parsedBlocks={diffBlocks} 
             onPaste={handlePaste}
+            onClear={handleClear}
           />
         </section>
       </main>
 
       <Footer 
         logs={mockLogs} 
-        hasChanges={pastedContent.length > 0} 
-        diffBlocks={diffBlocks.length > 0 ? diffBlocks : mockBlocks}
+        hasChanges={diffBlocks.length > 0} 
+        diffBlocks={diffBlocks}
+        onApplySuccess={handleClear}
       />
       
       <Toast message={toastMessage} onClose={() => setToastMessage(null)} />

@@ -5,10 +5,11 @@ import { DiffBlock } from '../types';
 interface DiffPanelProps {
   parsedBlocks: DiffBlock[];
   onPaste: () => void;
+  onClear: () => void;
   pastedContent: string;
 }
 
-export function DiffPanel({ parsedBlocks, onPaste, pastedContent }: DiffPanelProps) {
+export function DiffPanel({ parsedBlocks, onPaste, onClear, pastedContent }: DiffPanelProps) {
   const [ignoredBlocks, setIgnoredBlocks] = useState<Set<string>>(new Set());
 
   const toggleBlock = (id: string) => {
@@ -32,8 +33,11 @@ export function DiffPanel({ parsedBlocks, onPaste, pastedContent }: DiffPanelPro
           )}
           <span className="text-xs text-zinc-400">Paste AI response below to review diffs</span>
         </div>
-        {parsedBlocks.length > 0 && (
-          <button className="text-xs bg-zinc-800 px-3 py-1 rounded text-zinc-200 hover:bg-zinc-700 transition-colors">
+        {pastedContent && (
+          <button 
+            onClick={onClear}
+            className="text-xs bg-zinc-800 px-3 py-1 rounded text-zinc-200 hover:bg-zinc-700 transition-colors cursor-pointer"
+          >
             Clear
           </button>
         )}
