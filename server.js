@@ -1,8 +1,10 @@
 
+
 import express from "express";
 import fs from "fs";
 import path from "path";
 import { execSync } from "child_process";
+import { transformSync } from "esbuild";";
 
 const app = express();
 app.use(express.json());
@@ -353,6 +355,33 @@ function findCondensedRange(content, search) {
 }
 
 
+
+// Helper to validate JS/TS/JSX/TSX syntax in memory before writing
+function validateSyntax(content, filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (![".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"].includes(ext)) {
+    return null; // Skip non-code files (JSON, CSS, Markdown, etc.)
+  }
+
+  try {
+    let loader = ext.slice(1);
+    if (!["js", "jsx", "ts", "tsx"].includes(loader)) loader = "js";
+
+    transformSync(content, {
+      loader,
+      jsx: "transform",
+      format: "esm",
+    });
+    return null; // Valid syntax!
+  } catch (err) {
+    const errorMsg =
+      err.errors && err.errors[0]
+        ? `${err.errors[0].text} (line ${err.errors[0].location?.line || "?"})`
+        : err.message;
+    return `Pre-flight SyntaxError in ${filePath}: ${errorMsg}`;
+  }
+}
+
 // Pure In-Memory Block Application Engine (Exact, Fuzzy Indentation & Condensed Token Stream)
 function applyBlockToContent(content, block) {
   if (!block.search || !block.search.trim() || block.file === "Active File") {
@@ -409,7 +438,7 @@ function applyBlockToContent(content, block) {
   return { success: false, error: `SEARCH block match failed for file: ${block.file}` };
 }
 
-// 1. Transactional API: Pre-Flight Validation -> In-Memory Buffer -> Deferred Disk Write
+// 1. Transactional API: Pre-Flight Validation -> In-Memory Syntax Check -> Deferred Disk Write
 app.post("/api/apply", (req, res) => {
   const { blocks, commitMessage, skipCommit, commit } = req.body;
   const shouldCommit = commit === true || (commit !== false && !skipCommit);
@@ -429,7 +458,7 @@ app.post("/api/apply", (req, res) => {
       /* ignore git snapshot errors if tree is clean */
     }
 
-    // PHASE 1: IN-MEMORY DRY-RUN & VALIDATION
+    // PHASE 1: IN-MEMORY DRY-RUN & SYNTAX VALIDATION
     const pendingWrites = new Map(); // filePath -> updatedContent
     const validationErrors = [];
 
@@ -447,23 +476,29 @@ app.post("/api/apply", (req, res) => {
 
       const result = applyBlockToContent(currentContent, block);
       if (result.success) {
-        pendingWrites.set(block.file, result.newContent);
+        // Run Pre-Flight Syntax Check on the resulting content in memory!
+        const syntaxError = validateSyntax(result.newContent, block.file);
+        if (syntaxError) {
+          validationErrors.push(syntaxError);
+        } else {
+          pendingWrites.set(block.file, result.newContent);
+        }
       } else {
         validationErrors.push(result.error);
       }
     }
 
-    // ALL-OR-NOTHING GATEKEEPER: Abort if any block failed pre-flight validation
+    // ALL-OR-NOTHING GATEKEEPER: Abort if any block failed pre-flight validation or syntax check
     if (validationErrors.length > 0) {
       return res.status(422).json({
         success: false,
-        error: `Transaction aborted. ${validationErrors.length} block(s) failed validation. 0 files modified on disk.`,
+        error: `Transaction aborted. ${validationErrors.length} validation/syntax error(s) detected. 0 files modified on disk.`,
         details: validationErrors,
       });
     }
 
-    // PHASE 2: TOPOLOGICAL / DEFERRED WRITES QUEUE
-    // Move high-risk process/server files to the end of the write queue
+    
+    
     const CRITICAL_FILES = ["server.js", "package.json", "vite.config.ts", "tsconfig.json"];
     const filesToCommit = Array.from(pendingWrites.keys()).sort((a, b) => {
       const isACritical = CRITICAL_FILES.some((f) => a.endsWith(f));
@@ -473,7 +508,7 @@ app.post("/api/apply", (req, res) => {
       return 0;
     });
 
-    // PHASE 3: ATOMIC DISK COMMIT
+    
     for (const file of filesToCommit) {
       const fullPath = path.resolve(targetRepoPath, file);
       const dirPath = path.dirname(fullPath);
@@ -483,16 +518,16 @@ app.post("/api/apply", (req, res) => {
       fs.writeFileSync(fullPath, pendingWrites.get(file), "utf-8");
     }
 
-    // AUTO-FORMAT MODIFIED FILES WITH PRETTIER
+    
     for (const file of filesToCommit) {
       try {
         execSync(`npx prettier --write "${file}"`, { cwd: targetRepoPath, stdio: "ignore" });
       } catch (e) {
-        /* ignore prettier errors */
+        
       }
     }
 
-    // OPTIONAL GIT COMMIT
+    
     if (shouldCommit) {
       const msg = commitMessage && commitMessage.trim() ? commitMessage.trim() : "ai-edit: updated files";
       execSync(`git add . && git commit -m "${msg}"`, { cwd: targetRepoPath, stdio: "ignore" });
@@ -512,7 +547,7 @@ app.post("/api/apply", (req, res) => {
 
 
 
-// 2. API: Git Reset / Undo Last Edit
+
 app.post("/api/undo", (req, res) => {
   try {
     execSync("git reset --hard HEAD~1", {
@@ -529,5 +564,5 @@ app.post("/api/undo", (req, res) => {
 });
 
 app.listen(3001, () =>
-  console.log("🚀 Local Patch Backend running on http://localhost:3001")
+  console.log("🚀 Local Patch Backend running on http:
 );
