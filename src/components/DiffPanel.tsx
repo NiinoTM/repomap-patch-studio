@@ -24,7 +24,7 @@ export function DiffPanel({ parsedBlocks, onPaste, onClear, pastedContent }: Dif
   };
 
   return (
-    <div className="flex flex-col h-full bg-zinc-950 p-4 space-y-4">
+    <div className="flex flex-col h-full w-full min-w-0 bg-zinc-950 p-4 space-y-4 overflow-hidden">
       <div className="flex items-center justify-between bg-zinc-900 p-2 rounded-lg border border-zinc-800">
         <div className="flex items-center space-x-3">
           {parsedBlocks.length > 0 && (
@@ -154,7 +154,7 @@ export function DiffPanel({ parsedBlocks, onPaste, onClear, pastedContent }: Dif
                       </label>
                     </div>
                     
-                    <div className="p-4 font-mono text-[11px] overflow-x-auto custom-scrollbar leading-relaxed">
+                    <div className="p-4 font-mono text-[11px] overflow-x-auto custom-scrollbar leading-relaxed min-w-0 w-full">
                       <div className="text-rose-500 opacity-50 select-none">{"<<<<<<< SEARCH"}</div>
                       <div className="pl-4 text-zinc-500 whitespace-pre">
                         {block.search}
