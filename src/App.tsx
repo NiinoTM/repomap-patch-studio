@@ -157,9 +157,14 @@ export default function App() {
             }
           }
 
-          // 3. Ultra-Lenient Token Stream (Ignores multi-line, spaces, commas, AND quote styles)
+          // 3. Ultra-Lenient Token Stream (Ignores comments, JSX {" "}, spaces, commas, quotes, parens, and semicolons)
           if (!isMatch) {
-            const tokenize = (str: string) => str.replace(/[\s,'"`]+/g, '');
+            const tokenize = (str: string) => 
+              str
+                .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '') // Strip comments // and /* */
+                .replace(/\{\s*["']\s*["']\s*\}/g, '')   // Strip Prettier JSX space expressions
+                .replace(/[\s,'"`();]+/g, '');
+
             const tokenSearch = tokenize(normSearch);
             const tokenContent = tokenize(normContent);
             if (tokenSearch.length > 0) {

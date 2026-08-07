@@ -235,30 +235,31 @@ app.post("/api/files", (req, res) => {
   res.json({ success: true, contents });
 });
 
-// Helper to find exact character ranges ignoring newlines, whitespace, and Prettier trailing commas
+// Helper to find exact character ranges ignoring comments, newlines, whitespace, JSX {" "}, commas, quotes, parens, and semicolons
 function findCondensedRange(content, search) {
-  // Strip all whitespace AND commas from the search block
-  const cleanSearch = search.replace(/[\s,]+/g, '');
+  const preCleanContent = content.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '').replace(/\{\s*["']\s*["']\s*\}/g, '');
+  const cleanSearch = search
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '')
+    .replace(/\{\s*["']\s*["']\s*\}/g, '')
+    .replace(/[\s,'"`();]+/g, '');
+
   if (!cleanSearch) return null;
 
   let cIdx = 0;
   let sIdx = 0;
   let startMatchPos = -1;
 
-  while (cIdx < content.length && sIdx < cleanSearch.length) {
-    // If the real file has a space, newline, or comma, SKIP IT.
-    if (/[\s,]/.test(content[cIdx])) {
+  while (cIdx < preCleanContent.length && sIdx < cleanSearch.length) {
+    if (/[\s,'"`();]/.test(preCleanContent[cIdx])) {
       cIdx++;
       continue;
     }
 
-    // Match character
-    if (content[cIdx] === cleanSearch[sIdx]) {
+    if (preCleanContent[cIdx] === cleanSearch[sIdx]) {
       if (sIdx === 0) startMatchPos = cIdx;
       sIdx++;
       cIdx++;
     } else {
-      // Mismatch: reset and try again from the next character
       if (startMatchPos !== -1) {
         cIdx = startMatchPos + 1;
         startMatchPos = -1;
@@ -269,7 +270,6 @@ function findCondensedRange(content, search) {
     }
   }
 
-  // If we matched the entire search string, return the exact start/end indices in the original file
   if (sIdx === cleanSearch.length && startMatchPos !== -1) {
     return { start: startMatchPos, end: cIdx };
   }
@@ -348,10 +348,11 @@ app.post('/api/apply', (req, res) => {
           contentLines.splice(matchIndex, searchLines.length, ...replaceLines);
           fs.writeFileSync(fullPath, contentLines.join('\n'), 'utf-8');
         } else {
-          // 3. Condensed Token Stream Replacement (Replaces multi-line code matching single-line search)
+          // 3. Condensed Token Stream Replacement
+          const cleanNormContent = normContent.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '').replace(/\{\s*["']\s*["']\s*\}/g, '');
           const range = findCondensedRange(normContent, normSearch);
           if (range) {
-            const updated = normContent.slice(0, range.start) + normReplace + normContent.slice(range.end);
+            const updated = cleanNormContent.slice(0, range.start) + normReplace + cleanNormContent.slice(range.end);
             fs.writeFileSync(fullPath, updated, 'utf-8');
           } else {
             // Fallback: overwrite if no match
