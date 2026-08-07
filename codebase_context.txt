@@ -45,7 +45,6 @@ FILE PATH: index.html
 </html>
 
 
-
 ==================================================
 FILE PATH: metadata.json
 ==================================================
@@ -53,9 +52,7 @@ FILE PATH: metadata.json
   "name": "RepoMap Patch Studio",
   "description": "A developer-focused GUI for managing AI code edits using a copy-paste workflow with Repo Maps and Git safety.",
   "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
 
 
@@ -79,23 +76,25 @@ FILE PATH: package.json
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
-    "lucide-react": "latest",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "express": "^4.21.2",
     "dotenv": "^17.2.3",
-    "motion": "latest"
+    "express": "^4.21.2",
+    "lucide-react": "latest",
+    "motion": "latest",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "autoprefixer": "^10.4.21",
     "concurrently": "^9.1.2",
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.3",
-    "@types/express": "^4.17.21"
+    "vite": "^6.2.3"
   }
 }
 
@@ -115,8 +114,7 @@ View your app in AI Studio: https://ai.studio/apps/7f9c9154-e175-4b62-88d4-e6012
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
-
+**Prerequisites:** Node.js
 
 1. Install dependencies:
    `npm install`
@@ -129,10 +127,10 @@ View your app in AI Studio: https://ai.studio/apps/7f9c9154-e175-4b62-88d4-e6012
 FILE PATH: server.js
 ==================================================
 // server.js
-import express from 'express';
-import fs from 'fs';
-import path from 'path';
-import { execSync } from 'child_process';
+import express from "express";
+import fs from "fs";
+import path from "path";
+import { execSync } from "child_process";
 
 const app = express();
 app.use(express.json());
@@ -147,11 +145,21 @@ const getAllFiles = (dir, basePath = dir, fileList = []) => {
     const filePath = path.join(dir, file);
     const stat = fs.statSync(filePath);
     if (stat.isDirectory()) {
-      if (!['node_modules', '.git', 'dist', 'build', 'coverage', '.vscode', '.idea'].includes(file)) {
+      if (
+        ![
+          "node_modules",
+          ".git",
+          "dist",
+          "build",
+          "coverage",
+          ".vscode",
+          ".idea",
+        ].includes(file)
+      ) {
         getAllFiles(filePath, basePath, fileList);
       }
     } else {
-      fileList.push(path.relative(basePath, filePath).replace(/\\/g, '/'));
+      fileList.push(path.relative(basePath, filePath).replace(/\\/g, "/"));
     }
   }
   return fileList;
@@ -164,30 +172,51 @@ const generateRepoMap = (basePath, filesList) => {
     const fullPath = path.join(basePath, file);
     const ext = path.extname(file).toLowerCase();
     let content;
-    try { content = fs.readFileSync(fullPath, 'utf-8'); } catch (e) { continue; }
+    try {
+      content = fs.readFileSync(fullPath, "utf-8");
+    } catch (e) {
+      continue;
+    }
 
     let symbols = [];
-    const lines = content.split('\n');
-    
+    const lines = content.split("\n");
+
     for (let line of lines) {
       const trimmed = line.trim();
-      if (['.js', '.jsx', '.ts', '.tsx'].includes(ext)) {
+      if ([".js", ".jsx", ".ts", ".tsx"].includes(ext)) {
         // Extract Classes, Functions, Interfaces, Types
-        let match = trimmed.match(/^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function|class|interface|type)\s+([A-Za-z0-9_]+)/);
-        if (match) { symbols.push(trimmed.replace(/\s*\{.*$/, '')); continue; }
+        let match = trimmed.match(
+          /^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function|class|interface|type)\s+([A-Za-z0-9_]+)/,
+        );
+        if (match) {
+          symbols.push(trimmed.replace(/\s*\{.*$/, ""));
+          continue;
+        }
         // Extract Arrow Functions assigned to variables
-        match = trimmed.match(/^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_]+)\s*=>/);
-        if (match) { symbols.push(trimmed.replace(/\s*=>.*$/, '=> { ... }')); continue; }
-      } else if (['.py'].includes(ext)) {
-        if (/^(?:async\s+)?(?:def|class)\s+[A-Za-z0-9_]+/.test(trimmed)) { symbols.push(trimmed.replace(/:.*$/, '')); }
-      } else if (['.go'].includes(ext)) {
-        if (/^func\s+[A-Za-z0-9_]+/.test(trimmed) || /^type\s+[A-Za-z0-9_]+\s+(?:struct|interface)/.test(trimmed)) { symbols.push(trimmed.replace(/\{.*$/, '')); }
+        match = trimmed.match(
+          /^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_]+)\s*=>/,
+        );
+        if (match) {
+          symbols.push(trimmed.replace(/\s*=>.*$/, "=> { ... }"));
+          continue;
+        }
+      } else if ([".py"].includes(ext)) {
+        if (/^(?:async\s+)?(?:def|class)\s+[A-Za-z0-9_]+/.test(trimmed)) {
+          symbols.push(trimmed.replace(/:.*$/, ""));
+        }
+      } else if ([".go"].includes(ext)) {
+        if (
+          /^func\s+[A-Za-z0-9_]+/.test(trimmed) ||
+          /^type\s+[A-Za-z0-9_]+\s+(?:struct|interface)/.test(trimmed)
+        ) {
+          symbols.push(trimmed.replace(/\{.*$/, ""));
+        }
       }
     }
 
     if (symbols.length > 0) {
       mapOutput += file + ":\n";
-      symbols.forEach(s => mapOutput += "│ " + s + "\n");
+      symbols.forEach((s) => (mapOutput += "│ " + s + "\n"));
     } else {
       mapOutput += file + "\n";
     }
@@ -210,22 +239,24 @@ const getFileStats = (basePath, filesList) => {
   return stats;
 };
 
-// Helper to build a Dependency Map of imports between files
+// Helper to build a Bidirectional Dependency Map (outbound & inbound imports)
 const getDependencyMap = (basePath, filesList) => {
-  const depMap = {};
+  const outbound = {};
+  const inboundMap = {};
   const fileSet = new Set(filesList);
 
   for (const file of filesList) {
     const ext = path.extname(file).toLowerCase();
-    if (!['.js', '.jsx', '.ts', '.tsx'].includes(ext)) continue;
+    if (![".js", ".jsx", ".ts", ".tsx"].includes(ext)) continue;
 
     try {
       const fullPath = path.join(basePath, file);
-      const content = fs.readFileSync(fullPath, 'utf-8');
+      const content = fs.readFileSync(fullPath, "utf-8");
       const imports = new Set();
 
       // Matches import/export statements: import ... from '...' or require('...')
-      const importRegex = /(?:import|export)\s+[\s\S]*?\s+from\s+['"]([^'"]+)['"]|require\(['"]([^'"]+)['"]\)/g;
+      const importRegex =
+        /(?:import|export)\s+[\s\S]*?\s+from\s+['"]([^'"]+)['"]|require\(['"]([^'"]+)['"]\)/g;
       let match;
 
       while ((match = importRegex.exec(content)) !== null) {
@@ -233,14 +264,16 @@ const getDependencyMap = (basePath, filesList) => {
         if (!importPath) continue;
 
         // Resolve path aliases like `@/`
-        if (importPath.startsWith('@/')) {
-          importPath = './' + importPath.slice(2);
+        if (importPath.startsWith("@/")) {
+          importPath = "./" + importPath.slice(2);
         }
 
         // Only resolve local relative imports (starting with . or /)
-        if (importPath.startsWith('.')) {
+        if (importPath.startsWith(".")) {
           const fileDir = path.dirname(file);
-          const rawResolved = path.normalize(path.join(fileDir, importPath)).replace(/\\/g, '/');
+          const rawResolved = path
+            .normalize(path.join(fileDir, importPath))
+            .replace(/\\/g, "/");
 
           // Candidate file extensions to test
           const candidates = [
@@ -252,7 +285,7 @@ const getDependencyMap = (basePath, filesList) => {
             `${rawResolved}/index.tsx`,
             `${rawResolved}/index.ts`,
             `${rawResolved}/index.jsx`,
-            `${rawResolved}/index.js`
+            `${rawResolved}/index.js`,
           ];
 
           for (const cand of candidates) {
@@ -265,31 +298,47 @@ const getDependencyMap = (basePath, filesList) => {
       }
 
       if (imports.size > 0) {
-        depMap[file] = Array.from(imports);
+        outbound[file] = Array.from(imports);
+        for (const imp of imports) {
+          if (!inboundMap[imp]) inboundMap[imp] = new Set();
+          inboundMap[imp].add(file);
+        }
       }
     } catch (e) {
       /* ignore read errors */
     }
   }
 
-  return depMap;
+  const inbound = {};
+  for (const key in inboundMap) {
+    inbound[key] = Array.from(inboundMap[key]);
+  }
+
+  return { outbound, inbound };
 };
 
 // API: Get Current Repo Path, Files, Repo Map, Stats & Dependency Map
-app.get('/api/repo', (req, res) => {
+app.get("/api/repo", (req, res) => {
   try {
     const files = getAllFiles(targetRepoPath);
     const repoMap = generateRepoMap(targetRepoPath, files);
     const fileStats = getFileStats(targetRepoPath, files);
     const dependencyMap = getDependencyMap(targetRepoPath, files);
-    res.json({ success: true, path: targetRepoPath, files, repoMap, fileStats, dependencyMap });
+    res.json({
+      success: true,
+      path: targetRepoPath,
+      files,
+      repoMap,
+      fileStats,
+      dependencyMap,
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // API: Change Repo Path
-app.post('/api/repo', (req, res) => {
+app.post("/api/repo", (req, res) => {
   const { newPath } = req.body;
   if (fs.existsSync(newPath) && fs.statSync(newPath).isDirectory()) {
     targetRepoPath = path.resolve(newPath);
@@ -297,55 +346,118 @@ app.post('/api/repo', (req, res) => {
     const repoMap = generateRepoMap(targetRepoPath, files);
     const fileStats = getFileStats(targetRepoPath, files);
     const dependencyMap = getDependencyMap(targetRepoPath, files);
-    res.json({ success: true, path: targetRepoPath, files, repoMap, fileStats, dependencyMap });
+    res.json({
+      success: true,
+      path: targetRepoPath,
+      files,
+      repoMap,
+      fileStats,
+      dependencyMap,
+    });
   } else {
-    res.status(400).json({ success: false, error: 'Invalid or missing directory path.' });
+    res
+      .status(400)
+      .json({ success: false, error: "Invalid or missing directory path." });
   }
 });
 
 // API: Fetch File Contents for Prompt Assembly
-app.post('/api/files', (req, res) => {
+app.post("/api/files", (req, res) => {
   const { files } = req.body;
   const contents = {};
-  files.forEach(f => {
-    try { contents[f] = fs.readFileSync(path.join(targetRepoPath, f), 'utf-8'); } catch(e){}
+  files.forEach((f) => {
+    try {
+      contents[f] = fs.readFileSync(path.join(targetRepoPath, f), "utf-8");
+    } catch (e) {}
   });
   res.json({ success: true, contents });
 });
 
-// 1. API: Apply Changes & Commit to Git (with Smart Indentation Recovery)
+// Helper to find exact character ranges ignoring comments, newlines, whitespace, JSX {" "}, commas, quotes, parens, and semicolons
+function findCondensedRange(content, search) {
+  const preCleanContent = content.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '').replace(/\{\s*["']\s*["']\s*\}/g, '');
+  const cleanSearch = search
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '')
+    .replace(/\{\s*["']\s*["']\s*\}/g, '')
+    .replace(/[\s,'"`();]+/g, '');
+
+  if (!cleanSearch) return null;
+
+  let cIdx = 0;
+  let sIdx = 0;
+  let startMatchPos = -1;
+
+  while (cIdx < preCleanContent.length && sIdx < cleanSearch.length) {
+    if (/[\s,'"`();]/.test(preCleanContent[cIdx])) {
+      cIdx++;
+      continue;
+    }
+
+    if (preCleanContent[cIdx] === cleanSearch[sIdx]) {
+      if (sIdx === 0) startMatchPos = cIdx;
+      sIdx++;
+      cIdx++;
+    } else {
+      if (startMatchPos !== -1) {
+        cIdx = startMatchPos + 1;
+        startMatchPos = -1;
+        sIdx = 0;
+      } else {
+        cIdx++;
+      }
+    }
+  }
+
+  if (sIdx === cleanSearch.length && startMatchPos !== -1) {
+    return { start: startMatchPos, end: cIdx };
+  }
+
+  return null;
+}
+
+// 1. API: Apply Changes & Commit to Git (with Multi-line & Indentation Recovery)
 app.post('/api/apply', (req, res) => {
   const { blocks, commitMessage } = req.body;
 
   try {
-    try { execSync('git add . && git commit -m "pre-ai-edit"', { cwd: targetRepoPath, stdio: 'ignore' }); } catch (e) { /* ignore */ }
+    try {
+      execSync('git add . && git commit -m "pre-ai-edit"', {
+        cwd: targetRepoPath,
+        stdio: "ignore",
+      });
+    } catch (e) {
+      /* ignore */
+    }
 
     for (const block of blocks) {
       const fullPath = path.resolve(targetRepoPath, block.file);
       if (!fs.existsSync(fullPath)) {
-        fs.writeFileSync(fullPath, block.replace, 'utf-8');
+        fs.writeFileSync(fullPath, block.replace, "utf-8");
         continue;
       }
 
-      let content = fs.readFileSync(fullPath, 'utf-8');
+      let content = fs.readFileSync(fullPath, "utf-8");
 
-      if (!block.search.trim() || block.file === 'Active File') {
-        fs.writeFileSync(fullPath, block.replace, 'utf-8');
+      if (!block.search.trim() || block.file === "Active File") {
+        fs.writeFileSync(fullPath, block.replace, "utf-8");
         continue;
       }
 
-      const normContent = content.replace(/\r\n/g, '\n');
-      const normSearch = block.search.replace(/\r\n/g, '\n');
-      const normReplace = block.replace.replace(/\r\n/g, '\n');
+      const normContent = content.replace(/\r\n/g, "\n");
+      const normSearch = block.search.replace(/\r\n/g, "\n");
+      const normReplace = block.replace.replace(/\r\n/g, "\n");
 
       if (normContent.includes(normSearch)) {
         // Exact match
         const updated = normContent.replace(normSearch, normReplace);
-        fs.writeFileSync(fullPath, updated, 'utf-8');
+        fs.writeFileSync(fullPath, updated, "utf-8");
       } else {
         // Smart Fuzzy Indentation Replacement
-        const searchLines = normSearch.split('\n').map(l => l.trim()).filter(Boolean);
-        const contentLines = normContent.split('\n');
+        const searchLines = normSearch
+          .split("\n")
+          .map((l) => l.trim())
+          .filter(Boolean);
+        const contentLines = normContent.split("\n");
 
         let matchIndex = -1;
         for (let i = 0; i <= contentLines.length - searchLines.length; i++) {
@@ -374,30 +486,57 @@ app.post('/api/apply', (req, res) => {
           contentLines.splice(matchIndex, searchLines.length, ...replaceLines);
           fs.writeFileSync(fullPath, contentLines.join('\n'), 'utf-8');
         } else {
-          // Fallback: overwrite if no match
-          fs.writeFileSync(fullPath, block.replace, 'utf-8');
+          // 3. Condensed Token Stream Replacement
+          const cleanNormContent = normContent.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '').replace(/\{\s*["']\s*["']\s*\}/g, '');
+          const range = findCondensedRange(normContent, normSearch);
+          if (range) {
+            const updated = cleanNormContent.slice(0, range.start) + normReplace + cleanNormContent.slice(range.end);
+            fs.writeFileSync(fullPath, updated, 'utf-8');
+          } else {
+            console.warn(`[Apply Warning] Could not find SEARCH block for ${block.file}. File left untouched to prevent corruption.`);
+          }
+        }
+      }
+    }
+
+    // AUTO-FORMAT MODIFIED FILES WITH PRETTIER
+    for (const block of blocks) {
+      if (block.file && block.file !== 'Active File') {
+        try {
+          execSync(`npx prettier --write "${block.file}"`, { cwd: targetRepoPath, stdio: 'ignore' });
+        } catch (e) {
+          // Gracefully ignore if prettier fails or is unsupported for this file
         }
       }
     }
 
     execSync(`git add . && git commit -m "${commitMessage || 'ai-edit: updated files'}"`, { cwd: targetRepoPath, stdio: 'ignore' });
-    res.json({ success: true, message: 'Changes applied and committed to Git!' });
+    res.json({ success: true, message: 'Changes applied, auto-formatted & committed to Git!' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // 2. API: Git Reset / Undo Last Edit
-app.post('/api/undo', (req, res) => {
+app.post("/api/undo", (req, res) => {
   try {
-    execSync('git reset --hard HEAD~1', { cwd: targetRepoPath, stdio: 'ignore' });
-    res.json({ success: true, message: 'Hard reset to previous commit successful!' });
+    execSync("git reset --hard HEAD~1", {
+      cwd: targetRepoPath,
+      stdio: "ignore",
+    });
+    res.json({
+      success: true,
+      message: "Hard reset to previous commit successful!",
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-app.listen(3001, () => console.log('🚀 Local Patch Backend running on http://localhost:3001'));
+app.listen(3001, () =>
+  console.log("🚀 Local Patch Backend running on http://localhost:3001"),
+);
+
 
 ==================================================
 FILE PATH: tsconfig.json
@@ -408,11 +547,7 @@ FILE PATH: tsconfig.json
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
     "module": "ESNext",
-    "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "isolatedModules": true,
@@ -420,9 +555,7 @@ FILE PATH: tsconfig.json
     "allowJs": true,
     "jsx": "react-jsx",
     "paths": {
-      "@/*": [
-        "./*"
-      ]
+      "@/*": ["./*"]
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
@@ -433,28 +566,28 @@ FILE PATH: tsconfig.json
 ==================================================
 FILE PATH: vite.config.ts
 ==================================================
-import tailwindcss from '@tailwindcss/vite';
-import react from '@vitejs/plugin-react';
-import path from 'path';
-import {defineConfig} from 'vite';
+import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
+import { defineConfig } from "vite";
 
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        "@": path.resolve(__dirname, "."),
       },
     },
     server: {
       proxy: {
-      '/api': 'http://localhost:3001'
+        "/api": "http://localhost:3001",
       },
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
-      hmr: process.env.DISABLE_HMR !== 'true',
+      hmr: process.env.DISABLE_HMR !== "true",
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      watch: process.env.DISABLE_HMR === "true" ? null : {},
     },
   };
 });
@@ -469,83 +602,120 @@ FILE PATH: assets\.aistudio\.gitignore
 ==================================================
 FILE PATH: src\App.tsx
 ==================================================
-import { useState, useEffect } from 'react';
-import { Header } from './components/Header';
-import { PromptPanel } from './components/PromptPanel';
-import { DiffPanel } from './components/DiffPanel';
-import { Footer } from './components/Footer';
-import { Toast } from './components/Toast';
-import { DiffBlock, HistoryLog } from './types';
-import { parseDiffBlocks } from './utils/diffParser';
+import { useState, useEffect } from "react";
+import { Header } from "./components/Header";
+import { PromptPanel } from "./components/PromptPanel";
+import { DiffPanel } from "./components/DiffPanel";
+import { Footer } from "./components/Footer";
+import { Toast } from "./components/Toast";
+import { DiffBlock, HistoryLog } from "./types";
+import { parseDiffBlocks } from "./utils/diffParser";
 
 export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [pastedContent, setPastedContent] = useState('');
+  const [pastedContent, setPastedContent] = useState("");
   const [diffBlocks, setDiffBlocks] = useState<DiffBlock[]>([]);
-  const [repoPath, setRepoPath] = useState<string>('Loading...');
+  const [repoPath, setRepoPath] = useState<string>("Loading...");
   const [repoFiles, setRepoFiles] = useState<string[]>([]);
-  const [repoMap, setRepoMap] = useState<string>('');
-  const [fileStats, setFileStats] = useState<Record<string, { size: number; tokens: number }>>({});
-  const [dependencyMap, setDependencyMap] = useState<Record<string, string[]>>({});
+  const [repoMap, setRepoMap] = useState<string>("");
+  const [fileStats, setFileStats] = useState<
+    Record<string, { size: number; tokens: number }>
+  >({});
+  const [dependencyMap, setDependencyMap] = useState<{
+    outbound: Record<string, string[]>;
+    inbound: Record<string, string[]>;
+  }>({ outbound: {}, inbound: {} });
+  const [tokenStats, setTokenStats] = useState({
+    total: 0,
+    map: 0,
+    files: 0,
+    selectedCount: 0,
+  });
 
   useEffect(() => {
-    fetch('/api/repo')
-      .then(res => res.json())
-      .then(data => {
+    fetch("/api/repo")
+      .then((res) => res.json())
+      .then((data) => {
         if (data.success) {
           setRepoPath(data.path);
           setRepoFiles(data.files);
           setRepoMap(data.repoMap);
           setFileStats(data.fileStats || {});
-          setDependencyMap(data.dependencyMap || {});
+          setDependencyMap(
+            data.dependencyMap || { outbound: {}, inbound: {} },
+          );
         }
       })
-      .catch(err => console.error('Failed to fetch repo context:', err));
+      .catch((err) => console.error("Failed to fetch repo context:", err));
   }, []);
 
   const handleChangeRepo = async () => {
-    const newPath = prompt('Enter absolute path to your repository:', repoPath);
+    const newPath = prompt("Enter absolute path to your repository:", repoPath);
     if (!newPath || newPath === repoPath) return;
 
     try {
-      const res = await fetch('/api/repo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ newPath })
+      const res = await fetch("/api/repo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newPath }),
       });
       const data = await res.json();
       if (data.success) {
         setRepoPath(data.path);
         setRepoFiles(data.files);
         setRepoMap(data.repoMap);
-        setToastMessage('Repository context updated successfully!');
+        setFileStats(data.fileStats || {});
+        setDependencyMap(
+          data.dependencyMap || { outbound: {}, inbound: {} },
+        );
+        setToastMessage("Repository context updated successfully!");
       } else {
-        alert('Error: ' + data.error);
+        alert("Error: " + data.error);
       }
     } catch (err) {
-      alert('Failed to update repository path. Ensure backend is running.');
+      alert("Failed to update repository path. Ensure backend is running.");
     }
   };
 
   const mockLogs: HistoryLog[] = [
-    { id: 'c4f2a91', timestamp: '10 mins ago', files: ['src/App.tsx'], message: 'ai-edit: Add routing to App.tsx' },
-    { id: '8a1b3c4', timestamp: '1 hour ago', files: ['src/components/Button.tsx'], message: 'ai-edit: fix button padding' },
-    { id: 'f2d4e56', timestamp: '2 hours ago', files: ['tailwind.config.js'], message: 'ai-edit: add custom colors' },
-    { id: '1e2f3a4', timestamp: 'Yesterday', files: ['package.json'], message: 'ai-edit: install lucide-react' },
+    {
+      id: "c4f2a91",
+      timestamp: "10 mins ago",
+      files: ["src/App.tsx"],
+      message: "ai-edit: Add routing to App.tsx",
+    },
+    {
+      id: "8a1b3c4",
+      timestamp: "1 hour ago",
+      files: ["src/components/Button.tsx"],
+      message: "ai-edit: fix button padding",
+    },
+    {
+      id: "f2d4e56",
+      timestamp: "2 hours ago",
+      files: ["tailwind.config.js"],
+      message: "ai-edit: add custom colors",
+    },
+    {
+      id: "1e2f3a4",
+      timestamp: "Yesterday",
+      files: ["package.json"],
+      message: "ai-edit: install lucide-react",
+    },
   ];
 
   const handleCopy = async (promptText: string) => {
     await navigator.clipboard.writeText(promptText);
-    setToastMessage('Context and Prompt copied to clipboard!');
+    setToastMessage("Context and Prompt copied to clipboard!");
   };
 
   const handleCopyMap = async (mapText: string) => {
     await navigator.clipboard.writeText(mapText);
-    setToastMessage('Raw Repo Map copied to clipboard!');
+    setToastMessage("Raw Repo Map copied to clipboard!");
   };
 
   const handleClear = () => {
-    setPastedContent('');
+    setPastedContent("");
     setDiffBlocks([]);
   };
 
@@ -553,83 +723,128 @@ export default function App() {
     try {
       const clipboardText = await navigator.clipboard.readText();
       if (!clipboardText) return;
-      
+
       setPastedContent(clipboardText);
       const parsed = parseDiffBlocks(clipboardText);
-      
+
       if (parsed.length === 0) {
         setDiffBlocks([]);
         return;
       }
 
-      // Auto-assign "Active File" to currently selected file if only 1 file is selected
-      const resolvedParsed = parsed.map(block => {
-        if (block.file === 'Active File' && selectedFiles.size === 1) {
-          return { ...block, file: Array.from(selectedFiles)[0] };
-        }
-        return block;
-      });
+      const uniqueFiles = Array.from(
+        new Set(parsed.map((b) => b.file).filter((f) => f !== "Active File")),
+      );
 
-      // Fetch actual file contents to validate the SEARCH blocks
-      const uniqueFiles = Array.from(new Set(resolvedParsed.map(b => b.file).filter(f => f !== 'Active File')));
-      const res = await fetch('/api/files', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ files: uniqueFiles })
-      });
-      const data = await res.json();
-      
+      let data = { success: false, contents: {} as Record<string, string> };
+
+      if (uniqueFiles.length > 0) {
+        const res = await fetch("/api/files", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ files: uniqueFiles }),
+        });
+        data = await res.json();
+      } else {
+        data.success = true;
+      }
+
       if (data.success) {
-        const validatedBlocks = resolvedParsed.map(block => {
-          if (!block.search.trim()) return { ...block, status: 'match' as const };
-          
+        const validatedBlocks = parsed.map((block) => {
+          if (!block.search.trim() || block.file === "Active File") {
+            return { ...block, status: "match" as const };
+          }
+
           const content = data.contents[block.file];
-          const isMatch = content && content.includes(block.search);
-          return { ...block, status: isMatch ? 'match' as const : 'no-match' as const };
+          if (!content) return { ...block, status: "no-match" as const };
+
+          const normContent = content.replace(/\r\n/g, "\n");
+          const normSearch = block.search.replace(/\r\n/g, "\n");
+          let isMatch = normContent.includes(normSearch);
+
+          if (!isMatch) {
+            const searchLines = normSearch
+              .split("\n")
+              .map((l) => l.trim())
+              .filter(Boolean);
+            const contentLines = normContent
+              .split("\n")
+              .map((l) => l.trim())
+              .filter(Boolean);
+            if (searchLines.length > 0) {
+              isMatch = contentLines
+                .join("\n")
+                .includes(searchLines.join("\n"));
+            }
+          }
+
+          if (!isMatch) {
+            const tokenize = (str: string) =>
+              str
+                .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
+                .replace(/\{\s*["']\s*["']\s*\}/g, "")
+                .replace(/[\s,'"`();]+/g, "");
+
+            const tokenSearch = tokenize(normSearch);
+            const tokenContent = tokenize(normContent);
+            if (tokenSearch.length > 0) {
+              isMatch = tokenContent.includes(tokenSearch);
+            }
+          }
+
+          return {
+            ...block,
+            status: isMatch ? ("match" as const) : ("no-match" as const),
+          };
         });
         setDiffBlocks(validatedBlocks);
       } else {
-        setDiffBlocks(resolvedParsed);
+        setDiffBlocks(parsed);
       }
     } catch (err) {
-      console.error('Failed to read clipboard text: ', err);
-      setToastMessage('Failed to read clipboard.');
+      console.error("Failed to parse pasted text: ", err);
+      setToastMessage("Error parsing clipboard text.");
     }
   };
 
   return (
     <div className="flex flex-col h-screen w-full bg-zinc-950 overflow-hidden font-sans text-zinc-300 selection:bg-cyan-500/30 antialiased">
-      <Header repoPath={repoPath} onChangeRepo={handleChangeRepo} />
-      
+      <Header
+        repoPath={repoPath}
+        onChangeRepo={handleChangeRepo}
+        tokenStats={tokenStats}
+      />
+
       <main className="flex-1 flex overflow-hidden">
         <aside className="w-[420px] flex-shrink-0">
-          <PromptPanel 
-  onCopy={handleCopy} 
-  onCopyMap={handleCopyMap} 
-  files={repoFiles} 
-  repoMap={repoMap} 
-  fileStats={fileStats} 
-  dependencyMap={dependencyMap} 
-/>
+          <PromptPanel
+            onCopy={handleCopy}
+            onCopyMap={handleCopyMap}
+            files={repoFiles}
+            repoMap={repoMap}
+            fileStats={fileStats}
+            dependencyMap={dependencyMap}
+            onTokenStatsChange={setTokenStats}
+          />
         </aside>
-        
+
         <section className="flex-1 min-w-0 overflow-hidden">
-          <DiffPanel 
+          <DiffPanel
             pastedContent={pastedContent}
-            parsedBlocks={diffBlocks} 
+            parsedBlocks={diffBlocks}
             onPaste={handlePaste}
             onClear={handleClear}
           />
         </section>
       </main>
 
-      <Footer 
-        logs={mockLogs} 
-        hasChanges={diffBlocks.length > 0} 
+      <Footer
+        logs={mockLogs}
+        hasChanges={diffBlocks.length > 0}
         diffBlocks={diffBlocks}
         onApplySuccess={handleClear}
       />
-      
+
       <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
     </div>
   );
@@ -639,11 +854,11 @@ export default function App() {
 ==================================================
 FILE PATH: src\index.css
 ==================================================
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap");
 @import "tailwindcss";
 
 @theme {
-  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+  --font-mono: "JetBrains Mono", "Courier New", monospace;
 }
 
 .custom-scrollbar::-webkit-scrollbar {
@@ -661,12 +876,12 @@ FILE PATH: src\index.css
 ==================================================
 FILE PATH: src\main.tsx
 ==================================================
-import {StrictMode} from 'react';
-import {createRoot} from 'react-dom/client';
-import App from './App.tsx';
-import './index.css';
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import App from "./App.tsx";
+import "./index.css";
 
-createRoot(document.getElementById('root')!).render(
+createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <App />
   </StrictMode>,
@@ -679,7 +894,7 @@ FILE PATH: src\types.ts
 export interface DiffBlock {
   id: string;
   file: string;
-  status: 'match' | 'no-match';
+  status: "match" | "no-match";
   search: string;
   replace: string;
 }
@@ -695,9 +910,19 @@ export interface HistoryLog {
 ==================================================
 FILE PATH: src\components\DiffPanel.tsx
 ==================================================
-import { useState } from 'react';
-import { ClipboardPaste } from 'lucide-react';
-import { DiffBlock } from '../types';
+import { useState, useEffect } from "react";
+import {
+  ClipboardPaste,
+  AlertTriangle,
+  Bug,
+  ChevronDown,
+  ChevronRight,
+  CheckCircle2,
+  XCircle,
+  FoldVertical,
+  UnfoldVertical,
+} from "lucide-react";
+import { DiffBlock } from "../types";
 
 interface DiffPanelProps {
   parsedBlocks: DiffBlock[];
@@ -706,8 +931,35 @@ interface DiffPanelProps {
   pastedContent: string;
 }
 
-export function DiffPanel({ parsedBlocks, onPaste, onClear, pastedContent }: DiffPanelProps) {
+export function DiffPanel({
+  parsedBlocks,
+  onPaste,
+  onClear,
+  pastedContent,
+}: DiffPanelProps) {
   const [ignoredBlocks, setIgnoredBlocks] = useState<Set<string>>(new Set());
+  const [showDebug, setShowDebug] = useState(false);
+  const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(
+    new Set(),
+  );
+
+  // Auto-retract blocks if multiple blocks or large diff sizes are detected on load
+  useEffect(() => {
+    if (parsedBlocks.length > 1) {
+      setCollapsedBlocks(new Set(parsedBlocks.map((b) => b.id)));
+    } else if (parsedBlocks.length === 1) {
+      const totalLines = (
+        parsedBlocks[0].search + parsedBlocks[0].replace
+      ).split("\n").length;
+      if (totalLines > 25) {
+        setCollapsedBlocks(new Set([parsedBlocks[0].id]));
+      } else {
+        setCollapsedBlocks(new Set());
+      }
+    } else {
+      setCollapsedBlocks(new Set());
+    }
+  }, [parsedBlocks]);
 
   const toggleBlock = (id: string) => {
     const newIgnored = new Set(ignoredBlocks);
@@ -719,96 +971,346 @@ export function DiffPanel({ parsedBlocks, onPaste, onClear, pastedContent }: Dif
     setIgnoredBlocks(newIgnored);
   };
 
+  const toggleCollapse = (id: string) => {
+    setCollapsedBlocks((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleAllCollapse = () => {
+    if (collapsedBlocks.size === parsedBlocks.length) {
+      setCollapsedBlocks(new Set());
+    } else {
+      setCollapsedBlocks(new Set(parsedBlocks.map((b) => b.id)));
+    }
+  };
+
+  const matchCount = parsedBlocks.filter((b) => b.status === "match").length;
+  const noMatchCount = parsedBlocks.filter(
+    (b) => b.status === "no-match",
+  ).length;
+  const allCollapsed =
+    parsedBlocks.length > 0 && collapsedBlocks.size === parsedBlocks.length;
+
   return (
-    <div className="flex flex-col h-full bg-zinc-950 p-4 space-y-4">
-      <div className="flex items-center justify-between bg-zinc-900 p-2 rounded-lg border border-zinc-800">
-        <div className="flex items-center space-x-3">
+    <div className="flex flex-col h-full w-full min-w-0 bg-zinc-950 p-4 space-y-4 overflow-hidden">
+      <div className="flex items-center justify-between bg-zinc-900 p-2 rounded-lg border border-zinc-800 flex-wrap gap-2">
+        <div className="flex items-center space-x-2 flex-wrap gap-y-1">
           {parsedBlocks.length > 0 && (
-            <div className="bg-emerald-500/10 text-emerald-500 px-2 py-1 rounded text-[10px] font-bold">
-              {parsedBlocks.length} BLOCKS DETECTED
-            </div>
+            <>
+              <div className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-2 py-0.5 rounded text-[10px] font-bold">
+                {parsedBlocks.length} DETECTED
+              </div>
+              <div className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[10px] font-bold flex items-center space-x-1">
+                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                <span>{matchCount} MATCHED</span>
+              </div>
+              <div
+                className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center space-x-1 border ${
+                  noMatchCount > 0
+                    ? "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                    : "bg-zinc-800/80 text-zinc-500 border-zinc-700/50"
+                }`}
+              >
+                <XCircle
+                  className={`w-3 h-3 ${
+                    noMatchCount > 0 ? "text-rose-400" : "text-zinc-500"
+                  }`}
+                />
+                <span>{noMatchCount} NOT FOUND</span>
+              </div>
+            </>
           )}
-          <span className="text-xs text-zinc-400">Paste AI response below to review diffs</span>
+          <span className="text-xs text-zinc-400">
+            Paste AI response below to review diffs
+          </span>
         </div>
-        {pastedContent && (
-          <button 
-            onClick={onClear}
-            className="text-xs bg-zinc-800 px-3 py-1 rounded text-zinc-200 hover:bg-zinc-700 transition-colors cursor-pointer"
-          >
-            Clear
-          </button>
-        )}
+
+        <div className="flex items-center space-x-2 shrink-0">
+          {parsedBlocks.length > 0 && (
+            <button
+              onClick={toggleAllCollapse}
+              className="text-xs bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1 rounded text-zinc-300 hover:text-white transition-colors cursor-pointer flex items-center space-x-1 border border-zinc-700/50"
+              title={
+                allCollapsed
+                  ? "Expand all diff blocks"
+                  : "Retract all diff blocks"
+              }
+            >
+              {allCollapsed ? (
+                <>
+                  <UnfoldVertical className="w-3.5 h-3.5" />
+                  <span>Expand All</span>
+                </>
+              ) : (
+                <>
+                  <FoldVertical className="w-3.5 h-3.5" />
+                  <span>Retract All</span>
+                </>
+              )}
+            </button>
+          )}
+          {pastedContent && (
+            <button
+              onClick={onClear}
+              className="text-xs bg-zinc-800 px-3 py-1 rounded text-zinc-200 hover:bg-zinc-700 transition-colors cursor-pointer border border-zinc-700/50"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 flex flex-col space-y-4 overflow-hidden">
         {!pastedContent ? (
-          <div 
+          <div
             onClick={onPaste}
             className="flex-1 border-2 border-dashed border-zinc-800 rounded-xl flex items-center justify-center cursor-pointer hover:bg-zinc-900/30 transition-colors group"
           >
             <div className="flex flex-col items-center text-zinc-600 group-hover:text-zinc-500 transition-colors">
               <ClipboardPaste className="w-8 h-8 mb-2" />
-              <span className="text-xs uppercase font-bold tracking-widest">Click to paste response</span>
+              <span className="text-xs uppercase font-bold tracking-widest">
+                Click to paste response
+              </span>
             </div>
+          </div>
+        ) : parsedBlocks.length === 0 ? (
+          /* FALLBACK WARNING & CLIPBOARD DEBUGGER */
+          <div className="flex-1 border border-amber-500/30 bg-amber-950/20 rounded-xl p-6 flex flex-col items-center justify-center text-center space-y-3 overflow-y-auto custom-scrollbar">
+            <AlertTriangle className="w-8 h-8 text-amber-400" />
+            <p className="text-sm font-semibold text-zinc-200">
+              No Diff Blocks Detected
+            </p>
+            <p className="text-xs text-zinc-400 max-w-md">
+              The pasted clipboard text does not contain valid{" "}
+              <code className="text-cyan-400">
+                &lt;&lt;&lt;&lt;&lt;&lt;&lt; SEARCH
+              </code>{" "}
+              or <code className="text-cyan-400">Create 'file'</code> blocks.
+            </p>
+            <div className="flex items-center space-x-3 pt-2">
+              <button
+                onClick={onClear}
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs rounded-lg transition-colors cursor-pointer"
+              >
+                Clear
+              </button>
+              <button
+                onClick={() => setShowDebug(!showDebug)}
+                className="px-4 py-2 bg-zinc-800/80 hover:bg-zinc-700/80 text-cyan-400 text-xs rounded-lg transition-colors cursor-pointer flex items-center space-x-1"
+              >
+                <Bug className="w-3.5 h-3.5 mr-1" />
+                <span>
+                  {showDebug ? "Hide Clipboard Text" : "Debug Clipboard Text"}
+                </span>
+              </button>
+            </div>
+
+            {showDebug && (
+              <div className="w-full text-left bg-zinc-950 p-4 rounded-lg border border-zinc-800 mt-4 overflow-x-auto font-mono text-[11px] text-zinc-300 shadow-inner">
+                <p className="text-[10px] text-zinc-500 uppercase font-bold mb-3 flex items-center justify-between">
+                  <span>Advanced Line-by-Line Debugger</span>
+                  <span>{pastedContent.split(/\r?\n/).length} lines</span>
+                </p>
+                <div className="space-y-1 bg-zinc-900 p-3 rounded border border-zinc-800/50">
+                  {pastedContent.split(/\r?\n/).map((line, i) => {
+                    const trimmed = line.trim();
+                    let rowColor = "text-zinc-400";
+                    let badge = null;
+
+                    if (trimmed.startsWith("<<<<<<< SEARCH")) {
+                      rowColor = "text-cyan-400 font-bold bg-cyan-950/30";
+                      badge = (
+                        <span className="ml-2 text-[9px] bg-cyan-500/20 text-cyan-300 px-1 rounded uppercase">
+                          Search Start
+                        </span>
+                      );
+                    } else if (trimmed.startsWith("=======")) {
+                      rowColor = "text-amber-400 font-bold bg-amber-950/30";
+                      badge = (
+                        <span className="ml-2 text-[9px] bg-amber-500/20 text-amber-300 px-1 rounded uppercase">
+                          Divider
+                        </span>
+                      );
+                    } else if (trimmed.startsWith(">>>>>>> REPLACE")) {
+                      rowColor = "text-emerald-400 font-bold bg-emerald-950/30";
+                      badge = (
+                        <span className="ml-2 text-[9px] bg-emerald-500/20 text-emerald-300 px-1 rounded uppercase">
+                          Replace End
+                        </span>
+                      );
+                    }
+
+                    return (
+                      <div
+                        key={i}
+                        className={`flex items-start px-1 -mx-1 rounded ${rowColor}`}
+                      >
+                        <span className="w-6 shrink-0 text-zinc-600 select-none text-right mr-3 border-r border-zinc-800 pr-2">
+                          {i + 1}
+                        </span>
+                        <span className="whitespace-pre-wrap break-all flex-1">
+                          {line === "" ? (
+                            <span className="text-zinc-600 italic">
+                              ↵ (empty line)
+                            </span>
+                          ) : (
+                            line
+                          )}
+                          {badge}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <>
             <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4">
               {parsedBlocks.map((block) => {
                 const isIgnored = ignoredBlocks.has(block.id);
+                const isCollapsed = collapsedBlocks.has(block.id);
+                const searchLines = block.search.trim()
+                  ? block.search.trim().split("\n")
+                  : [];
+                const replaceLines = block.replace.trim()
+                  ? block.replace.trim().split("\n")
+                  : [];
+
                 return (
-                <div key={block.id} className={`bg-zinc-900/30 border border-zinc-800 rounded-xl flex flex-col overflow-hidden transition-opacity ${isIgnored ? 'opacity-50 grayscale' : ''}`}>
-                  <div className="px-4 py-2 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-xs font-mono text-zinc-300">{block.file}</span>
-                      {block.status === 'match' ? (
-                        <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase">
-                          Match Found
+                  <div
+                    key={block.id}
+                    className={`bg-zinc-900/30 border border-zinc-800 rounded-xl flex flex-col overflow-hidden transition-all ${
+                      isIgnored ? "opacity-50 grayscale" : ""
+                    }`}
+                  >
+                    <div
+                      onClick={() => toggleCollapse(block.id)}
+                      className="px-4 py-2 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between cursor-pointer hover:bg-zinc-850 transition-colors select-none group"
+                    >
+                      <div className="flex items-center space-x-2 min-w-0 pr-2">
+                        <button
+                          type="button"
+                          className="text-zinc-500 group-hover:text-zinc-300 transition-colors p-0.5 rounded hover:bg-zinc-800"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleCollapse(block.id);
+                          }}
+                          title={isCollapsed ? "Expand block" : "Retract block"}
+                        >
+                          {isCollapsed ? (
+                            <ChevronRight className="w-4 h-4" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4" />
+                          )}
+                        </button>
+                        <span className="text-xs font-mono text-zinc-200 font-medium truncate">
+                          {block.file}
                         </span>
-                      ) : (
-                        <span className="bg-rose-500/20 text-rose-400 text-[10px] px-1.5 py-0.5 rounded border border-rose-500/20 font-bold uppercase">
-                          Not Found
-                        </span>
-                      )}
-                    </div>
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <span className={`text-[10px] font-bold uppercase ${!isIgnored ? 'text-cyan-500' : 'text-zinc-500'}`}>
-                        {isIgnored ? 'Ignored' : 'Accepted'}
-                      </span>
-                      <div className={`w-8 h-4 rounded-full flex items-center transition-colors p-0.5 ${!isIgnored ? 'bg-cyan-500' : 'bg-zinc-700'}`}>
-                        <div className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${!isIgnored ? 'translate-x-4' : 'translate-x-0'}`} />
+                        {block.status === "match" ? (
+                          <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase shrink-0">
+                            Match Found
+                          </span>
+                        ) : (
+                          <span className="bg-rose-500/20 text-rose-400 text-[10px] px-1.5 py-0.5 rounded border border-rose-500/20 font-bold uppercase shrink-0">
+                            Not Found
+                          </span>
+                        )}
+                        {isCollapsed && (
+                          <span className="text-[10px] text-zinc-500 font-mono hidden sm:inline truncate">
+                            ({searchLines.length} search / {replaceLines.length}{" "}
+                            replace lines)
+                          </span>
+                        )}
                       </div>
-                      <input 
-                        type="checkbox" 
-                        className="hidden" 
-                        checked={!isIgnored} 
-                        onChange={() => toggleBlock(block.id)} 
-                      />
-                    </label>
-                  </div>
-                  
-                  <div className="p-4 font-mono text-[11px] overflow-x-auto custom-scrollbar leading-relaxed">
-                    <div className="text-rose-500 opacity-50 select-none">{"<<<<<<< SEARCH"}</div>
-                    <div className="pl-4 text-zinc-500 whitespace-pre">
-                      {block.search}
+                      <label
+                        className="flex items-center space-x-2 cursor-pointer shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <span
+                          className={`text-[10px] font-bold uppercase ${
+                            !isIgnored ? "text-cyan-500" : "text-zinc-500"
+                          }`}
+                        >
+                          {isIgnored ? "Ignored" : "Accepted"}
+                        </span>
+                        <div
+                          className={`w-8 h-4 rounded-full flex items-center transition-colors p-0.5 ${
+                            !isIgnored ? "bg-cyan-500" : "bg-zinc-700"
+                          }`}
+                        >
+                          <div
+                            className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${
+                              !isIgnored ? "translate-x-4" : "translate-x-0"
+                            }`}
+                          />
+                        </div>
+                        <input
+                          type="checkbox"
+                          className="hidden"
+                          checked={!isIgnored}
+                          onChange={() => toggleBlock(block.id)}
+                        />
+                      </label>
                     </div>
-                    <div className="text-emerald-500 opacity-50 select-none">{"======="}</div>
-                    <div className="pl-4 text-zinc-200 whitespace-pre">
-                      {block.replace}
-                    </div>
-                    <div className="text-emerald-500 opacity-50 select-none">{">>>>>>> REPLACE"}</div>
+
+                    {isCollapsed ? (
+                      <div
+                        onClick={() => toggleCollapse(block.id)}
+                        className="px-4 py-2 bg-zinc-950/40 text-[11px] font-mono text-zinc-500 flex items-center justify-between cursor-pointer hover:bg-zinc-900/40 transition-colors border-t border-zinc-800/30 select-none"
+                      >
+                        <span className="truncate italic text-zinc-400/80">
+                          {searchLines[0]
+                            ? searchLines[0]
+                            : replaceLines[0]
+                              ? replaceLines[0]
+                              : "Empty block content"}
+                        </span>
+                        <span className="text-[10px] text-cyan-500/80 font-sans hover:underline ml-2 shrink-0">
+                          Click to expand
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="p-4 font-mono text-[11px] overflow-x-auto custom-scrollbar leading-relaxed min-w-0 w-full bg-zinc-950/50">
+                        <div className="text-rose-500 opacity-50 select-none font-semibold">
+                          {"<<<<<<< SEARCH"}
+                        </div>
+                        <div className="pl-4 text-zinc-500 whitespace-pre">
+                          {block.search}
+                        </div>
+                        <div className="text-emerald-500 opacity-50 select-none font-semibold">
+                          {"======="}
+                        </div>
+                        <div className="pl-4 text-zinc-200 whitespace-pre">
+                          {block.replace}
+                        </div>
+                        <div className="text-emerald-500 opacity-50 select-none font-semibold">
+                          {">>>>>>> REPLACE"}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              )})}
+                );
+              })}
             </div>
-            
-            <div 
+
+            <div
               onClick={onPaste}
-              className="h-24 shrink-0 border-2 border-dashed border-zinc-800 rounded-xl flex items-center justify-center cursor-pointer hover:bg-zinc-900/30 transition-colors"
+              className="h-20 shrink-0 border-2 border-dashed border-zinc-800 rounded-xl flex items-center justify-center cursor-pointer hover:bg-zinc-900/30 transition-colors"
             >
               <div className="flex flex-col items-center text-zinc-600">
-                <ClipboardPaste className="w-6 h-6 mb-1" />
-                <span className="text-[11px] uppercase font-bold tracking-widest">Paste additional block</span>
+                <ClipboardPaste className="w-5 h-5 mb-1" />
+                <span className="text-[10px] uppercase font-bold tracking-widest">
+                  Paste additional block
+                </span>
               </div>
             </div>
           </>
@@ -822,9 +1324,9 @@ export function DiffPanel({ parsedBlocks, onPaste, onClear, pastedContent }: Dif
 ==================================================
 FILE PATH: src\components\Footer.tsx
 ==================================================
-import { useState } from 'react';
-import { GitCommit, History, RotateCcw } from 'lucide-react';
-import { DiffBlock, HistoryLog } from '../types';
+import { useState } from "react";
+import { Check, GitCommit, History, RotateCcw } from "lucide-react";
+import { DiffBlock, HistoryLog } from "../types";
 
 interface FooterProps {
   logs: HistoryLog[];
@@ -833,35 +1335,51 @@ interface FooterProps {
   onApplySuccess?: () => void;
 }
 
-export function Footer({ logs, hasChanges, diffBlocks = [], onApplySuccess }: FooterProps) {
+export function Footer({
+  logs,
+  hasChanges,
+  diffBlocks = [],
+  onApplySuccess,
+}: FooterProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [commitMessage, setCommitMessage] = useState('ai-edit: updated files');
+  const [commitMessage, setCommitMessage] = useState("ai-edit: updated files");
   const [isApplying, setIsApplying] = useState(false);
 
   // 1. The Apply Changes Handler (calls /api/apply on your Express backend)
-  const handleApplyChanges = async () => {
+  const handleApplyChanges = async (shouldCommit = true) => {
     if (diffBlocks.length === 0) {
-      alert('No diff blocks detected to apply!');
+      alert("No diff blocks detected to apply!");
       return;
     }
 
     setIsApplying(true);
     try {
-      const response = await fetch('/api/apply', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ blocks: diffBlocks, commitMessage })
+      const response = await fetch("/api/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          blocks: diffBlocks,
+          commitMessage: shouldCommit ? commitMessage : "",
+          skipCommit: !shouldCommit,
+          commit: shouldCommit,
+        }),
       });
-      
+
       const data = await response.json();
       if (data.success) {
-        alert('✅ Edits written to disk & committed to Git!');
+        alert(
+          shouldCommit
+            ? "✅ Edits written to disk & committed to Git!"
+            : "✅ Edits written to disk!",
+        );
         if (onApplySuccess) onApplySuccess();
       } else {
-        alert('❌ Error applying edits: ' + (data.error || 'Unknown error'));
+        alert("❌ Error applying edits: " + (data.error || "Unknown error"));
       }
     } catch (err) {
-      alert('❌ Failed to connect to local server. Ensure server.js is running!');
+      alert(
+        "❌ Failed to connect to local server. Ensure server.js is running!",
+      );
     } finally {
       setIsApplying(false);
     }
@@ -873,16 +1391,27 @@ export function Footer({ logs, hasChanges, diffBlocks = [], onApplySuccess }: Fo
       {drawerOpen && (
         <div className="absolute bottom-full left-0 right-0 h-64 bg-zinc-950 border-t border-zinc-800 overflow-y-auto z-0 custom-scrollbar">
           <div className="p-4 space-y-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500 mb-4 sticky top-0 bg-zinc-950 py-1">Recent AI Edits</h3>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500 mb-4 sticky top-0 bg-zinc-950 py-1">
+              Recent AI Edits
+            </h3>
             {logs.map((log) => (
-              <div key={log.id} className="flex items-start justify-between bg-zinc-900 p-3 rounded-lg border border-zinc-800 group hover:border-zinc-700 transition-colors">
+              <div
+                key={log.id}
+                className="flex items-start justify-between bg-zinc-900 p-3 rounded-lg border border-zinc-800 group hover:border-zinc-700 transition-colors"
+              >
                 <div>
                   <div className="flex items-center text-xs text-zinc-400 mb-1">
-                    <span className="font-mono mr-3 text-cyan-400/80">{log.id}</span>
+                    <span className="font-mono mr-3 text-cyan-400/80">
+                      {log.id}
+                    </span>
                     <span>{log.timestamp}</span>
                   </div>
-                  <div className="text-sm text-zinc-200 mb-1">{log.message}</div>
-                  <div className="text-xs font-mono text-zinc-500">{log.files.join(', ')}</div>
+                  <div className="text-sm text-zinc-200 mb-1">
+                    {log.message}
+                  </div>
+                  <div className="text-xs font-mono text-zinc-500">
+                    {log.files.join(", ")}
+                  </div>
                 </div>
               </div>
             ))}
@@ -893,32 +1422,45 @@ export function Footer({ logs, hasChanges, diffBlocks = [], onApplySuccess }: Fo
       {/* Main Footer Bar */}
       <div className="h-20 border-t border-zinc-800 bg-zinc-950 flex items-center px-6 space-x-6 shrink-0 z-10">
         <div className="flex-1 flex flex-col space-y-1">
-          <label className="text-[10px] text-zinc-500 uppercase font-bold">Commit Message</label>
-          <input 
-            type="text" 
+          <label className="text-[10px] text-zinc-500 uppercase font-bold">
+            Commit Message
+          </label>
+          <input
+            type="text"
             value={commitMessage}
             onChange={(e) => setCommitMessage(e.target.value)}
             disabled={!hasChanges || isApplying}
-            className="bg-transparent border-none p-0 text-sm focus:ring-0 focus:outline-none text-zinc-100 placeholder-zinc-700 font-mono disabled:opacity-50" 
+            className="bg-transparent border-none p-0 text-sm focus:ring-0 focus:outline-none text-zinc-100 placeholder-zinc-700 font-mono disabled:opacity-50"
             placeholder="Commit message..."
           />
         </div>
         <div className="flex items-center space-x-4">
-          <button 
+          <button
             onClick={() => setDrawerOpen(!drawerOpen)}
             className="flex flex-col items-center justify-center px-4 py-2 hover:bg-zinc-900 rounded-md transition-colors"
           >
             <History className="w-4 h-4 text-zinc-500" />
-            <span className="text-[10px] mt-1 text-zinc-500">History ({logs.length})</span>
+            <span className="text-[10px] mt-1 text-zinc-500">
+              History ({logs.length})
+            </span>
           </button>
-          
+
+          <button
+            onClick={() => handleApplyChanges(false)}
+            disabled={!hasChanges || isApplying}
+            className="bg-blue-600 hover:bg-blue-500 text-white px-6 h-12 rounded-lg font-bold shadow-lg shadow-blue-500/10 flex items-center space-x-2 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <span>{isApplying ? "Applying..." : "Apply Changes"}</span>
+            <Check className="w-4 h-4" />
+          </button>
+
           {/* 2. Connected onClick={handleApplyChanges} to the Green Apply Button */}
-          <button 
-            onClick={handleApplyChanges}
+          <button
+            onClick={() => handleApplyChanges(true)}
             disabled={!hasChanges || isApplying}
             className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 h-12 rounded-lg font-bold shadow-lg shadow-emerald-500/10 flex items-center space-x-2 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <span>{isApplying ? 'Applying...' : 'Apply Changes & Commit'}</span>
+            <span>{isApplying ? "Applying..." : "Apply Changes & Commit"}</span>
             <GitCommit className="w-4 h-4" />
           </button>
         </div>
@@ -927,63 +1469,153 @@ export function Footer({ logs, hasChanges, diffBlocks = [], onApplySuccess }: Fo
   );
 }
 
+
 ==================================================
 FILE PATH: src\components\Header.tsx
 ==================================================
-import React, { useState } from 'react';
+import React, { useState } from "react";
 
 interface HeaderProps {
   onUndoSuccess?: () => void;
   repoPath: string;
   onChangeRepo: () => void;
+  tokenStats?: {
+    total: number;
+    map: number;
+    files: number;
+    selectedCount: number;
+  };
 }
 
-export function Header({ onUndoSuccess, repoPath, onChangeRepo }: HeaderProps) {
+export function Header({
+  onUndoSuccess,
+  repoPath,
+  onChangeRepo,
+  tokenStats,
+}: HeaderProps) {
   const [isUndoing, setIsUndoing] = useState(false);
 
-  // 1. The Undo Handler (calls the /api/undo endpoint on your Express backend)
   const handleUndo = async () => {
-    if (!confirm('Are you sure you want to hard reset to the previous Git commit? Uncommitted changes will be lost.')) {
+    if (
+      !confirm(
+        "Are you sure you want to hard reset to the previous Git commit? Uncommitted changes will be lost.",
+      )
+    ) {
       return;
     }
 
     setIsUndoing(true);
     try {
-      const response = await fetch('/api/undo', { method: 'POST' });
+      const response = await fetch("/api/undo", { method: "POST" });
       const data = await response.json();
 
       if (data.success) {
-        alert('🔄 Git reset successful!');
+        alert("🔄 Git reset successful!");
         if (onUndoSuccess) onUndoSuccess();
       } else {
-        alert('❌ Error resetting: ' + (data.error || 'Unknown error'));
+        alert("❌ Error resetting: " + (data.error || "Unknown error"));
       }
     } catch (err) {
-      alert('❌ Failed to reach backend server. Make sure node server.js is running.');
+      alert(
+        "❌ Failed to reach backend server. Make sure node server.js is running.",
+      );
     } finally {
       setIsUndoing(false);
     }
   };
 
+  const TARGET_BUDGET = 30000;
+  const budgetPercentage = Math.min(
+    100,
+    Math.round(((tokenStats?.total || 0) / TARGET_BUDGET) * 100),
+  );
+
+  let budgetStatus = {
+    label: "Optimal Focus",
+    bg: "bg-emerald-500",
+    text: "text-emerald-400",
+  };
+  if (tokenStats) {
+    if (tokenStats.total > 15000 && tokenStats.total <= 30000)
+      budgetStatus = {
+        label: "Heavy Context",
+        bg: "bg-amber-500",
+        text: "text-amber-400",
+      };
+    else if (tokenStats.total > 30000)
+      budgetStatus = {
+        label: "Context Overload",
+        bg: "bg-rose-500",
+        text: "text-rose-400",
+      };
+  }
+
   return (
-    <header className="h-12 border-b border-zinc-800 flex items-center justify-between px-4 bg-zinc-950 shrink-0">
+    <header className="h-12 border-b border-zinc-800 flex items-center justify-between px-4 bg-zinc-950 shrink-0 relative">
       <div className="flex items-center space-x-4">
         <div className="flex items-center space-x-2">
           <div className="w-6 h-6 bg-cyan-500 rounded flex items-center justify-center font-bold text-zinc-950">
             R
           </div>
-          <span className="font-bold text-zinc-100 tracking-tight text-sm">RepoMap Patch Studio</span>
+          <span className="font-bold text-zinc-100 tracking-tight text-sm">
+            RepoMap Patch Studio
+          </span>
         </div>
-        
+
         <div className="h-4 w-[1px] bg-zinc-800 mx-2"></div>
-        
+
         <div className="flex items-center space-x-2 bg-zinc-900 border border-zinc-800 px-2 py-1 rounded text-xs max-w-[300px]">
-          <span className="text-zinc-500 truncate" title={repoPath}>{repoPath}</span>
-          <button onClick={onChangeRepo} className="text-cyan-500 hover:text-cyan-400 font-medium px-1 shrink-0">
+          <span className="text-zinc-500 truncate" title={repoPath}>
+            {repoPath}
+          </span>
+          <button
+            onClick={onChangeRepo}
+            className="text-cyan-500 hover:text-cyan-400 font-medium px-1 shrink-0"
+          >
             Change
           </button>
         </div>
       </div>
+
+      {/* LIVE TOKEN BUDGET BAR (Centered) */}
+      {tokenStats && (
+        <div className="absolute left-1/2 -translate-x-1/2 flex flex-col justify-center space-y-1 bg-zinc-900/90 border border-zinc-800 rounded-lg px-3 py-1 w-[360px] shadow-sm">
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center space-x-2">
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${budgetStatus.bg} animate-pulse`}
+              />
+              <span className="text-[11px] font-semibold text-zinc-200">
+                Token Budget
+              </span>
+              <span
+                className={`text-[9px] font-medium px-1.5 py-0.5 rounded bg-zinc-800 ${budgetStatus.text}`}
+              >
+                {budgetStatus.label}
+              </span>
+            </div>
+            <span className="font-mono text-[10px] font-bold text-zinc-100">
+              {tokenStats.total.toLocaleString()}{" "}
+              <span className="text-zinc-500 font-normal">/ 30k</span>
+            </span>
+          </div>
+
+          <div className="w-full bg-zinc-800/80 h-1 rounded-full overflow-hidden flex">
+            <div
+              className={`h-full transition-all duration-300 ${budgetStatus.bg}`}
+              style={{ width: `${budgetPercentage}%` }}
+            />
+          </div>
+
+          <div className="flex justify-between text-[9px] text-zinc-500 font-mono">
+            <span>Map: {tokenStats.map.toLocaleString()} tks</span>
+            <span>
+              Files ({tokenStats.selectedCount}):{" "}
+              {tokenStats.files.toLocaleString()} tks
+            </span>
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center space-x-4">
         <div className="flex items-center space-x-2">
@@ -993,14 +1625,14 @@ export function Header({ onUndoSuccess, repoPath, onChangeRepo }: HeaderProps) {
           </span>
         </div>
 
-        {/* 2. Connected onClick={handleUndo} to the Undo Button */}
-        <button 
+        {}
+        <button
           onClick={handleUndo}
           disabled={isUndoing}
           className="flex items-center space-x-2 bg-rose-950/30 border border-rose-500/30 text-rose-500 px-3 py-1.5 rounded-md text-xs font-medium hover:bg-rose-500/10 transition-colors group relative disabled:opacity-50"
           title="git reset --hard HEAD~1"
         >
-          <span>{isUndoing ? 'Undoing...' : 'Undo Last Edit (git reset)'}</span>
+          <span>{isUndoing ? "Undoing..." : "Undo Last Edit (git reset)"}</span>
           <div className="absolute top-full right-0 mt-2 w-48 p-2 bg-zinc-800 text-zinc-300 text-[10px] rounded border border-zinc-700 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 shadow-xl">
             Hard reset to previous commit. Uncommitted changes will be lost.
           </div>
@@ -1010,11 +1642,31 @@ export function Header({ onUndoSuccess, repoPath, onChangeRepo }: HeaderProps) {
   );
 }
 
+
 ==================================================
 FILE PATH: src\components\PromptPanel.tsx
 ==================================================
-import { useState, useEffect } from 'react';
-import { Copy, Map, Eye, X } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from "react";
+import {
+  Copy,
+  Map,
+  Eye,
+  X,
+  Folder,
+  FolderOpen,
+  FileText,
+  ChevronRight,
+  ChevronDown,
+  CheckSquare,
+  Square,
+  MinusSquare,
+  Search,
+  AtSign,
+  Sparkles,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
+} from "lucide-react";
 
 interface PromptPanelProps {
   onCopy: (promptText: string) => void;
@@ -1022,27 +1674,637 @@ interface PromptPanelProps {
   files: string[];
   repoMap: string;
   fileStats?: Record<string, { size: number; tokens: number }>;
+  dependencyMap?: {
+    outbound: Record<string, string[]>;
+    inbound: Record<string, string[]>;
+  };
+  onTokenStatsChange?: (stats: {
+    total: number;
+    map: number;
+    files: number;
+    selectedCount: number;
+  }) => void;
 }
 
-export function PromptPanel({ onCopy, onCopyMap, files, repoMap }: PromptPanelProps) {
-  const [request, setRequest] = useState('');
-  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+interface TreeNode {
+  name: string;
+  path: string;
+  isFolder: boolean;
+  children: TreeNode[];
+  allFiles: string[];
+}
+
+interface FuzzyResult {
+  filePath: string;
+  fileName: string;
+  dirPath: string;
+  score: number;
+  matchedIndices: Set<number>;
+}
+
+interface SuggestedFile {
+  filePath: string;
+  type: "parent" | "child" | "hub";
+  importedActiveFiles: string[];
+  importingActiveFiles: string[];
+  tooltip: string;
+}
+
+function fuzzySearchFiles(files: string[], query: string): FuzzyResult[] {
+  if (!query) {
+    return files.slice(0, 8).map((f) => {
+      const parts = f.split("/");
+      const fileName = parts.pop() || f;
+      return {
+        filePath: f,
+        fileName,
+        dirPath: parts.join("/"),
+        score: 0,
+        matchedIndices: new Set(),
+      };
+    });
+  }
+
+  const q = query.toLowerCase();
+  const results: FuzzyResult[] = [];
+
+  for (const file of files) {
+    const lowerFile = file.toLowerCase();
+    let qIdx = 0;
+    let score = 0;
+    let consecutive = 0;
+    const matchedIndices = new Set<number>();
+
+    const parts = file.split("/");
+    const fileName = parts.pop() || file;
+    const dirPath = parts.join("/");
+    const fileNameStartIdx = file.lastIndexOf("/") + 1;
+
+    for (let i = 0; i < file.length; i++) {
+      if (qIdx < q.length && lowerFile[i] === q[qIdx]) {
+        matchedIndices.add(i);
+        qIdx++;
+        score += 10;
+        consecutive += 1;
+        score += consecutive * 5;
+
+        if (i >= fileNameStartIdx) score += 15;
+
+        if (
+          i === 0 ||
+          i === fileNameStartIdx ||
+          " /._-".includes(file[i - 1])
+        ) {
+          score += 20;
+        }
+      } else {
+        consecutive = 0;
+      }
+    }
+
+    if (qIdx === q.length) {
+      results.push({
+        filePath: file,
+        fileName,
+        dirPath,
+        score,
+        matchedIndices,
+      });
+    }
+  }
+
+  return results.sort((a, b) => b.score - a.score).slice(0, 8);
+}
+
+export function PromptPanel({
+  onCopy,
+  onCopyMap,
+  files,
+  repoMap,
+  fileStats,
+  dependencyMap,
+  onTokenStatsChange,
+}: PromptPanelProps) {
+  const [request, setRequest] = useState("");
+  // Primary Seed Files: Explicitly @mentioned or manually toggled in tree
+  const [seedFiles, setSeedFiles] = useState<Set<string>>(new Set());
+  // Accepted Suggestions: Added by clicking suggestion chips or "+ Add All"
+  const [acceptedSuggestions, setAcceptedSuggestions] = useState<Set<string>>(
+    new Set(),
+  );
+
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [isCopying, setIsCopying] = useState(false);
-  
-  // Reset selected files when the repository context changes
-  useEffect(() => {
-    setSelectedFiles(new Set());
-    }, [files]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
+    new Set(["root"]),
+  );
 
-  const toggleFile = (file: string) => {
-    const newFiles = new Set(selectedFiles);
-    if (newFiles.has(file)) {
-      newFiles.delete(file);
-    } else {
-      newFiles.add(file);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mentionPopupRef = useRef<HTMLDivElement>(null);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1);
+  const [activeMentionIndex, setActiveMentionIndex] = useState<number>(0);
+
+  // Combined active context for prompts & stats: Seed Files + Accepted Suggestions
+  const selectedFiles = useMemo(() => {
+    const combined = new Set<string>(seedFiles);
+    acceptedSuggestions.forEach((f) => combined.add(f));
+    return combined;
+  }, [seedFiles, acceptedSuggestions]);
+
+  const mentionMatches = useMemo(() => {
+    if (mentionQuery === null) return [];
+    return fuzzySearchFiles(files, mentionQuery);
+  }, [files, mentionQuery]);
+
+  const prevMentionsRef = useRef<Set<string>>(new Set());
+
+  // Sync @mentions in user text into Seed Files
+  useEffect(() => {
+    const matches = Array.from(request.matchAll(/@([a-zA-Z0-9_\-./]+)/g));
+    const currentMentions = new Set<string>();
+
+    for (const match of matches) {
+      const path = match[1];
+      if (files.includes(path)) {
+        currentMentions.add(path);
+      }
     }
-    setSelectedFiles(newFiles);
+
+    const prevMentions = prevMentionsRef.current;
+    const removedMentions = Array.from(prevMentions).filter(
+      (f) => !currentMentions.has(f),
+    );
+    const addedMentions = Array.from(currentMentions).filter(
+      (f) => !prevMentions.has(f),
+    );
+
+    if (removedMentions.length > 0 || addedMentions.length > 0) {
+      setSeedFiles((prev) => {
+        const next = new Set(prev);
+        removedMentions.forEach((f) => next.delete(f));
+        addedMentions.forEach((f) => next.add(f));
+        return next;
+      });
+      if (removedMentions.length > 0) {
+        setAcceptedSuggestions((prev) => {
+          const next = new Set(prev);
+          removedMentions.forEach((f) => next.delete(f));
+          return next;
+        });
+      }
+    }
+
+    prevMentionsRef.current = currentMentions;
+  }, [request, files]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        mentionPopupRef.current &&
+        !mentionPopupRef.current.contains(e.target as Node) &&
+        textareaRef.current &&
+        !textareaRef.current.contains(e.target as Node)
+      ) {
+        setMentionQuery(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    setSeedFiles(new Set());
+    setAcceptedSuggestions(new Set());
+  }, [files]);
+
+  const treeData = useMemo(() => {
+    const root: TreeNode = {
+      name: "root",
+      path: "",
+      isFolder: true,
+      children: [],
+      allFiles: [],
+    };
+    const filteredFiles = files.filter((f) =>
+      f.toLowerCase().includes(searchQuery.toLowerCase()),
+    );
+
+    filteredFiles.forEach((filePath) => {
+      const parts = filePath.split("/");
+      let current = root;
+      current.allFiles.push(filePath);
+
+      let currentPath = "";
+      parts.forEach((part, index) => {
+        const isLast = index === parts.length - 1;
+        currentPath = currentPath ? `${currentPath}/${part}` : part;
+
+        let child = current.children.find((c) => c.name === part);
+        if (!child) {
+          child = {
+            name: part,
+            path: currentPath,
+            isFolder: !isLast,
+            children: [],
+            allFiles: [],
+          };
+          current.children.push(child);
+        }
+
+        if (!isLast) {
+          child.allFiles.push(filePath);
+        }
+
+        current = child;
+      });
+    });
+
+    const sortNodes = (node: TreeNode) => {
+      node.children.sort((a, b) => {
+        if (a.isFolder === b.isFolder) return a.name.localeCompare(b.name);
+        return a.isFolder ? -1 : 1;
+      });
+      node.children.forEach(sortNodes);
+    };
+    sortNodes(root);
+
+    return root;
+  }, [files, searchQuery]);
+
+  // 1-Hop Seed Rule: Suggestions strictly calculated from SEED FILES ONLY
+  const suggestedFiles = useMemo(() => {
+    if (
+      !dependencyMap ||
+      (!dependencyMap.outbound && !dependencyMap.inbound) ||
+      seedFiles.size === 0
+    ) {
+      return [];
+    }
+
+    const outboundMap = dependencyMap.outbound || {};
+    const inboundMap = dependencyMap.inbound || {};
+
+    const candidates = new Set<string>();
+
+    // Scan dependencies ONLY for seed files
+    seedFiles.forEach((file) => {
+      const children = outboundMap[file] || [];
+      children.forEach((child) => {
+        if (!selectedFiles.has(child)) {
+          candidates.add(child);
+        }
+      });
+
+      const parents = inboundMap[file] || [];
+      parents.forEach((parent) => {
+        if (!selectedFiles.has(parent)) {
+          candidates.add(parent);
+        }
+      });
+    });
+
+    const results: SuggestedFile[] = [];
+
+    candidates.forEach((candPath) => {
+      const candOutbound = outboundMap[candPath] || [];
+      const candInbound = inboundMap[candPath] || [];
+
+      // Check relationships against seed files for tooltips & directionality
+      const importedSeed = candOutbound.filter((f) => seedFiles.has(f));
+      const importingSeed = candInbound.filter((f) => seedFiles.has(f));
+
+      const isParent = importedSeed.length > 0;
+      const isChild = importingSeed.length > 0;
+
+      let type: "parent" | "child" | "hub" = "child";
+      let tooltip = "";
+
+      if (isParent && isChild) {
+        type = "hub";
+        tooltip = "Hub: Both a parent and child across active context";
+      } else if (isParent) {
+        type = "parent";
+        const fileNames = importedSeed
+          .map((f) => f.split("/").pop() || f)
+          .join(", ");
+        tooltip = `Parent: Imports ${fileNames}`;
+      } else {
+        type = "child";
+        const fileNames = importingSeed
+          .map((f) => f.split("/").pop() || f)
+          .join(", ");
+        tooltip = `Child: Imported by ${fileNames}`;
+      }
+
+      results.push({
+        filePath: candPath,
+        type,
+        importedActiveFiles: importedSeed,
+        importingActiveFiles: importingSeed,
+        tooltip,
+      });
+    });
+
+    return results;
+  }, [seedFiles, selectedFiles, dependencyMap]);
+
+  const handleAddAllSuggestions = () => {
+    setAcceptedSuggestions((prev) => {
+      const next = new Set(prev);
+      suggestedFiles.forEach((item) => next.add(item.filePath));
+      return next;
+    });
+  };
+
+  const handleToggleSuggestion = (filePath: string) => {
+    if (selectedFiles.has(filePath)) {
+      setAcceptedSuggestions((prev) => {
+        const next = new Set(prev);
+        next.delete(filePath);
+        return next;
+      });
+      setSeedFiles((prev) => {
+        const next = new Set(prev);
+        next.delete(filePath);
+        return next;
+      });
+    } else {
+      setAcceptedSuggestions((prev) => new Set(prev).add(filePath));
+    }
+  };
+
+  const repoMapTokens = useMemo(
+    () => Math.ceil((repoMap?.length || 0) / 3.8),
+    [repoMap],
+  );
+
+  const selectedFilesTokens = useMemo(() => {
+    let total = 0;
+    selectedFiles.forEach((file) => {
+      total += fileStats?.[file]?.tokens || 0;
+    });
+    return total;
+  }, [selectedFiles, fileStats]);
+
+  const promptOverheadTokens = useMemo(
+    () => Math.ceil((request.length + 800) / 3.8),
+    [request],
+  );
+  const totalEstimatedTokens =
+    repoMapTokens + selectedFilesTokens + promptOverheadTokens;
+
+  useEffect(() => {
+    if (onTokenStatsChange) {
+      onTokenStatsChange({
+        total: totalEstimatedTokens,
+        map: repoMapTokens,
+        files: selectedFilesTokens,
+        selectedCount: selectedFiles.size,
+      });
+    }
+  }, [
+    totalEstimatedTokens,
+    repoMapTokens,
+    selectedFilesTokens,
+    selectedFiles.size,
+    onTokenStatsChange,
+  ]);
+
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    const cursorPos = e.target.selectionStart;
+    setRequest(value);
+
+    const textBeforeCursor = value.slice(0, cursorPos);
+    const match = textBeforeCursor.match(/@([a-zA-Z0-9_\-./]*)$/);
+
+    if (match) {
+      setMentionQuery(match[1]);
+      setMentionStartIndex(cursorPos - match[0].length);
+      setActiveMentionIndex(0);
+    } else {
+      setMentionQuery(null);
+    }
+  };
+
+  const insertMention = (filePath: string) => {
+    if (mentionStartIndex < 0 || !textareaRef.current) return;
+
+    const cursorPos = textareaRef.current.selectionStart;
+    const before = request.slice(0, mentionStartIndex);
+    const after = request.slice(cursorPos);
+
+    const newText = `${before}@${filePath} ${after}`;
+    setRequest(newText);
+
+    // @mentioned files are primary Seed Files
+    setSeedFiles((prev) => new Set(prev).add(filePath));
+    setMentionQuery(null);
+
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const newCursorPos = mentionStartIndex + filePath.length + 2;
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 0);
+  };
+
+  const handleTextareaKeyDown = (
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+  ) => {
+    if (mentionQuery !== null && mentionMatches.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setActiveMentionIndex((prev) => (prev + 1) % mentionMatches.length);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setActiveMentionIndex(
+          (prev) => (prev - 1 + mentionMatches.length) % mentionMatches.length,
+        );
+      } else if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        insertMention(mentionMatches[activeMentionIndex].filePath);
+      } else if (e.key === "Escape") {
+        setMentionQuery(null);
+      }
+    }
+  };
+
+  const handleSelectAll = () => {
+    setSeedFiles(new Set(files));
+    setAcceptedSuggestions(new Set());
+  };
+
+  const handleDeselectAll = () => {
+    setSeedFiles(new Set());
+    setAcceptedSuggestions(new Set());
+  };
+
+  const toggleFolderExpand = (folderPath: string) => {
+    const newExpanded = new Set(expandedFolders);
+    if (newExpanded.has(folderPath)) newExpanded.delete(folderPath);
+    else newExpanded.add(folderPath);
+    setExpandedFolders(newExpanded);
+  };
+
+  const toggleFile = (filePath: string) => {
+    if (selectedFiles.has(filePath)) {
+      setSeedFiles((prev) => {
+        const next = new Set(prev);
+        next.delete(filePath);
+        return next;
+      });
+      setAcceptedSuggestions((prev) => {
+        const next = new Set(prev);
+        next.delete(filePath);
+        return next;
+      });
+    } else {
+      // Manual selection in tree defines a Seed File
+      setSeedFiles((prev) => new Set(prev).add(filePath));
+    }
+  };
+
+  const toggleFolderSelection = (node: TreeNode) => {
+    const folderFiles = node.allFiles;
+    const allSelected = folderFiles.every((f) => selectedFiles.has(f));
+
+    if (allSelected) {
+      setSeedFiles((prev) => {
+        const next = new Set(prev);
+        folderFiles.forEach((f) => next.delete(f));
+        return next;
+      });
+      setAcceptedSuggestions((prev) => {
+        const next = new Set(prev);
+        folderFiles.forEach((f) => next.delete(f));
+        return next;
+      });
+    } else {
+      setSeedFiles((prev) => {
+        const next = new Set(prev);
+        folderFiles.forEach((f) => next.add(f));
+        return next;
+      });
+    }
+  };
+
+  const renderTreeNode = (node: TreeNode, depth = 0) => {
+    if (node.isFolder) {
+      const isExpanded =
+        expandedFolders.has(node.path) || searchQuery.trim().length > 0;
+      const folderFiles = node.allFiles;
+      const selectedCount = folderFiles.filter((f) =>
+        selectedFiles.has(f),
+      ).length;
+      const allSelected =
+        folderFiles.length > 0 && selectedCount === folderFiles.length;
+      const someSelected =
+        selectedCount > 0 && selectedCount < folderFiles.length;
+
+      return (
+        <div key={node.path || node.name} className="select-none">
+          <div
+            className="flex items-center py-1 px-1 rounded hover:bg-zinc-800/60 cursor-pointer text-xs text-zinc-300"
+            style={{ paddingLeft: `${depth * 12 + 4}px` }}
+          >
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleFolderSelection(node);
+              }}
+              className="mr-1.5 text-zinc-400 hover:text-cyan-400 transition-colors"
+            >
+              {allSelected ? (
+                <CheckSquare className="w-3.5 h-3.5 text-cyan-500 fill-cyan-500/20" />
+              ) : someSelected ? (
+                <MinusSquare className="w-3.5 h-3.5 text-cyan-500" />
+              ) : (
+                <Square className="w-3.5 h-3.5" />
+              )}
+            </button>
+
+            <div
+              onClick={() => toggleFolderExpand(node.path)}
+              className="flex items-center flex-1 min-w-0"
+            >
+              {isExpanded ? (
+                <ChevronDown className="w-3.5 h-3.5 text-zinc-500 mr-1 shrink-0" />
+              ) : (
+                <ChevronRight className="w-3.5 h-3.5 text-zinc-500 mr-1 shrink-0" />
+              )}
+              {isExpanded ? (
+                <FolderOpen className="w-3.5 h-3.5 text-cyan-500/80 mr-1.5 shrink-0" />
+              ) : (
+                <Folder className="w-3.5 h-3.5 text-zinc-400 mr-1.5 shrink-0" />
+              )}
+              <span className="font-medium text-zinc-200 truncate">
+                {node.name}
+              </span>
+              <span className="ml-auto text-[10px] text-zinc-600 pl-2">
+                {selectedCount}/{folderFiles.length}
+              </span>
+            </div>
+          </div>
+
+          {isExpanded && (
+            <div>
+              {node.children.map((child) => renderTreeNode(child, depth + 1))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const isSelected = selectedFiles.has(node.path);
+    return (
+      <div
+        key={node.path}
+        onClick={() => toggleFile(node.path)}
+        className={`flex items-center py-1 px-1 rounded text-xs cursor-pointer select-none transition-colors ${
+          isSelected
+            ? "bg-zinc-800/70 text-zinc-100"
+            : "text-zinc-400 hover:bg-zinc-900/80 hover:text-zinc-200"
+        }`}
+        style={{ paddingLeft: `${depth * 12 + 20}px` }}
+      >
+        <button className="mr-1.5 text-zinc-400 hover:text-cyan-400">
+          {isSelected ? (
+            <CheckSquare className="w-3.5 h-3.5 text-cyan-500 fill-cyan-500/20" />
+          ) : (
+            <Square className="w-3.5 h-3.5" />
+          )}
+        </button>
+        <FileText className="w-3.5 h-3.5 text-zinc-500 mr-1.5 shrink-0" />
+        <span className="truncate">{node.name}</span>
+      </div>
+    );
+  };
+
+  const renderFuzzyPath = (result: FuzzyResult) => {
+    const chars = result.filePath.split("");
+    return (
+      <span className="font-mono text-xs truncate">
+        {chars.map((char, idx) => {
+          const isMatched = result.matchedIndices.has(idx);
+          return (
+            <span
+              key={idx}
+              className={
+                isMatched
+                  ? "text-cyan-400 font-bold bg-cyan-950/60 rounded-[1px]"
+                  : "text-zinc-400"
+              }
+            >
+              {char}
+            </span>
+          );
+        })}
+      </span>
+    );
   };
 
   return (
@@ -1053,55 +2315,200 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap }: PromptPanelPr
             <Map className="w-4 h-4 text-cyan-500" />
           </div>
           <div>
-            <p className="text-xs font-semibold text-zinc-200">Repo Map Ready</p>
-            <p className="text-[10px] text-zinc-500">~{(files.length * 95).toLocaleString()} tokens / {files.length} files parsed</p>
+            <p className="text-xs font-semibold text-zinc-200">
+              Repo Map Ready
+            </p>
+            <p className="text-[10px] text-zinc-500">
+              ~{repoMapTokens.toLocaleString()} map tokens / {files.length}{" "}
+              files
+            </p>
           </div>
         </div>
-        <div className="flex items-center space-x-3">
-          <button 
-            onClick={() => setIsMapModalOpen(true)}
-            className="text-zinc-400 hover:text-zinc-200 transition-colors p-1 rounded hover:bg-zinc-800"
-            title="Preview Repo Map"
-          >
-            <Eye className="w-4 h-4" />
-          </button>
-          <span className="text-[10px] text-zinc-500 font-mono italic">updated 2m ago</span>
-        </div>
+        <button
+          onClick={() => setIsMapModalOpen(true)}
+          className="text-zinc-400 hover:text-zinc-200 transition-colors p-1 rounded hover:bg-zinc-800"
+          title="Preview Repo Map"
+        >
+          <Eye className="w-4 h-4" />
+        </button>
       </div>
 
-      <div className="flex-1 flex flex-col space-y-2 min-h-0">
-        <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold">Context Selection</label>
-        <div className="flex-1 bg-zinc-900/50 border border-zinc-800 rounded-md overflow-hidden flex flex-col">
-          <div className="p-2 space-y-1 overflow-y-auto custom-scrollbar">
-            {files.map((file, i) => {
-              const isSelected = selectedFiles.has(file);
+      {/* SMART IMPORT DEPENDENCY SUGGESTIONS BANNER (1-Hop Seed Rule) */}
+      {suggestedFiles.length > 0 && (
+        <div className="bg-zinc-900/90 border border-zinc-800 rounded-lg p-2.5 space-y-2 animate-fadeIn shrink-0">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-zinc-200 font-semibold flex items-center">
+              <Sparkles className="w-3.5 h-3.5 mr-1.5 text-indigo-400" />
+              Suggested Context ({suggestedFiles.length})
+            </span>
+            <button
+              onClick={handleAddAllSuggestions}
+              className="text-[10px] bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-2 py-0.5 rounded transition-colors cursor-pointer"
+            >
+              + Add All
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto custom-scrollbar">
+            {suggestedFiles.map((item) => {
+              const fileName = item.filePath.split("/").pop() || item.filePath;
+
+              if (item.type === "parent") {
+                return (
+                  <button
+                    key={item.filePath}
+                    onClick={() => handleToggleSuggestion(item.filePath)}
+                    title={item.tooltip}
+                    className="text-[10px] bg-purple-950/40 border border-purple-500/40 text-purple-300 hover:bg-purple-900/60 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
+                  >
+                    <ArrowUp className="w-3 h-3 text-purple-400 shrink-0" />
+                    <span className="font-mono truncate max-w-[130px]">
+                      {fileName}
+                    </span>
+                  </button>
+                );
+              }
+
+              if (item.type === "child") {
+                return (
+                  <button
+                    key={item.filePath}
+                    onClick={() => handleToggleSuggestion(item.filePath)}
+                    title={item.tooltip}
+                    className="text-[10px] bg-cyan-950/40 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-900/60 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
+                  >
+                    <ArrowDown className="w-3 h-3 text-cyan-400 shrink-0" />
+                    <span className="font-mono truncate max-w-[130px]">
+                      {fileName}
+                    </span>
+                  </button>
+                );
+              }
+
               return (
-                <label 
-                  key={file} 
-                  className={`flex items-center p-1.5 rounded text-xs cursor-pointer ${isSelected ? 'bg-zinc-800/50' : 'opacity-60 hover:opacity-100'}`}
+                <button
+                  key={item.filePath}
+                  onClick={() => handleToggleSuggestion(item.filePath)}
+                  title={item.tooltip}
+                  className="text-[10px] bg-gradient-to-r from-purple-950/50 to-cyan-950/50 border border-indigo-500/50 text-indigo-200 hover:from-purple-900/70 hover:to-cyan-900/70 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
                 >
-                  <input 
-                    type="checkbox" 
-                    checked={isSelected}
-                    onChange={() => toggleFile(file)}
-                    className="mr-2 accent-cyan-500" 
-                  />
-                  <span className="text-zinc-300">{file}</span>
-                  {isSelected && <span className="ml-auto text-[10px] text-zinc-600">4.2kb</span>}
-                </label>
+                  <ArrowUpDown className="w-3 h-3 text-indigo-300 shrink-0" />
+                  <span className="font-mono truncate max-w-[130px]">
+                    {fileName}
+                  </span>
+                </button>
               );
             })}
           </div>
         </div>
+      )}
+
+      <div className="flex-1 flex flex-col space-y-2 min-h-0">
+        <div className="flex items-center justify-between">
+          <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold">
+            Context Selection ({selectedFiles.size}/{files.length})
+          </label>
+          <div className="flex items-center space-x-2 text-[10px]">
+            <button
+              onClick={handleSelectAll}
+              className="text-cyan-500 hover:text-cyan-400 font-medium hover:underline cursor-pointer"
+            >
+              Select All
+            </button>
+            <span className="text-zinc-700">|</span>
+            <button
+              onClick={handleDeselectAll}
+              className="text-zinc-500 hover:text-zinc-400 font-medium hover:underline cursor-pointer"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+
+        <div className="relative flex items-center">
+          <Search className="w-3.5 h-3.5 absolute left-2.5 text-zinc-500 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Filter files or folders..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-zinc-900/80 border border-zinc-800 rounded-md pl-8 pr-3 py-1 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-cyan-500/50"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2 text-zinc-500 hover:text-zinc-300"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex-1 bg-zinc-900/50 border border-zinc-800 rounded-md overflow-hidden flex flex-col">
+          <div className="p-2 space-y-0.5 overflow-y-auto custom-scrollbar flex-1">
+            {treeData.children.length > 0 ? (
+              treeData.children.map((child) => renderTreeNode(child))
+            ) : (
+              <div className="text-center py-6 text-xs text-zinc-600">
+                No files found
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
-      <div className="space-y-2">
-        <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold">User Request</label>
-        <textarea 
-          className="w-full h-28 bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-sm text-zinc-300 focus:outline-none focus:border-cyan-500/50 resize-none font-sans"
-          placeholder="Describe the changes needed..."
+      <div className="space-y-2 relative">
+        <div className="flex items-center justify-between">
+          <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold flex items-center">
+            <span>User Request</span>
+            <span className="ml-2 text-[10px] text-cyan-500/80 normal-case font-normal flex items-center">
+              <AtSign className="w-3 h-3 inline mr-0.5" /> Type @ to link files
+            </span>
+          </label>
+        </div>
+
+        {mentionQuery !== null && mentionMatches.length > 0 && (
+          <div
+            ref={mentionPopupRef}
+            className="absolute bottom-full mb-1 left-0 right-0 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-50 overflow-hidden max-h-52 overflow-y-auto custom-scrollbar"
+          >
+            <div className="p-1.5 bg-zinc-950 border-b border-zinc-800 text-[10px] text-zinc-400 font-medium flex justify-between">
+              <span>Fuzzy Matches for "@{mentionQuery}"</span>
+              <span className="text-zinc-600">
+                ↑↓ to navigate, Enter to select
+              </span>
+            </div>
+            {mentionMatches.map((res, idx) => (
+              <div
+                key={res.filePath}
+                onClick={() => insertMention(res.filePath)}
+                onMouseEnter={() => setActiveMentionIndex(idx)}
+                className={`px-3 py-1.5 text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                  idx === activeMentionIndex
+                    ? "bg-cyan-600/30 text-cyan-200 border-l-2 border-cyan-500"
+                    : "text-zinc-300 hover:bg-zinc-800/50"
+                }`}
+              >
+                <div className="flex items-center min-w-0 mr-2">
+                  <FileText className="w-3.5 h-3.5 mr-2 text-zinc-400 shrink-0" />
+                  {renderFuzzyPath(res)}
+                </div>
+                {selectedFiles.has(res.filePath) && (
+                  <span className="text-[9px] bg-cyan-500/20 text-cyan-400 font-mono px-1 py-0.5 rounded border border-cyan-500/30 shrink-0">
+                    Added
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <textarea
+          ref={textareaRef}
+          className="w-full h-24 bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-sm text-zinc-300 focus:outline-none focus:border-cyan-500/50 resize-none font-sans"
+          placeholder="Describe the changes needed... (type @ to fuzzy match files)"
           value={request}
-          onChange={(e) => setRequest(e.target.value)}
+          onChange={handleTextareaChange}
+          onKeyDown={handleTextareaKeyDown}
         />
       </div>
 
@@ -1112,25 +2519,29 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap }: PromptPanelPr
         </label>
       </div>
 
-      <button 
+      <button
         onClick={async () => {
           setIsCopying(true);
           try {
-            const res = await fetch('/api/files', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ files: Array.from(selectedFiles) })
+            const res = await fetch("/api/files", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ files: Array.from(selectedFiles) }),
             });
             const data = await res.json();
-            
+
             let activeFilesText = "";
             if (selectedFiles.size > 0) {
               for (const f of selectedFiles) {
-                activeFilesText += `--- START OF FILE ${f} ---\n${data.contents[f] || ''}\n--- END OF FILE ${f} ---\n\n`;
+                activeFilesText += `--- START OF FILE ${f} ---\n${data.contents[f] || ""}\n--- END OF FILE ${f} ---\n\n`;
               }
             } else {
               activeFilesText = "No specific files selected.";
             }
+
+            const SEARCH_MARKER = "<".repeat(7) + " SEARCH";
+            const EQUALS_MARKER = "=".repeat(7);
+            const REPLACE_MARKER = ">".repeat(7) + " REPLACE";
 
             const finalPrompt = `ROLE: Senior Software Architect & Elite Developer
 You write clean, production-grade, type-safe, and secure code, keeping system architecture and long-term maintainability in mind.
@@ -1145,15 +2556,15 @@ You must output code modifications using exact SEARCH/REPLACE blocks.
 
 1. FORMAT RULE: Every modification MUST specify the file path and use this exact delimiter:
    FILE: path/to/file.ext
-   <<<<<<< SEARCH
+   ${SEARCH_MARKER}
    [exact existing code to replace]
-   =======
+   ${EQUALS_MARKER}
    [new code]
-   >>>>>>> REPLACE
+   ${REPLACE_MARKER}
 
 2. THE 80% OVERWRITE RULE (Token Optimization):
    - For partial edits (<80% of file changing): Use targeted SEARCH/REPLACE blocks.
-   - For NEW files OR total file rewrites (>80% of file changing): Leave the SEARCH block EMPTY (\`<<<<<<< SEARCH\\n=======\\n[new code]\\n>>>>>>> REPLACE\`) so you do not waste output tokens repeating old code.
+   - For NEW files OR total file rewrites (>80% of file changing): Leave the SEARCH block EMPTY (${SEARCH_MARKER}\n${EQUALS_MARKER}\n[new code]\n${REPLACE_MARKER}) so you do not waste output tokens repeating old code.
 
 3. ANCHOR RULE (Keep SEARCH blocks small):
    - Copy only 2-3 unique lines at the top/bottom of the edit area ("anchors") to keep blocks minimal.
@@ -1161,12 +2572,9 @@ You must output code modifications using exact SEARCH/REPLACE blocks.
 4. EXACT WHITESPACE RULE:
    - Code inside SEARCH MUST match the original file's indentation, spaces, and tabs 100% exactly.
 
-5. SELF-UPDATING KNOWLEDGE BASE (Optional):
-   - If a complex bug or architectural rule is resolved during this request, output an additional SEARCH/REPLACE block updating \`ai_context_guide.md\` with the lesson learned under \`<casos_resolvidos_aprendizados>\`.
-
 ==================================================
 REPO MAP (Project Blueprint):
-${repoMap || 'No map generated.'}
+${repoMap || "No map generated."}
 
 ==================================================
 ACTIVE FILES CONTEXT:
@@ -1181,44 +2589,51 @@ ${request}`;
           }
         }}
         disabled={isCopying}
-        className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold py-3 rounded-lg shadow-lg shadow-cyan-500/10 flex items-center justify-center space-x-2 active:scale-[0.98] transition-all disabled:opacity-50"
+        className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold py-3 rounded-lg shadow-lg shadow-cyan-500/10 flex items-center justify-center space-x-2 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
       >
         <Copy className="w-4 h-4" />
-        <span>{isCopying ? 'Assembling...' : 'Copy Context + Prompt'}</span>
+        <span>
+          {isCopying
+            ? "Assembling..."
+            : `Copy Context (${selectedFiles.size} Files) + Prompt`}
+        </span>
       </button>
 
       {isMapModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-2xl flex flex-col overflow-hidden shadow-2xl">
             <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900">
-              <h2 className="text-sm font-bold text-zinc-200">Repo Map Context Preview (~{(files.length * 95).toLocaleString()} tokens)</h2>
-              <button 
+              <h2 className="text-sm font-bold text-zinc-200">
+                Repo Map Context Preview (~{repoMapTokens.toLocaleString()}
+                tokens)
+              </h2>
+              <button
                 onClick={() => setIsMapModalOpen(false)}
                 className="text-zinc-400 hover:text-zinc-200 p-1 rounded-md hover:bg-zinc-800 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="p-4 overflow-y-auto max-h-[60vh] custom-scrollbar">
               <pre className="font-mono text-xs text-zinc-300 bg-zinc-900 p-4 rounded-lg border border-zinc-800 whitespace-pre-wrap">
-                {repoMap || 'Generating Repo Map...'}
+                {repoMap || "Generating Repo Map..."}
               </pre>
             </div>
-            
+
             <div className="p-4 border-t border-zinc-800 bg-zinc-900 flex justify-end space-x-3">
-              <button 
+              <button
                 onClick={() => setIsMapModalOpen(false)}
-                className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors border border-zinc-700"
+                className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors border border-zinc-700 cursor-pointer"
               >
                 Close
               </button>
-              <button 
+              <button
                 onClick={() => {
                   onCopyMap(repoMap);
                   setIsMapModalOpen(false);
                 }}
-                className="px-4 py-2 text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-500 rounded-lg transition-colors shadow-lg shadow-cyan-900/20"
+                className="px-4 py-2 text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-500 rounded-lg transition-colors shadow-lg shadow-cyan-900/20 cursor-pointer"
               >
                 Copy Raw Map
               </button>
@@ -1234,9 +2649,9 @@ ${request}`;
 ==================================================
 FILE PATH: src\components\Toast.tsx
 ==================================================
-import { Check } from 'lucide-react';
-import { useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Check } from "lucide-react";
+import { useEffect } from "react";
+import { motion, AnimatePresence } from "motion/react";
 
 interface ToastProps {
   message: string | null;
@@ -1274,34 +2689,105 @@ export function Toast({ message, onClose }: ToastProps) {
 ==================================================
 FILE PATH: src\utils\diffParser.ts
 ==================================================
-// src/utils/diffParser.ts
-import { DiffBlock } from '../types';
+import { DiffBlock } from "../types";
 
 export function parseDiffBlocks(rawText: string): DiffBlock[] {
-  // 1. Clean up markdown code fences if Gemini wrapped the output in ```tsx ... ```
-  let text = rawText.replace(/```[a-zA-Z]*\n/g, '').replace(/```/g, '');
+  console.log("[Parser] Starting parse. Input length:", rawText?.length);
+  if (!rawText || !rawText.trim()) return [];
 
+  // Split safely by any OS line ending
+  const lines = rawText.split(/\r\n|\n|\r/);
   const blocks: DiffBlock[] = [];
   let index = 1;
 
-  // 2. BULLETPROOF REGEX: Matches both 3+ chevrons (<<<< SEARCH) AND XML tags (<search>)
-  const blockRegex = /(?:FILE:\s*|OVERWRITE FILE:\s*|path=")?([^\n\r"]+)"?\s*\n(?:<{3,}\s*SEARCH|<search>)\n([\s\S]*?)\n(?:={3,}|<\/search>\s*<replace>)\n([\s\S]*?)\n(?:>{3,}\s*REPLACE|<\/replace>)/gi;
+  let state: "IDLE" | "SEARCH" | "REPLACE" = "IDLE";
+  let currentSearch: string[] = [];
+  let currentReplace: string[] = [];
+  let currentFile = "Active File";
 
-  let match;
-  while ((match = blockRegex.exec(text)) !== null) {
-    const filePath = match[1].trim().replace(/^["']|["']$/g, '');
-    const searchContent = match[2];
-    const replaceContent = match[3];
+  console.log(`[Parser] Processing ${lines.length} lines...`);
 
-    blocks.push({
-      id: String(index++),
-      file: filePath,
-      status: 'match',
-      search: searchContent,
-      replace: replaceContent
-    });
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (state === "IDLE") {
+      const fileMatch = trimmed.match(
+        /^(?:FILE|OVERWRITE FILE|File|Path|###|\*\*)\s*:?\s*[`"']?([^`"']+\.[a-zA-Z0-9]+)[`"']?/i,
+      );
+      if (fileMatch) currentFile = fileMatch[1];
+
+      if (trimmed.startsWith("<<<<<<< SEARCH")) {
+        console.log(`[Parser] 🟢 Found SEARCH start at line ${i + 1}`);
+        state = "SEARCH";
+        currentSearch = [];
+        currentReplace = [];
+      }
+    } else if (state === "SEARCH") {
+      if (trimmed.startsWith("=======")) {
+        console.log(`[Parser] 🟡 Found DIVIDER at line ${i + 1}`);
+        state = "REPLACE";
+      } else {
+        currentSearch.push(line);
+      }
+    } else if (state === "REPLACE") {
+      if (trimmed.startsWith(">>>>>>> REPLACE")) {
+        console.log(
+          `[Parser] 🔴 Found REPLACE end at line ${i + 1}. Pushing block!`,
+        );
+
+        const sText = currentSearch
+          .join("\n")
+          .replace(/^```[a-zA-Z]*\n/, "")
+          .replace(/\n```$/, "");
+        const rText = currentReplace
+          .join("\n")
+          .replace(/^```[a-zA-Z]*\n/, "")
+          .replace(/\n```$/, "");
+
+        blocks.push({
+          id: String(index++),
+          file: currentFile,
+          status: "match",
+          search: sText,
+          replace: rText,
+        });
+
+        state = "IDLE";
+        currentFile = "Active File";
+      } else {
+        currentReplace.push(line);
+      }
+    }
   }
 
+  console.log(
+    `[Parser] Finished state machine. Found ${blocks.length} blocks.`,
+  );
+
+  // 2. FALLBACK FOR "Create 'file'" OVERWRITES
+  const createRegex =
+    /(?:Create|Overwriting|File:)[ \t]*['"]?([^'":\n]+?\.[a-zA-Z0-9]+)['"]?:?[ \t]*\n```[a-zA-Z]*\n([\s\S]*?)\n```/gi;
+  let match;
+  while ((match = createRegex.exec(rawText)) !== null) {
+    const filePath = match[1].trim();
+    const replaceContent = match[2];
+    if (
+      !blocks.some((b) => b.file === filePath && b.replace === replaceContent)
+    ) {
+      console.log(`[Parser] 📝 Found Create/Overwrite block for ${filePath}`);
+      blocks.push({
+        id: String(index++),
+        file: filePath,
+        status: "match",
+        search: "",
+        replace: replaceContent,
+      });
+    }
+  }
+
+  console.log(`[Parser] Final returned blocks:`, blocks);
   return blocks;
 }
+
 
