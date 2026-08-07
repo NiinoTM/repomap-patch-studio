@@ -298,7 +298,11 @@ app.post("/api/native-folder-dialog", (req, res) => {
   try {
     let cmd = "";
     if (process.platform === "win32") {
-      cmd = `powershell -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; if($f.ShowDialog() -eq 'OK') { $f.SelectedPath }"`;
+      // Uses OpenFileDialog (the modern Explorer-style common item dialog,
+      // used since Windows Vista) instead of the legacy FolderBrowserDialog.
+      // The "select a fake file, then take its directory" trick is the
+      // standard way to get folder-picking UX out of the modern dialog.
+      cmd = `powershell -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.ValidateNames = $false; $f.CheckFileExists = $false; $f.CheckPathExists = $true; $f.FileName = 'Select This Folder'; $f.Title = 'Select Repository Folder'; if($f.ShowDialog() -eq 'OK') { [System.IO.Path]::GetDirectoryName($f.FileName) }"`;
     } else if (process.platform === "darwin") {
       cmd = `osascript -e 'POSIX path of (choose folder)'`;
     } else {
