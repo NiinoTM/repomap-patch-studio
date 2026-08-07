@@ -26,6 +26,26 @@ export function parseDiffBlocks(rawText: string): DiffBlock[] {
       );
       if (fileMatch) currentFile = fileMatch[1];
 
+      // MOVE/RENAME directive — its own standalone line, no SEARCH/REPLACE
+      // markers needed. Accepts "->", "→", or "to" as the separator.
+      const moveMatch = trimmed.match(
+        /^(?:MOVE|RENAME|Move|Rename)\s*:?\s*[`"']?([^`"'\n]+?)[`"']?\s*(?:->|→|to)\s*[`"']?([^`"'\n]+?)[`"']?$/i,
+      );
+      if (moveMatch) {
+        console.log(
+          `[Parser] 📦 Found MOVE directive: ${moveMatch[1]} -> ${moveMatch[2]}`,
+        );
+        blocks.push({
+          id: String(index++),
+          file: moveMatch[1].trim(),
+          status: "match",
+          search: "",
+          replace: "",
+          type: "move",
+          moveTo: moveMatch[2].trim(),
+        });
+      }
+
       if (trimmed === "<<<<<<< SEARCH") {
         console.log(`[Parser] 🟢 Found SEARCH start at line ${i + 1}`);
         state = "SEARCH";

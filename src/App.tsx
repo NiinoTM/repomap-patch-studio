@@ -145,6 +145,14 @@ export default function App() {
 
       if (data.success) {
         const validatedBlocks = parsed.map((block) => {
+          if (block.type === "move") {
+            const sourceExists = !!data.contents[block.file];
+            return {
+              ...block,
+              status: sourceExists ? ("match" as const) : ("no-match" as const),
+            };
+          }
+
           if (!block.search.trim() || block.file === "Active File") {
             return { ...block, status: "match" as const };
           }

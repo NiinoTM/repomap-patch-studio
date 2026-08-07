@@ -179,8 +179,10 @@ export function DiffPanel({
               The pasted clipboard text does not contain valid{" "}
               <code className="text-cyan-400">
                 &lt;&lt;&lt;&lt;&lt;&lt;&lt; SEARCH
-              </code>{" "}
-              or <code className="text-cyan-400">Create 'file'</code> blocks.
+              </code>
+              , <code className="text-cyan-400">Create 'file'</code>, or{" "}
+              <code className="text-cyan-400">MOVE 'old' -&gt; 'new'</code>{" "}
+              blocks.
             </p>
             <div className="flex items-center space-x-3 pt-2">
               <button
@@ -272,6 +274,68 @@ export function DiffPanel({
                 const replaceLines = block.replace.trim()
                   ? block.replace.trim().split("\n")
                   : [];
+
+                if (block.type === "move") {
+                  return (
+                    <div
+                      key={block.id}
+                      className={`bg-zinc-900/30 border border-zinc-800 rounded-xl flex items-center justify-between px-4 py-3 transition-all ${
+                        isIgnored ? "opacity-50 grayscale" : ""
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3 min-w-0">
+                        <span className="bg-violet-500/20 text-violet-400 text-[10px] px-1.5 py-0.5 rounded border border-violet-500/20 font-bold uppercase shrink-0">
+                          Move
+                        </span>
+                        <span className="text-xs font-mono text-zinc-400 truncate">
+                          {block.file}
+                        </span>
+                        <span className="text-zinc-600 shrink-0">→</span>
+                        <span className="text-xs font-mono text-zinc-100 font-medium truncate">
+                          {block.moveTo}
+                        </span>
+                        {block.status === "match" ? (
+                          <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase shrink-0">
+                            Source Found
+                          </span>
+                        ) : (
+                          <span className="bg-rose-500/20 text-rose-400 text-[10px] px-1.5 py-0.5 rounded border border-rose-500/20 font-bold uppercase shrink-0">
+                            Source Missing
+                          </span>
+                        )}
+                      </div>
+                      <label
+                        className="flex items-center space-x-2 cursor-pointer shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <span
+                          className={`text-[10px] font-bold uppercase ${
+                            !isIgnored ? "text-cyan-500" : "text-zinc-500"
+                          }`}
+                        >
+                          {isIgnored ? "Ignored" : "Accepted"}
+                        </span>
+                        <div
+                          className={`w-8 h-4 rounded-full flex items-center transition-colors p-0.5 ${
+                            !isIgnored ? "bg-cyan-500" : "bg-zinc-700"
+                          }`}
+                        >
+                          <div
+                            className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${
+                              !isIgnored ? "translate-x-4" : "translate-x-0"
+                            }`}
+                          />
+                        </div>
+                        <input
+                          type="checkbox"
+                          className="hidden"
+                          checked={!isIgnored}
+                          onChange={() => toggleBlock(block.id)}
+                        />
+                      </label>
+                    </div>
+                  );
+                }
 
                 return (
                   <div

@@ -507,6 +507,9 @@ app.post("/api/apply", (req, res) => {
       .json({ success: false, error: "No diff blocks provided." });
   }
 
+  const moveBlocks = blocks.filter((b) => b.type === "move");
+  const editBlocks = blocks.filter((b) => b.type !== "move");
+
   try {
     // Git Safety Snapshot before writing (skipped entirely for dry-run validation passes)
     if (!isDryRun) {
@@ -520,11 +523,11 @@ app.post("/api/apply", (req, res) => {
       }
     }
 
-    // PHASE 1: IN-MEMORY DRY-RUN & SYNTAX VALIDATION
+    // PHASE 1: IN-MEMORY DRY-RUN & SYNTAX VALIDATION (content-edit blocks only)
     const pendingWrites = new Map(); // filePath -> updatedContent
     const validationErrors = [];
 
-    for (const block of blocks) {
+    for (const block of editBlocks) {
       if (!block.file || block.file === "Active File") continue;
       const fullPath = path.resolve(targetRepoPath, block.file);
 
@@ -550,6 +553,30 @@ app.post("/api/apply", (req, res) => {
       }
     }
 
+    // PHASE 1b: VALIDATE MOVE/RENAME BLOCKS
+    // Source must exist on disk; destination must not already be occupied
+    // by a different file, so a move can never silently clobber something.
+    for (const block of moveBlocks) {
+      if (!block.file || !block.moveTo) {
+        validationErrors.push(
+          "Invalid MOVE block: missing source or destination path.",
+        );
+        continue;
+      }
+      const sourcePath = path.resolve(targetRepoPath, block.file);
+      const destPath = path.resolve(targetRepoPath, block.moveTo);
+
+      if (!fs.existsSync(sourcePath)) {
+        validationErrors.push(
+          `MOVE failed: source file not found: ${block.file}`,
+        );
+      } else if (fs.existsSync(destPath) && sourcePath !== destPath) {
+        validationErrors.push(
+          `MOVE failed: destination already exists: ${block.moveTo}`,
+        );
+      }
+    }
+
     // ALL-OR-NOTHING GATEKEEPER: Abort if any block failed pre-flight validation or syntax check
     if (validationErrors.length > 0) {
       const detailedMsg =
@@ -565,14 +592,16 @@ app.post("/api/apply", (req, res) => {
     }
 
     // DRY-RUN: validation & syntax checks passed, but stop here — nothing is
-    // written to disk and no commit happens. This lets the client confirm/edit
-    // a commit message with full confidence the batch will actually succeed.
+    // written to disk, no move/rename happens, and no commit happens. This
+    // lets the client confirm/edit a commit message with full confidence
+    // the batch will actually succeed.
     if (isDryRun) {
       return res.json({
         success: true,
         dryRun: true,
         message: "✅ Pre-flight validation passed. No files were modified.",
         validatedFiles: Array.from(pendingWrites.keys()),
+        validatedMoves: moveBlocks.map((b) => `${b.file} -> ${b.moveTo}`),
       });
     }
 
@@ -599,7 +628,32 @@ app.post("/api/apply", (req, res) => {
       fs.writeFileSync(fullPath, pendingWrites.get(file), "utf-8");
     }
 
-    for (const file of filesToCommit) {
+    // PHASE 3: EXECUTE MOVES/RENAMES
+    // Prefer `git mv` so history/blame follows the file across the rename;
+    // fall back to a plain filesystem rename if the file isn't tracked yet
+    // or git otherwise errors.
+    const movedFiles = [];
+    for (const block of moveBlocks) {
+      const destFullPath = path.resolve(targetRepoPath, block.moveTo);
+      const destDir = path.dirname(destFullPath);
+      if (!fs.existsSync(destDir)) {
+        fs.mkdirSync(destDir, { recursive: true });
+      }
+
+      try {
+        execSync(`git mv -f "${block.file}" "${block.moveTo}"`, {
+          cwd: targetRepoPath,
+          stdio: "ignore",
+        });
+      } catch (e) {
+        fs.renameSync(path.resolve(targetRepoPath, block.file), destFullPath);
+      }
+      movedFiles.push(block.moveTo);
+    }
+
+    const allChangedFiles = [...filesToCommit, ...movedFiles];
+
+    for (const file of allChangedFiles) {
       try {
         execSync(`npx prettier --write "${file}"`, {
           cwd: targetRepoPath,
@@ -624,7 +678,7 @@ app.post("/api/apply", (req, res) => {
       message: shouldCommit
         ? "✅ Transaction complete: Edits applied, formatted & committed to Git!"
         : "✅ Transaction complete: Edits applied to disk!",
-      appliedFiles: filesToCommit,
+      appliedFiles: allChangedFiles,
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
