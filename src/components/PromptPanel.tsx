@@ -1,5 +1,8 @@
-import { useState, useEffect } from 'react';
-import { Copy, Map, Eye, X } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { 
+  Copy, Map, Eye, X, Folder, FolderOpen, FileText, 
+  ChevronRight, ChevronDown, CheckSquare, Square, MinusSquare, Search, AtSign
+} from 'lucide-react';
 
 interface PromptPanelProps {
   onCopy: (promptText: string) => void;
@@ -8,29 +11,273 @@ interface PromptPanelProps {
   repoMap: string;
 }
 
+interface TreeNode {
+  name: string;
+  path: string;
+  isFolder: boolean;
+  children: TreeNode[];
+  allFiles: string[];
+}
+
 export function PromptPanel({ onCopy, onCopyMap, files, repoMap }: PromptPanelProps) {
   const [request, setRequest] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [isCopying, setIsCopying] = useState(false);
-  
-  // Reset selected files when the repository context changes
+  const [searchQuery, setSearchQuery] = useState('');
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['root']));
+
+  // ==========================================
+  // @MENTION SYSTEM STATE & REFS
+  // ==========================================
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1);
+  const [activeMentionIndex, setActiveMentionIndex] = useState<number>(0);
+
+  // Filter files matching the @mention query
+  const mentionMatches = useMemo(() => {
+    if (mentionQuery === null) return [];
+    return files
+      .filter(f => f.toLowerCase().includes(mentionQuery.toLowerCase()))
+      .slice(0, 8); // Top 8 matches
+  }, [files, mentionQuery]);
+
+  // Reset selected files when repo changes
   useEffect(() => {
     setSelectedFiles(new Set());
-    }, [files]);
+  }, [files]);
 
-  const toggleFile = (file: string) => {
-    const newFiles = new Set(selectedFiles);
-    if (newFiles.has(file)) {
-      newFiles.delete(file);
+  // Build tree data for Context Selector
+  const treeData = useMemo(() => {
+    const root: TreeNode = { name: 'root', path: '', isFolder: true, children: [], allFiles: [] };
+    const filteredFiles = files.filter(f => f.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    filteredFiles.forEach(filePath => {
+      const parts = filePath.split('/');
+      let current = root;
+      current.allFiles.push(filePath);
+
+      let currentPath = '';
+      parts.forEach((part, index) => {
+        const isLast = index === parts.length - 1;
+        currentPath = currentPath ? `${currentPath}/${part}` : part;
+
+        let child = current.children.find(c => c.name === part);
+        if (!child) {
+          child = {
+            name: part,
+            path: currentPath,
+            isFolder: !isLast,
+            children: [],
+            allFiles: []
+          };
+          current.children.push(child);
+        }
+
+        if (!isLast) {
+          child.allFiles.push(filePath);
+        }
+
+        current = child;
+      });
+    });
+
+    const sortNodes = (node: TreeNode) => {
+      node.children.sort((a, b) => {
+        if (a.isFolder === b.isFolder) return a.name.localeCompare(b.name);
+        return a.isFolder ? -1 : 1;
+      });
+      node.children.forEach(sortNodes);
+    };
+    sortNodes(root);
+
+    return root;
+  }, [files, searchQuery]);
+
+  // ==========================================
+  // @MENTION HANDLERS
+  // ==========================================
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    const cursorPos = e.target.selectionStart;
+    setRequest(value);
+
+    // Look backward from cursor to see if we are inside an @mention
+    const textBeforeCursor = value.slice(0, cursorPos);
+    const match = textBeforeCursor.match(/@([a-zA-Z0-9_\-./]*)$/);
+
+    if (match) {
+      setMentionQuery(match[1]);
+      setMentionStartIndex(cursorPos - match[0].length);
+      setActiveMentionIndex(0);
     } else {
-      newFiles.add(file);
+      setMentionQuery(null);
     }
-    setSelectedFiles(newFiles);
+  };
+
+  const insertMention = (filePath: string) => {
+    if (mentionStartIndex < 0 || !textareaRef.current) return;
+
+    const cursorPos = textareaRef.current.selectionStart;
+    const before = request.slice(0, mentionStartIndex);
+    const after = request.slice(cursorPos);
+    
+    // Format as @filePath with a space after
+    const newText = `${before}@${filePath} ${after}`;
+    setRequest(newText);
+
+    // Automatically check/select this file in the context selector
+    setSelectedFiles(prev => new Set(prev).add(filePath));
+
+    // Close mention popup
+    setMentionQuery(null);
+
+    // Reposition cursor after inserted mention
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const newCursorPos = mentionStartIndex + filePath.length + 2; // +2 for '@' and ' '
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 0);
+  };
+
+  const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // If @mention popup is open, handle arrow navigation and selection
+    if (mentionQuery !== null && mentionMatches.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setActiveMentionIndex(prev => (prev + 1) % mentionMatches.length);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setActiveMentionIndex(prev => (prev - 1 + mentionMatches.length) % mentionMatches.length);
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        insertMention(mentionMatches[activeMentionIndex]);
+      } else if (e.key === 'Escape') {
+        setMentionQuery(null);
+      }
+    }
+  };
+
+  // Bulk Tree Actions
+  const handleSelectAll = () => setSelectedFiles(new Set(files));
+  const handleDeselectAll = () => setSelectedFiles(new Set());
+
+  const toggleFolderExpand = (folderPath: string) => {
+    const newExpanded = new Set(expandedFolders);
+    if (newExpanded.has(folderPath)) newExpanded.delete(folderPath);
+    else newExpanded.add(folderPath);
+    setExpandedFolders(newExpanded);
+  };
+
+  const toggleFile = (filePath: string) => {
+    const newSelected = new Set(selectedFiles);
+    if (newSelected.has(filePath)) newSelected.delete(filePath);
+    else newSelected.add(filePath);
+    setSelectedFiles(newSelected);
+  };
+
+  const toggleFolderSelection = (node: TreeNode) => {
+    const newSelected = new Set(selectedFiles);
+    const folderFiles = node.allFiles;
+    const allSelected = folderFiles.every(f => newSelected.has(f));
+
+    if (allSelected) {
+      folderFiles.forEach(f => newSelected.delete(f));
+    } else {
+      folderFiles.forEach(f => newSelected.add(f));
+    }
+    setSelectedFiles(newSelected);
+  };
+
+  const renderTreeNode = (node: TreeNode, depth = 0) => {
+    if (node.isFolder) {
+      const isExpanded = expandedFolders.has(node.path) || searchQuery.trim().length > 0;
+      const folderFiles = node.allFiles;
+      const selectedCount = folderFiles.filter(f => selectedFiles.has(f)).length;
+      const allSelected = folderFiles.length > 0 && selectedCount === folderFiles.length;
+      const someSelected = selectedCount > 0 && selectedCount < folderFiles.length;
+
+      return (
+        <div key={node.path || node.name} className="select-none">
+          <div 
+            className="flex items-center py-1 px-1 rounded hover:bg-zinc-800/60 cursor-pointer text-xs text-zinc-300"
+            style={{ paddingLeft: `${depth * 12 + 4}px` }}
+          >
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleFolderSelection(node);
+              }}
+              className="mr-1.5 text-zinc-400 hover:text-cyan-400 transition-colors"
+            >
+              {allSelected ? (
+                <CheckSquare className="w-3.5 h-3.5 text-cyan-500 fill-cyan-500/20" />
+              ) : someSelected ? (
+                <MinusSquare className="w-3.5 h-3.5 text-cyan-500" />
+              ) : (
+                <Square className="w-3.5 h-3.5" />
+              )}
+            </button>
+
+            <div 
+              onClick={() => toggleFolderExpand(node.path)}
+              className="flex items-center flex-1 min-w-0"
+            >
+              {isExpanded ? (
+                <ChevronDown className="w-3.5 h-3.5 text-zinc-500 mr-1 shrink-0" />
+              ) : (
+                <ChevronRight className="w-3.5 h-3.5 text-zinc-500 mr-1 shrink-0" />
+              )}
+              {isExpanded ? (
+                <FolderOpen className="w-3.5 h-3.5 text-cyan-500/80 mr-1.5 shrink-0" />
+              ) : (
+                <Folder className="w-3.5 h-3.5 text-zinc-400 mr-1.5 shrink-0" />
+              )}
+              <span className="font-medium text-zinc-200 truncate">{node.name}</span>
+              <span className="ml-auto text-[10px] text-zinc-600 pl-2">
+                {selectedCount}/{folderFiles.length}
+              </span>
+            </div>
+          </div>
+
+          {isExpanded && (
+            <div>
+              {node.children.map(child => renderTreeNode(child, depth + 1))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const isSelected = selectedFiles.has(node.path);
+    return (
+      <div 
+        key={node.path}
+        onClick={() => toggleFile(node.path)}
+        className={`flex items-center py-1 px-1 rounded text-xs cursor-pointer select-none transition-colors ${
+          isSelected ? 'bg-zinc-800/70 text-zinc-100' : 'text-zinc-400 hover:bg-zinc-900/80 hover:text-zinc-200'
+        }`}
+        style={{ paddingLeft: `${depth * 12 + 20}px` }}
+      >
+        <button className="mr-1.5 text-zinc-400 hover:text-cyan-400">
+          {isSelected ? (
+            <CheckSquare className="w-3.5 h-3.5 text-cyan-500 fill-cyan-500/20" />
+          ) : (
+            <Square className="w-3.5 h-3.5" />
+          )}
+        </button>
+        <FileText className="w-3.5 h-3.5 text-zinc-500 mr-1.5 shrink-0" />
+        <span className="truncate">{node.name}</span>
+      </div>
+    );
   };
 
   return (
     <div className="border-r border-zinc-800 flex flex-col h-full p-4 space-y-4 bg-zinc-950/50">
+      {/* Repo Map Status Header */}
       <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-lg flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div className="p-2 bg-cyan-500/10 rounded">
@@ -38,54 +285,109 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap }: PromptPanelPr
           </div>
           <div>
             <p className="text-xs font-semibold text-zinc-200">Repo Map Ready</p>
-            <p className="text-[10px] text-zinc-500">~{(files.length * 95).toLocaleString()} tokens / {files.length} files parsed</p>
+            <p className="text-[10px] text-zinc-500">~{(files.length * 95).toLocaleString()} tokens / {files.length} files</p>
           </div>
         </div>
-        <div className="flex items-center space-x-3">
-          <button 
-            onClick={() => setIsMapModalOpen(true)}
-            className="text-zinc-400 hover:text-zinc-200 transition-colors p-1 rounded hover:bg-zinc-800"
-            title="Preview Repo Map"
-          >
-            <Eye className="w-4 h-4" />
-          </button>
-          <span className="text-[10px] text-zinc-500 font-mono italic">updated 2m ago</span>
-        </div>
+        <button 
+          onClick={() => setIsMapModalOpen(true)}
+          className="text-zinc-400 hover:text-zinc-200 transition-colors p-1 rounded hover:bg-zinc-800"
+          title="Preview Repo Map"
+        >
+          <Eye className="w-4 h-4" />
+        </button>
       </div>
 
+      {/* Context Selection Tree */}
       <div className="flex-1 flex flex-col space-y-2 min-h-0">
-        <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold">Context Selection</label>
+        <div className="flex items-center justify-between">
+          <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold">
+            Context Selection ({selectedFiles.size}/{files.length})
+          </label>
+          <div className="flex items-center space-x-2 text-[10px]">
+            <button onClick={handleSelectAll} className="text-cyan-500 hover:text-cyan-400 font-medium hover:underline cursor-pointer">
+              Select All
+            </button>
+            <span className="text-zinc-700">|</span>
+            <button onClick={handleDeselectAll} className="text-zinc-500 hover:text-zinc-400 font-medium hover:underline cursor-pointer">
+              Clear
+            </button>
+          </div>
+        </div>
+
+        {/* Filter input */}
+        <div className="relative flex items-center">
+          <Search className="w-3.5 h-3.5 absolute left-2.5 text-zinc-500 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Filter files or folders..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-zinc-900/80 border border-zinc-800 rounded-md pl-8 pr-3 py-1 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-cyan-500/50"
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')} className="absolute right-2 text-zinc-500 hover:text-zinc-300">
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+
+        {/* Tree view */}
         <div className="flex-1 bg-zinc-900/50 border border-zinc-800 rounded-md overflow-hidden flex flex-col">
-          <div className="p-2 space-y-1 overflow-y-auto custom-scrollbar">
-            {files.map((file, i) => {
-              const isSelected = selectedFiles.has(file);
-              return (
-                <label 
-                  key={file} 
-                  className={`flex items-center p-1.5 rounded text-xs cursor-pointer ${isSelected ? 'bg-zinc-800/50' : 'opacity-60 hover:opacity-100'}`}
-                >
-                  <input 
-                    type="checkbox" 
-                    checked={isSelected}
-                    onChange={() => toggleFile(file)}
-                    className="mr-2 accent-cyan-500" 
-                  />
-                  <span className="text-zinc-300">{file}</span>
-                  {isSelected && <span className="ml-auto text-[10px] text-zinc-600">4.2kb</span>}
-                </label>
-              );
-            })}
+          <div className="p-2 space-y-0.5 overflow-y-auto custom-scrollbar flex-1">
+            {treeData.children.length > 0 ? (
+              treeData.children.map(child => renderTreeNode(child))
+            ) : (
+              <div className="text-center py-6 text-xs text-zinc-600">No files found</div>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="space-y-2">
-        <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold">User Request</label>
+      {/* ========================================================= */}
+      {/* USER REQUEST TEXTAREA WITH FLOATING @MENTION POPUP */}
+      {/* ========================================================= */}
+      <div className="space-y-2 relative">
+        <div className="flex items-center justify-between">
+          <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold flex items-center">
+            <span>User Request</span>
+            <span className="ml-2 text-[10px] text-cyan-500/80 normal-case font-normal flex items-center">
+              <AtSign className="w-3 h-3 inline mr-0.5" /> Type @ to link files
+            </span>
+          </label>
+        </div>
+
+        {/* FLOATING @MENTION AUTOCOMPLETE POPUP */}
+        {mentionQuery !== null && mentionMatches.length > 0 && (
+          <div className="absolute bottom-full mb-1 left-0 right-0 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-50 overflow-hidden max-h-48 overflow-y-auto custom-scrollbar">
+            <div className="p-1.5 bg-zinc-950 border-b border-zinc-800 text-[10px] text-zinc-400 font-medium flex justify-between">
+              <span>Matching Files for "@{mentionQuery}"</span>
+              <span className="text-zinc-600">↑↓ to navigate, Enter to select</span>
+            </div>
+            {mentionMatches.map((filePath, idx) => (
+              <div
+                key={filePath}
+                onClick={() => insertMention(filePath)}
+                onMouseEnter={() => setActiveMentionIndex(idx)}
+                className={`px-3 py-1.5 text-xs flex items-center cursor-pointer transition-colors ${
+                  idx === activeMentionIndex 
+                    ? 'bg-cyan-600/30 text-cyan-200 border-l-2 border-cyan-500' 
+                    : 'text-zinc-300 hover:bg-zinc-800/50'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5 mr-2 text-zinc-400 shrink-0" />
+                <span className="truncate font-mono">{filePath}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         <textarea 
-          className="w-full h-28 bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-sm text-zinc-300 focus:outline-none focus:border-cyan-500/50 resize-none font-sans"
-          placeholder="Describe the changes needed..."
+          ref={textareaRef}
+          className="w-full h-24 bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-sm text-zinc-300 focus:outline-none focus:border-cyan-500/50 resize-none font-sans"
+          placeholder="Describe the changes needed... (type @ to reference a file)"
           value={request}
-          onChange={(e) => setRequest(e.target.value)}
+          onChange={handleTextareaChange}
+          onKeyDown={handleTextareaKeyDown}
         />
       </div>
 
@@ -96,6 +398,7 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap }: PromptPanelPr
         </label>
       </div>
 
+      {/* Copy Context Button */}
       <button 
         onClick={async () => {
           setIsCopying(true);
@@ -145,9 +448,6 @@ You must output code modifications using exact SEARCH/REPLACE blocks.
 4. EXACT WHITESPACE RULE:
    - Code inside SEARCH MUST match the original file's indentation, spaces, and tabs 100% exactly.
 
-5. SELF-UPDATING KNOWLEDGE BASE (Optional):
-   - If a complex bug or architectural rule is resolved during this request, output an additional SEARCH/REPLACE block updating \`ai_context_guide.md\` with the lesson learned under \`<casos_resolvidos_aprendizados>\`.
-
 ==================================================
 REPO MAP (Project Blueprint):
 ${repoMap || 'No map generated.'}
@@ -165,21 +465,19 @@ ${request}`;
           }
         }}
         disabled={isCopying}
-        className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold py-3 rounded-lg shadow-lg shadow-cyan-500/10 flex items-center justify-center space-x-2 active:scale-[0.98] transition-all disabled:opacity-50"
+        className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold py-3 rounded-lg shadow-lg shadow-cyan-500/10 flex items-center justify-center space-x-2 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
       >
         <Copy className="w-4 h-4" />
-        <span>{isCopying ? 'Assembling...' : 'Copy Context + Prompt'}</span>
+        <span>{isCopying ? 'Assembling...' : `Copy Context (${selectedFiles.size} Files) + Prompt`}</span>
       </button>
 
+      {/* Repo Map Modal */}
       {isMapModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-2xl flex flex-col overflow-hidden shadow-2xl">
             <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900">
               <h2 className="text-sm font-bold text-zinc-200">Repo Map Context Preview (~{(files.length * 95).toLocaleString()} tokens)</h2>
-              <button 
-                onClick={() => setIsMapModalOpen(false)}
-                className="text-zinc-400 hover:text-zinc-200 p-1 rounded-md hover:bg-zinc-800 transition-colors"
-              >
+              <button onClick={() => setIsMapModalOpen(false)} className="text-zinc-400 hover:text-zinc-200 p-1 rounded-md hover:bg-zinc-800 transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -191,10 +489,7 @@ ${request}`;
             </div>
             
             <div className="p-4 border-t border-zinc-800 bg-zinc-900 flex justify-end space-x-3">
-              <button 
-                onClick={() => setIsMapModalOpen(false)}
-                className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors border border-zinc-700"
-              >
+              <button onClick={() => setIsMapModalOpen(false)} className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors border border-zinc-700 cursor-pointer">
                 Close
               </button>
               <button 
@@ -202,7 +497,7 @@ ${request}`;
                   onCopyMap(repoMap);
                   setIsMapModalOpen(false);
                 }}
-                className="px-4 py-2 text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-500 rounded-lg transition-colors shadow-lg shadow-cyan-900/20"
+                className="px-4 py-2 text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-500 rounded-lg transition-colors shadow-lg shadow-cyan-900/20 cursor-pointer"
               >
                 Copy Raw Map
               </button>

@@ -397,24 +397,6 @@ export default function App() {
       alert('Failed to update repository path. Ensure backend is running.');
     }
   };
-  
-  // Mock data for when user clicks paste
-  const mockBlocks: DiffBlock[] = [
-    {
-      id: '1',
-      file: 'src/components/Navbar.tsx',
-      status: 'match',
-      search: '  return (\n    <nav className="bg-white">\n      <Logo />\n    </nav>\n  );',
-      replace: '  return (\n    <nav className="bg-white dark:bg-zinc-950 transition-colors">\n      <Logo />\n      <ThemeToggle />\n    </nav>\n  );'
-    },
-    {
-      id: '2',
-      file: 'src/theme.ts',
-      status: 'no-match',
-      search: 'export const theme = {\n  mode: "light"\n};',
-      replace: 'export const theme = {\n  mode: "dark",\n  toggle: () => {}\n};'
-    }
-  ];
 
   const mockLogs: HistoryLog[] = [
     { id: 'c4f2a91', timestamp: '10 mins ago', files: ['src/App.tsx'], message: 'ai-edit: Add routing to App.tsx' },
@@ -575,22 +557,14 @@ import { useState } from 'react';
 import { ClipboardPaste } from 'lucide-react';
 import { DiffBlock } from '../types';
 
-<section className="flex-1 flex-shrink-0">
-          <DiffPanel 
-            pastedContent={pastedContent}
-            parsedBlocks={diffBlocks} 
-            onPaste={handlePaste}
-            onClear={handleClear}
-          />
-        </section>
-      </main>
+interface DiffPanelProps {
+  parsedBlocks: DiffBlock[];
+  onPaste: () => void;
+  onClear: () => void;
+  pastedContent: string;
+}
 
-      <Footer 
-        logs={mockLogs} 
-        hasChanges={diffBlocks.length > 0} 
-        diffBlocks={diffBlocks}
-        onApplySuccess={handleClear}
-      />
+export function DiffPanel({ parsedBlocks, onPaste, onClear, pastedContent }: DiffPanelProps) {
   const [ignoredBlocks, setIgnoredBlocks] = useState<Set<string>>(new Set());
 
   const toggleBlock = (id: string) => {
@@ -901,20 +875,22 @@ import { useState, useEffect } from 'react';
 import { Copy, Map, Eye, X } from 'lucide-react';
 
 interface PromptPanelProps {
-  onCopy: () => void;
-  onCopyMap: () => void;
+  onCopy: (promptText: string) => void;
+  onCopyMap: (mapText: string) => void;
   files: string[];
+  repoMap: string;
 }
 
-export function PromptPanel({ onCopy, onCopyMap, files }: PromptPanelProps) {
+export function PromptPanel({ onCopy, onCopyMap, files, repoMap }: PromptPanelProps) {
   const [request, setRequest] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+  const [isCopying, setIsCopying] = useState(false);
   
   // Reset selected files when the repository context changes
   useEffect(() => {
     setSelectedFiles(new Set());
-  }, [files]);
+    }, [files]);
 
   const toggleFile = (file: string) => {
     const newFiles = new Set(selectedFiles);
