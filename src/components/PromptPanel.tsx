@@ -38,14 +38,6 @@ interface PromptPanelProps {
   }) => void;
 }
 
-interface SuggestedFile {
-  filePath: string;
-  type: "parent" | "child" | "hub";
-  importedActiveFiles: string[];
-  importingActiveFiles: string[];
-  tooltip: string;
-}
-
 interface TreeNode {
   name: string;
   path: string;
@@ -60,6 +52,14 @@ interface FuzzyResult {
   dirPath: string;
   score: number;
   matchedIndices: Set<number>;
+}
+
+interface SuggestedFile {
+  filePath: string;
+  type: "parent" | "child" | "hub";
+  importedActiveFiles: string[];
+  importingActiveFiles: string[];
+  tooltip: string;
 }
 
 function fuzzySearchFiles(files: string[], query: string): FuzzyResult[] {
@@ -138,8 +138,13 @@ export function PromptPanel({
   onTokenStatsChange,
 }: PromptPanelProps) {
   const [request, setRequest] = useState("");
-  ("");
-  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+  // Primary Seed Files: Explicitly @mentioned or manually toggled in tree
+  const [seedFiles, setSeedFiles] = useState<Set<string>>(new Set());
+  // Accepted Suggestions: Added by clicking suggestion chips or "+ Add All"
+  const [acceptedSuggestions, setAcceptedSuggestions] = useState<Set<string>>(
+    new Set(),
+  );
+
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [isCopying, setIsCopying] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -153,6 +158,13 @@ export function PromptPanel({
   const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1);
   const [activeMentionIndex, setActiveMentionIndex] = useState<number>(0);
 
+  // Combined active context for prompts & stats: Seed Files + Accepted Suggestions
+  const selectedFiles = useMemo(() => {
+    const combined = new Set<string>(seedFiles);
+    acceptedSuggestions.forEach((f) => combined.add(f));
+    return combined;
+  }, [seedFiles, acceptedSuggestions]);
+
   const mentionMatches = useMemo(() => {
     if (mentionQuery === null) return [];
     return fuzzySearchFiles(files, mentionQuery);
@@ -160,6 +172,7 @@ export function PromptPanel({
 
   const prevMentionsRef = useRef<Set<string>>(new Set());
 
+  // Sync @mentions in user text into Seed Files
   useEffect(() => {
     const matches = Array.from(request.matchAll(/@([a-zA-Z0-9_\-./]+)/g));
     const currentMentions = new Set<string>();
@@ -180,12 +193,19 @@ export function PromptPanel({
     );
 
     if (removedMentions.length > 0 || addedMentions.length > 0) {
-      setSelectedFiles((prev) => {
+      setSeedFiles((prev) => {
         const next = new Set(prev);
         removedMentions.forEach((f) => next.delete(f));
         addedMentions.forEach((f) => next.add(f));
         return next;
       });
+      if (removedMentions.length > 0) {
+        setAcceptedSuggestions((prev) => {
+          const next = new Set(prev);
+          removedMentions.forEach((f) => next.delete(f));
+          return next;
+        });
+      }
     }
 
     prevMentionsRef.current = currentMentions;
@@ -207,7 +227,8 @@ export function PromptPanel({
   }, []);
 
   useEffect(() => {
-    setSelectedFiles(new Set());
+    setSeedFiles(new Set());
+    setAcceptedSuggestions(new Set());
   }, [files]);
 
   const treeData = useMemo(() => {
@@ -264,11 +285,12 @@ export function PromptPanel({
     return root;
   }, [files, searchQuery]);
 
+  // 1-Hop Seed Rule: Suggestions strictly calculated from SEED FILES ONLY
   const suggestedFiles = useMemo(() => {
     if (
       !dependencyMap ||
       (!dependencyMap.outbound && !dependencyMap.inbound) ||
-      selectedFiles.size === 0
+      seedFiles.size === 0
     ) {
       return [];
     }
@@ -278,7 +300,8 @@ export function PromptPanel({
 
     const candidates = new Set<string>();
 
-    selectedFiles.forEach((file) => {
+    // Scan dependencies ONLY for seed files
+    seedFiles.forEach((file) => {
       const children = outboundMap[file] || [];
       children.forEach((child) => {
         if (!selectedFiles.has(child)) {
@@ -300,11 +323,12 @@ export function PromptPanel({
       const candOutbound = outboundMap[candPath] || [];
       const candInbound = inboundMap[candPath] || [];
 
-      const importedActive = candOutbound.filter((f) => selectedFiles.has(f));
-      const importingActive = candInbound.filter((f) => selectedFiles.has(f));
+      // Check relationships against seed files for tooltips & directionality
+      const importedSeed = candOutbound.filter((f) => seedFiles.has(f));
+      const importingSeed = candInbound.filter((f) => seedFiles.has(f));
 
-      const isParent = importedActive.length > 0;
-      const isChild = importingActive.length > 0;
+      const isParent = importedSeed.length > 0;
+      const isChild = importingSeed.length > 0;
 
       let type: "parent" | "child" | "hub" = "child";
       let tooltip = "";
@@ -314,13 +338,13 @@ export function PromptPanel({
         tooltip = "Hub: Both a parent and child across active context";
       } else if (isParent) {
         type = "parent";
-        const fileNames = importedActive
+        const fileNames = importedSeed
           .map((f) => f.split("/").pop() || f)
           .join(", ");
         tooltip = `Parent: Imports ${fileNames}`;
       } else {
         type = "child";
-        const fileNames = importingActive
+        const fileNames = importingSeed
           .map((f) => f.split("/").pop() || f)
           .join(", ");
         tooltip = `Child: Imported by ${fileNames}`;
@@ -329,21 +353,38 @@ export function PromptPanel({
       results.push({
         filePath: candPath,
         type,
-        importedActiveFiles: importedActive,
-        importingActiveFiles: importingActive,
+        importedActiveFiles: importedSeed,
+        importingActiveFiles: importingSeed,
         tooltip,
       });
     });
 
     return results;
-  }, [selectedFiles, dependencyMap]);
+  }, [seedFiles, selectedFiles, dependencyMap]);
 
   const handleAddAllSuggestions = () => {
-    setSelectedFiles((prev) => {
+    setAcceptedSuggestions((prev) => {
       const next = new Set(prev);
       suggestedFiles.forEach((item) => next.add(item.filePath));
       return next;
     });
+  };
+
+  const handleToggleSuggestion = (filePath: string) => {
+    if (selectedFiles.has(filePath)) {
+      setAcceptedSuggestions((prev) => {
+        const next = new Set(prev);
+        next.delete(filePath);
+        return next;
+      });
+      setSeedFiles((prev) => {
+        const next = new Set(prev);
+        next.delete(filePath);
+        return next;
+      });
+    } else {
+      setAcceptedSuggestions((prev) => new Set(prev).add(filePath));
+    }
   };
 
   const repoMapTokens = useMemo(
@@ -410,7 +451,8 @@ export function PromptPanel({
     const newText = `${before}@${filePath} ${after}`;
     setRequest(newText);
 
-    setSelectedFiles((prev) => new Set(prev).add(filePath));
+    // @mentioned files are primary Seed Files
+    setSeedFiles((prev) => new Set(prev).add(filePath));
     setMentionQuery(null);
 
     setTimeout(() => {
@@ -443,8 +485,15 @@ export function PromptPanel({
     }
   };
 
-  const handleSelectAll = () => setSelectedFiles(new Set(files));
-  const handleDeselectAll = () => setSelectedFiles(new Set());
+  const handleSelectAll = () => {
+    setSeedFiles(new Set(files));
+    setAcceptedSuggestions(new Set());
+  };
+
+  const handleDeselectAll = () => {
+    setSeedFiles(new Set());
+    setAcceptedSuggestions(new Set());
+  };
 
   const toggleFolderExpand = (folderPath: string) => {
     const newExpanded = new Set(expandedFolders);
@@ -454,23 +503,45 @@ export function PromptPanel({
   };
 
   const toggleFile = (filePath: string) => {
-    const newSelected = new Set(selectedFiles);
-    if (newSelected.has(filePath)) newSelected.delete(filePath);
-    else newSelected.add(filePath);
-    setSelectedFiles(newSelected);
+    if (selectedFiles.has(filePath)) {
+      setSeedFiles((prev) => {
+        const next = new Set(prev);
+        next.delete(filePath);
+        return next;
+      });
+      setAcceptedSuggestions((prev) => {
+        const next = new Set(prev);
+        next.delete(filePath);
+        return next;
+      });
+    } else {
+      // Manual selection in tree defines a Seed File
+      setSeedFiles((prev) => new Set(prev).add(filePath));
+    }
   };
 
   const toggleFolderSelection = (node: TreeNode) => {
-    const newSelected = new Set(selectedFiles);
     const folderFiles = node.allFiles;
-    const allSelected = folderFiles.every((f) => newSelected.has(f));
+    const allSelected = folderFiles.every((f) => selectedFiles.has(f));
 
     if (allSelected) {
-      folderFiles.forEach((f) => newSelected.delete(f));
+      setSeedFiles((prev) => {
+        const next = new Set(prev);
+        folderFiles.forEach((f) => next.delete(f));
+        return next;
+      });
+      setAcceptedSuggestions((prev) => {
+        const next = new Set(prev);
+        folderFiles.forEach((f) => next.delete(f));
+        return next;
+      });
     } else {
-      folderFiles.forEach((f) => newSelected.add(f));
+      setSeedFiles((prev) => {
+        const next = new Set(prev);
+        folderFiles.forEach((f) => next.add(f));
+        return next;
+      });
     }
-    setSelectedFiles(newSelected);
   };
 
   const renderTreeNode = (node: TreeNode, depth = 0) => {
@@ -590,7 +661,6 @@ export function PromptPanel({
 
   return (
     <div className="border-r border-zinc-800 flex flex-col h-full p-4 space-y-4 bg-zinc-950/50">
-      {}
       <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-lg flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div className="p-2 bg-cyan-500/10 rounded">
@@ -601,7 +671,7 @@ export function PromptPanel({
               Repo Map Ready
             </p>
             <p className="text-[10px] text-zinc-500">
-              ~{repoMapTokens.toLocaleString()} map tokens / {files.length}
+              ~{repoMapTokens.toLocaleString()} map tokens / {files.length}{" "}
               files
             </p>
           </div>
@@ -615,7 +685,7 @@ export function PromptPanel({
         </button>
       </div>
 
-      {/* SMART IMPORT DEPENDENCY SUGGESTIONS BANNER */}
+      {/* SMART IMPORT DEPENDENCY SUGGESTIONS BANNER (1-Hop Seed Rule) */}
       {suggestedFiles.length > 0 && (
         <div className="bg-zinc-900/90 border border-zinc-800 rounded-lg p-2.5 space-y-2 animate-fadeIn shrink-0">
           <div className="flex items-center justify-between">
@@ -638,7 +708,7 @@ export function PromptPanel({
                 return (
                   <button
                     key={item.filePath}
-                    onClick={() => toggleFile(item.filePath)}
+                    onClick={() => handleToggleSuggestion(item.filePath)}
                     title={item.tooltip}
                     className="text-[10px] bg-purple-950/40 border border-purple-500/40 text-purple-300 hover:bg-purple-900/60 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
                   >
@@ -654,7 +724,7 @@ export function PromptPanel({
                 return (
                   <button
                     key={item.filePath}
-                    onClick={() => toggleFile(item.filePath)}
+                    onClick={() => handleToggleSuggestion(item.filePath)}
                     title={item.tooltip}
                     className="text-[10px] bg-cyan-950/40 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-900/60 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
                   >
@@ -669,7 +739,7 @@ export function PromptPanel({
               return (
                 <button
                   key={item.filePath}
-                  onClick={() => toggleFile(item.filePath)}
+                  onClick={() => handleToggleSuggestion(item.filePath)}
                   title={item.tooltip}
                   className="text-[10px] bg-gradient-to-r from-purple-950/50 to-cyan-950/50 border border-indigo-500/50 text-indigo-200 hover:from-purple-900/70 hover:to-cyan-900/70 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
                 >
@@ -684,7 +754,6 @@ export function PromptPanel({
         </div>
       )}
 
-      {}
       <div className="flex-1 flex flex-col space-y-2 min-h-0">
         <div className="flex items-center justify-between">
           <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold">
@@ -707,7 +776,6 @@ export function PromptPanel({
           </div>
         </div>
 
-        {}
         <div className="relative flex items-center">
           <Search className="w-3.5 h-3.5 absolute left-2.5 text-zinc-500 pointer-events-none" />
           <input
@@ -727,7 +795,6 @@ export function PromptPanel({
           )}
         </div>
 
-        {}
         <div className="flex-1 bg-zinc-900/50 border border-zinc-800 rounded-md overflow-hidden flex flex-col">
           <div className="p-2 space-y-0.5 overflow-y-auto custom-scrollbar flex-1">
             {treeData.children.length > 0 ? (
@@ -741,7 +808,6 @@ export function PromptPanel({
         </div>
       </div>
 
-      {}
       <div className="space-y-2 relative">
         <div className="flex items-center justify-between">
           <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold flex items-center">
@@ -752,7 +818,6 @@ export function PromptPanel({
           </label>
         </div>
 
-        {}
         {mentionQuery !== null && mentionMatches.length > 0 && (
           <div
             ref={mentionPopupRef}
@@ -806,7 +871,6 @@ export function PromptPanel({
         </label>
       </div>
 
-      {}
       <button
         onClick={async () => {
           setIsCopying(true);
@@ -827,6 +891,10 @@ export function PromptPanel({
               activeFilesText = "No specific files selected.";
             }
 
+            const SEARCH_MARKER = "<".repeat(7) + " SEARCH";
+            const EQUALS_MARKER = "=".repeat(7);
+            const REPLACE_MARKER = ">".repeat(7) + " REPLACE";
+
             const finalPrompt = `ROLE: Senior Software Architect & Elite Developer
 You write clean, production-grade, type-safe, and secure code, keeping system architecture and long-term maintainability in mind.
 
@@ -840,15 +908,15 @@ You must output code modifications using exact SEARCH/REPLACE blocks.
 
 1. FORMAT RULE: Every modification MUST specify the file path and use this exact delimiter:
    FILE: path/to/file.ext
-   <<<<<<< SEARCH
+   ${SEARCH_MARKER}
    [exact existing code to replace]
-   =======
+   ${EQUALS_MARKER}
    [new code]
-   >>>>>>> REPLACE
+   ${REPLACE_MARKER}
 
 2. THE 80% OVERWRITE RULE (Token Optimization):
    - For partial edits (<80% of file changing): Use targeted SEARCH/REPLACE blocks.
-   - For NEW files OR total file rewrites (>80% of file changing): Leave the SEARCH block EMPTY (\`<<<<<<< SEARCH\\n=======\\n[new code]\\n>>>>>>> REPLACE\`) so you do not waste output tokens repeating old code.
+   - For NEW files OR total file rewrites (>80% of file changing): Leave the SEARCH block EMPTY (${SEARCH_MARKER}\n${EQUALS_MARKER}\n[new code]\n${REPLACE_MARKER}) so you do not waste output tokens repeating old code.
 
 3. ANCHOR RULE (Keep SEARCH blocks small):
    - Copy only 2-3 unique lines at the top/bottom of the edit area ("anchors") to keep blocks minimal.
@@ -883,7 +951,6 @@ ${request}`;
         </span>
       </button>
 
-      {}
       {isMapModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-2xl flex flex-col overflow-hidden shadow-2xl">
