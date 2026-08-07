@@ -91,22 +91,31 @@ export default function App() {
         return;
       }
 
-      // Fetch actual file contents to validate the SEARCH blocks
-      const uniqueFiles = Array.from(new Set(parsed.map(b => b.file)));
-      const res = await fetch('/api/files', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ files: uniqueFiles })
-      });
-      const data = await res.json();
+      // Exclude "Active File" from the backend validation fetch 
+      // since it doesn't represent a real file path yet.
+      const uniqueFiles = Array.from(new Set(parsed.map(b => b.file).filter(f => f !== 'Active File')));
+      
+      let data = { success: false, contents: {} as Record<string, string> };
+
+      if (uniqueFiles.length > 0) {
+        const res = await fetch('/api/files', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ files: uniqueFiles })
+        });
+        data = await res.json();
+      } else {
+        data.success = true; // Proceed even if we only have "Active File" blocks
+      }
       
       if (data.success) {
         const validatedBlocks = parsed.map(block => {
-          // Empty search implies a full file overwrite or new file creation (always valid)
-          if (!block.search.trim()) return { ...block, status: 'match' as const };
+          // New files or bare blocks without file paths are automatically accepted
+          if (!block.search.trim() || block.file === 'Active File') {
+            return { ...block, status: 'match' as const };
+          }
           
           const content = data.contents[block.file];
-          // Check if the exact search string exists in the real file
           const isMatch = content && content.includes(block.search);
           return { ...block, status: isMatch ? 'match' as const : 'no-match' as const };
         });
@@ -115,8 +124,8 @@ export default function App() {
         setDiffBlocks(parsed);
       }
     } catch (err) {
-      console.error('Failed to read clipboard text: ', err);
-      setToastMessage('Failed to read clipboard.');
+      console.error('Failed to parse pasted text: ', err);
+      setToastMessage('Error parsing clipboard text.');
     }
   };
 

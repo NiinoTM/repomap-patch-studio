@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ClipboardPaste, AlertTriangle } from 'lucide-react';
+import { ClipboardPaste, AlertTriangle, Bug } from 'lucide-react';
 import { DiffBlock } from '../types';
 
 interface DiffPanelProps {
@@ -11,6 +11,7 @@ interface DiffPanelProps {
 
 export function DiffPanel({ parsedBlocks, onPaste, onClear, pastedContent }: DiffPanelProps) {
   const [ignoredBlocks, setIgnoredBlocks] = useState<Set<string>>(new Set());
+  const [showDebug, setShowDebug] = useState(false);
 
   const toggleBlock = (id: string) => {
     const newIgnored = new Set(ignoredBlocks);
@@ -55,19 +56,67 @@ export function DiffPanel({ parsedBlocks, onPaste, onClear, pastedContent }: Dif
             </div>
           </div>
         ) : parsedBlocks.length === 0 ? (
-          /* FALLBACK WARNING WHEN PASTED TEXT HAS NO PARSABLE BLOCKS */
-          <div className="flex-1 border border-amber-500/30 bg-amber-950/20 rounded-xl p-6 flex flex-col items-center justify-center text-center space-y-3">
+          /* FALLBACK WARNING & CLIPBOARD DEBUGGER */
+          <div className="flex-1 border border-amber-500/30 bg-amber-950/20 rounded-xl p-6 flex flex-col items-center justify-center text-center space-y-3 overflow-y-auto custom-scrollbar">
             <AlertTriangle className="w-8 h-8 text-amber-400" />
             <p className="text-sm font-semibold text-zinc-200">No Diff Blocks Detected</p>
             <p className="text-xs text-zinc-400 max-w-md">
-              The pasted clipboard text does not contain valid <code className="text-cyan-400">&lt;&lt;&lt;&lt;&lt;&lt;&lt; SEARCH</code> or <code className="text-cyan-400">Create 'file'</code> blocks. Ensure your AI output used the required block format.
+              The pasted clipboard text does not contain valid <code className="text-cyan-400">&lt;&lt;&lt;&lt;&lt;&lt;&lt; SEARCH</code> or <code className="text-cyan-400">Create 'file'</code> blocks.
             </p>
-            <button 
-              onClick={onClear}
-              className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs rounded-lg transition-colors cursor-pointer"
-            >
-              Clear and Try Again
-            </button>
+            <div className="flex items-center space-x-3 pt-2">
+              <button 
+                onClick={onClear}
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs rounded-lg transition-colors cursor-pointer"
+              >
+                Clear
+              </button>
+              <button 
+                onClick={() => setShowDebug(!showDebug)}
+                className="px-4 py-2 bg-zinc-800/80 hover:bg-zinc-700/80 text-cyan-400 text-xs rounded-lg transition-colors cursor-pointer flex items-center space-x-1"
+              >
+                <Bug className="w-3.5 h-3.5 mr-1" />
+                <span>{showDebug ? 'Hide Clipboard Text' : 'Debug Clipboard Text'}</span>
+              </button>
+            </div>
+
+            {showDebug && (
+              <div className="w-full text-left bg-zinc-950 p-4 rounded-lg border border-zinc-800 mt-4 overflow-x-auto font-mono text-[11px] text-zinc-300 shadow-inner">
+                <p className="text-[10px] text-zinc-500 uppercase font-bold mb-3 flex items-center justify-between">
+                  <span>Advanced Line-by-Line Debugger</span>
+                  <span>{pastedContent.split(/\r?\n/).length} lines</span>
+                </p>
+                <div className="space-y-1 bg-zinc-900 p-3 rounded border border-zinc-800/50">
+                  {pastedContent.split(/\r?\n/).map((line, i) => {
+                    const trimmed = line.trim();
+                    let rowColor = 'text-zinc-400';
+                    let badge = null;
+
+                    if (trimmed.startsWith('<<<<<<< SEARCH')) {
+                      rowColor = 'text-cyan-400 font-bold bg-cyan-950/30';
+                      badge = <span className="ml-2 text-[9px] bg-cyan-500/20 text-cyan-300 px-1 rounded uppercase">Search Start</span>;
+                    } else if (trimmed.startsWith('=======')) {
+                      rowColor = 'text-amber-400 font-bold bg-amber-950/30';
+                      badge = <span className="ml-2 text-[9px] bg-amber-500/20 text-amber-300 px-1 rounded uppercase">Divider</span>;
+                    } else if (trimmed.startsWith('>>>>>>> REPLACE')) {
+                      rowColor = 'text-emerald-400 font-bold bg-emerald-950/30';
+                      badge = <span className="ml-2 text-[9px] bg-emerald-500/20 text-emerald-300 px-1 rounded uppercase">Replace End</span>;
+                    }
+
+                    return (
+                      <div key={i} className={`flex items-start px-1 -mx-1 rounded ${rowColor}`}>
+                        <span className="w-6 shrink-0 text-zinc-600 select-none text-right mr-3 border-r border-zinc-800 pr-2">
+                          {i + 1}
+                        </span>
+                        <span className="whitespace-pre-wrap break-all flex-1">
+                          {line === '' ? <span className="text-zinc-600 italic">↵ (empty line)</span> : line}
+                          {badge}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <>

@@ -1,63 +1,87 @@
 import { DiffBlock } from '../types';
 
 export function parseDiffBlocks(rawText: string): DiffBlock[] {
-  if (!rawText) return [];
+  console.log("[Parser] Starting parse. Input length:", rawText?.length);
+  if (!rawText || !rawText.trim()) return [];
 
-  // 1. Normalize Windows \r\n line endings to standard Unix \n
-  let text = rawText.replace(/\r\n/g, '\n');
-
+  // Split safely by any OS line ending
+  const lines = rawText.split(/\r\n|\n|\r/);
   const blocks: DiffBlock[] = [];
   let index = 1;
 
-  // 2. PARSER A: Match SEARCH / REPLACE blocks
-  // Matches:
-  // FILE: path/to/file.ext
-  // <<<<<<< SEARCH
-  // [search content]
-  // =======
-  // [replace content]
-  // >>>>>>> REPLACE
-  const searchReplaceRegex = /(?:FILE:\s*|OVERWRITE FILE:\s*|path=")?([^\n\r"]+)"?\s*\n(?:```[a-zA-Z]*\n)?<{3,}\s*SEARCH\n([\s\S]*?)\n={3,}\n([\s\S]*?)\n>{3,}\s*REPLACE(?:\n```)?/gi;
+  let state: 'IDLE' | 'SEARCH' | 'REPLACE' = 'IDLE';
+  let currentSearch: string[] = [];
+  let currentReplace: string[] = [];
+  let currentFile = 'Active File';
 
-  let match;
-  while ((match = searchReplaceRegex.exec(text)) !== null) {
-    let filePath = match[1].trim().replace(/^["']|["']$/g, '');
-    filePath = filePath.replace(/^FILE:\s*/i, '').replace(/^OVERWRITE FILE:\s*/i, '').trim();
+  console.log(`[Parser] Processing ${lines.length} lines...`);
 
-    const searchContent = match[2];
-    const replaceContent = match[3];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
 
-    blocks.push({
-      id: String(index++),
-      file: filePath,
-      status: 'match',
-      search: searchContent,
-      replace: replaceContent
-    });
+    if (state === 'IDLE') {
+      const fileMatch = trimmed.match(/^(?:FILE|OVERWRITE FILE|File|Path|###|\*\*)\s*:?\s*[`"']?([^`"']+\.[a-zA-Z0-9]+)[`"']?/i);
+      if (fileMatch) currentFile = fileMatch[1];
+
+      if (trimmed.startsWith('<<<<<<< SEARCH')) {
+        console.log(`[Parser] 🟢 Found SEARCH start at line ${i + 1}`);
+        state = 'SEARCH';
+        currentSearch = [];
+        currentReplace = [];
+      }
+    } 
+    else if (state === 'SEARCH') {
+      if (trimmed.startsWith('=======')) {
+        console.log(`[Parser] 🟡 Found DIVIDER at line ${i + 1}`);
+        state = 'REPLACE';
+      } else {
+        currentSearch.push(line);
+      }
+    } 
+    else if (state === 'REPLACE') {
+      if (trimmed.startsWith('>>>>>>> REPLACE')) {
+        console.log(`[Parser] 🔴 Found REPLACE end at line ${i + 1}. Pushing block!`);
+        
+        const sText = currentSearch.join('\n').replace(/^```[a-zA-Z]*\n/, '').replace(/\n```$/, '');
+        const rText = currentReplace.join('\n').replace(/^```[a-zA-Z]*\n/, '').replace(/\n```$/, '');
+
+        blocks.push({
+          id: String(index++),
+          file: currentFile,
+          status: 'match',
+          search: sText,
+          replace: rText
+        });
+        
+        state = 'IDLE';
+        currentFile = 'Active File';
+      } else {
+        currentReplace.push(line);
+      }
+    }
   }
 
-  // 3. PARSER B: Match "Create 'path/to/file'" or "Create path/to/file" blocks
-  // Matches:
-  // Create 'path/to/file.ext':
-  // ```typescript
-  // [content]
-  // ```
-  const createRegex = /(?:Create|Overwriting)\s+['"]?([^'":\n\r]+)['"]?:\s*\n```[a-zA-Z]*\n([\s\S]*?)\n```/gi;
+  console.log(`[Parser] Finished state machine. Found ${blocks.length} blocks.`);
 
-  while ((match = createRegex.exec(text)) !== null) {
+  // 2. FALLBACK FOR "Create 'file'" OVERWRITES
+  const createRegex = /(?:Create|Overwriting|File:)[ \t]*['"]?([^'":\n]+?\.[a-zA-Z0-9]+)['"]?:?[ \t]*\n```[a-zA-Z]*\n([\s\S]*?)\n```/gi;
+  let match;
+  while ((match = createRegex.exec(rawText)) !== null) {
     const filePath = match[1].trim();
     const replaceContent = match[2];
-
     if (!blocks.some(b => b.file === filePath && b.replace === replaceContent)) {
+      console.log(`[Parser] 📝 Found Create/Overwrite block for ${filePath}`);
       blocks.push({
         id: String(index++),
         file: filePath,
         status: 'match',
-        search: '', // Empty search indicates new file or total overwrite
+        search: '', 
         replace: replaceContent
       });
     }
   }
 
+  console.log(`[Parser] Final returned blocks:`, blocks);
   return blocks;
 }
