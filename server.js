@@ -294,6 +294,51 @@ app.post("/api/files", (req, res) => {
   res.json({ success: true, contents });
 });
 
+// Helper to list directories for folder browser
+function getDirectories(dirPath) {
+  try {
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+  } catch (e) {
+    return [];
+  }
+}
+
+function getRootDrives() {
+  if (process.platform === 'win32') {
+    const drives = [];
+    for (let i = 67; i <= 90; i++) { // C-Z
+      const drive = String.fromCharCode(i) + ':';
+      if (fs.existsSync(drive + '\\')) {
+        drives.push(drive);
+      }
+    }
+    return drives;
+  } else {
+    return ['/'];
+  }
+}
+
+app.get("/api/browse", (req, res) => {
+  const queryPath = req.query.path || '';
+  let absolutePath = '';
+  if (!queryPath) {
+    // Return root drives/directories
+    return res.json({ success: true, path: '', entries: getRootDrives() });
+  }
+  
+  absolutePath = path.resolve(queryPath); // Prevent path traversal
+  if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isDirectory()) {
+    return res.status(400).json({ success: false, error: "Invalid directory" });
+  }
+  
+  const dirs = getDirectories(absolutePath);
+  res.json({ success: true, path: absolutePath, entries: dirs });
+});
+
 function findCondensedRange(content, search) {
   const preCleanContent = content
     .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")

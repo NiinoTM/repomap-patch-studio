@@ -1,9 +1,111 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+
+interface FolderBrowserProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSelect: (path: string) => void;
+}
+
+function FolderBrowserModal({ isOpen, onClose, onSelect }: FolderBrowserProps) {
+  const [currentPath, setCurrentPath] = useState("");
+  const [entries, setEntries] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setError("");
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (currentPath) params.set("path", currentPath);
+    fetch(`/api/browse?${params.toString()}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setEntries(data.entries);
+          if (!currentPath && data.path) setCurrentPath(data.path);
+        } else {
+          setError(data.error || "Failed to load directories");
+          setEntries([]);
+        }
+      })
+      .catch(() => setError("Network error"))
+      .finally(() => setLoading(false));
+  }, [isOpen, currentPath]);
+
+  if (!isOpen) return null;
+
+  const navigateTo = (dir: string) => {
+    const sep = currentPath.endsWith("/") || currentPath.endsWith("\\") ? "" : "/";
+    setCurrentPath(currentPath + sep + dir);
+  };
+
+  const goUp = () => {
+    const parent = currentPath.split("/").slice(0, -1).join("/") || "";
+    setCurrentPath(parent || "");
+  };
+
+  const selectFolder = () => {
+    onSelect(currentPath);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl w-[500px] max-h-[80vh] flex flex-col">
+        <div className="p-4 border-b border-zinc-800 flex justify-between items-center">
+          <h2 className="text-sm font-semibold text-zinc-100">Select Repository Folder</h2>
+          <button
+            onClick={onClose}
+            className="text-zinc-400 hover:text-white text-lg leading-none px-2"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="p-2 border-b border-zinc-800 flex items-center space-x-2 text-xs">
+          <button
+            onClick={goUp}
+            disabled={!currentPath}
+            className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 rounded text-zinc-300 disabled:opacity-50"
+          >
+            ↑ Up
+          </button>
+          <span className="text-zinc-400 truncate flex-1" title={currentPath}>
+            {currentPath || "/"}
+          </span>
+          <button
+            onClick={selectFolder}
+            className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 rounded text-white font-medium"
+          >
+            Select
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-2 text-sm">
+          {loading && <div className="text-zinc-500 p-4">Loading...</div>}
+          {error && <div className="text-rose-400 p-4">{error}</div>}
+          {!loading && !error && entries.length === 0 && (
+            <div className="text-zinc-500 p-4">No subdirectories</div>
+          )}
+          {entries.map((entry) => (
+            <button
+              key={entry}
+              onClick={() => navigateTo(entry)}
+              className="w-full text-left px-3 py-1.5 rounded hover:bg-zinc-800 text-zinc-300 hover:text-white transition-colors flex items-center space-x-2"
+            >
+              <span className="text-cyan-400">📁</span>
+              <span>{entry}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface HeaderProps {
   onUndoSuccess?: () => void;
   repoPath: string;
-  onChangeRepo: () => void;
+  onChangeRepo: (newPath: string) => void;
   tokenStats?: {
     total: number;
     map: number;
@@ -19,6 +121,7 @@ export function Header({
   tokenStats,
 }: HeaderProps) {
   const [isUndoing, setIsUndoing] = useState(false);
+  const [showBrowser, setShowBrowser] = useState(false);
 
   const handleUndo = async () => {
     if (
@@ -94,7 +197,7 @@ export function Header({
             {repoPath}
           </span>
           <button
-            onClick={onChangeRepo}
+            onClick={() => setShowBrowser(true)}
             className="text-cyan-500 hover:text-cyan-400 font-medium px-1 shrink-0"
           >
             Change
@@ -163,6 +266,15 @@ export function Header({
           </div>
         </button>
       </div>
+
+      <FolderBrowserModal
+        isOpen={showBrowser}
+        onClose={() => setShowBrowser(false)}
+        onSelect={(path) => {
+          onChangeRepo(path);
+          setShowBrowser(false);
+        }}
+      />
     </header>
   );
 }

@@ -37,16 +37,13 @@ export default function App() {
           setRepoFiles(data.files);
           setRepoMap(data.repoMap);
           setFileStats(data.fileStats || {});
-          setDependencyMap(
-            data.dependencyMap || { outbound: {}, inbound: {} },
-          );
+          setDependencyMap(data.dependencyMap || { outbound: {}, inbound: {} });
         }
       })
       .catch((err) => console.error("Failed to fetch repo context:", err));
   }, []);
 
-  const handleChangeRepo = async () => {
-    const newPath = prompt("Enter absolute path to your repository:", repoPath);
+  const handleChangeRepo = async (newPath: string) => {
     if (!newPath || newPath === repoPath) return;
 
     try {
@@ -61,9 +58,7 @@ export default function App() {
         setRepoFiles(data.files);
         setRepoMap(data.repoMap);
         setFileStats(data.fileStats || {});
-        setDependencyMap(
-          data.dependencyMap || { outbound: {}, inbound: {} },
-        );
+        setDependencyMap(data.dependencyMap || { outbound: {}, inbound: {} });
         setToastMessage("Repository context updated successfully!");
       } else {
         alert("Error: " + data.error);
