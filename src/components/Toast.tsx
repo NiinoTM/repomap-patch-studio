@@ -1,6 +1,6 @@
-import { Check } from 'lucide-react';
-import { useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Check } from "lucide-react";
+import { useEffect } from "react";
+import { motion, AnimatePresence } from "motion/react";
 
 interface ToastProps {
   message: string | null;

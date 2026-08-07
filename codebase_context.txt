@@ -313,32 +313,73 @@ app.post('/api/files', (req, res) => {
   res.json({ success: true, contents });
 });
 
-// 1. API: Apply Changes & Commit to Git
+// 1. API: Apply Changes & Commit to Git (with Smart Indentation Recovery)
 app.post('/api/apply', (req, res) => {
   const { blocks, commitMessage } = req.body;
 
   try {
-    // Git Safety Checkpoint BEFORE editing (wrapped in try/catch to not crash if nothing to commit)
     try { execSync('git add . && git commit -m "pre-ai-edit"', { cwd: targetRepoPath, stdio: 'ignore' }); } catch (e) { /* ignore */ }
 
-    // Apply each diff block to the real file system
     for (const block of blocks) {
       const fullPath = path.resolve(targetRepoPath, block.file);
-
-      // Handle Full Overwrites or Empty Search Blocks
-      if (!block.search.trim()) {
+      if (!fs.existsSync(fullPath)) {
         fs.writeFileSync(fullPath, block.replace, 'utf-8');
+        continue;
+      }
+
+      let content = fs.readFileSync(fullPath, 'utf-8');
+
+      if (!block.search.trim() || block.file === 'Active File') {
+        fs.writeFileSync(fullPath, block.replace, 'utf-8');
+        continue;
+      }
+
+      const normContent = content.replace(/\r\n/g, '\n');
+      const normSearch = block.search.replace(/\r\n/g, '\n');
+      const normReplace = block.replace.replace(/\r\n/g, '\n');
+
+      if (normContent.includes(normSearch)) {
+        // Exact match
+        const updated = normContent.replace(normSearch, normReplace);
+        fs.writeFileSync(fullPath, updated, 'utf-8');
       } else {
-        // Handle Partial Search & Replace
-        let content = fs.readFileSync(fullPath, 'utf-8');
-        if (content.includes(block.search)) {
-          content = content.replace(block.search, block.replace);
-          fs.writeFileSync(fullPath, content, 'utf-8');
+        // Smart Fuzzy Indentation Replacement
+        const searchLines = normSearch.split('\n').map(l => l.trim()).filter(Boolean);
+        const contentLines = normContent.split('\n');
+
+        let matchIndex = -1;
+        for (let i = 0; i <= contentLines.length - searchLines.length; i++) {
+          let isCandidate = true;
+          for (let j = 0; j < searchLines.length; j++) {
+            if (contentLines[i + j].trim() !== searchLines[j]) {
+              isCandidate = false;
+              break;
+            }
+          }
+          if (isCandidate) {
+            matchIndex = i;
+            break;
+          }
+        }
+
+        if (matchIndex !== -1) {
+          // Detect original indentation of the target line
+          const indentMatch = contentLines[matchIndex].match(/^[ \t]*/);
+          const indent = indentMatch ? indentMatch[0] : '';
+
+          const replaceLines = normReplace.split('\n').map(line => {
+            return line.trim() ? indent + line.replace(/^[ \t]*/, '') : '';
+          });
+
+          contentLines.splice(matchIndex, searchLines.length, ...replaceLines);
+          fs.writeFileSync(fullPath, contentLines.join('\n'), 'utf-8');
+        } else {
+          // Fallback: overwrite if no match
+          fs.writeFileSync(fullPath, block.replace, 'utf-8');
         }
       }
     }
 
-    // Git Commit AFTER editing
     execSync(`git add . && git commit -m "${commitMessage || 'ai-edit: updated files'}"`, { cwd: targetRepoPath, stdio: 'ignore' });
     res.json({ success: true, message: 'Changes applied and committed to Git!' });
   } catch (err) {

@@ -1,8 +1,8 @@
 // server.js
-import express from 'express';
-import fs from 'fs';
-import path from 'path';
-import { execSync } from 'child_process';
+import express from "express";
+import fs from "fs";
+import path from "path";
+import { execSync } from "child_process";
 
 const app = express();
 app.use(express.json());
@@ -17,11 +17,21 @@ const getAllFiles = (dir, basePath = dir, fileList = []) => {
     const filePath = path.join(dir, file);
     const stat = fs.statSync(filePath);
     if (stat.isDirectory()) {
-      if (!['node_modules', '.git', 'dist', 'build', 'coverage', '.vscode', '.idea'].includes(file)) {
+      if (
+        ![
+          "node_modules",
+          ".git",
+          "dist",
+          "build",
+          "coverage",
+          ".vscode",
+          ".idea",
+        ].includes(file)
+      ) {
         getAllFiles(filePath, basePath, fileList);
       }
     } else {
-      fileList.push(path.relative(basePath, filePath).replace(/\\/g, '/'));
+      fileList.push(path.relative(basePath, filePath).replace(/\\/g, "/"));
     }
   }
   return fileList;
@@ -34,30 +44,51 @@ const generateRepoMap = (basePath, filesList) => {
     const fullPath = path.join(basePath, file);
     const ext = path.extname(file).toLowerCase();
     let content;
-    try { content = fs.readFileSync(fullPath, 'utf-8'); } catch (e) { continue; }
+    try {
+      content = fs.readFileSync(fullPath, "utf-8");
+    } catch (e) {
+      continue;
+    }
 
     let symbols = [];
-    const lines = content.split('\n');
-    
+    const lines = content.split("\n");
+
     for (let line of lines) {
       const trimmed = line.trim();
-      if (['.js', '.jsx', '.ts', '.tsx'].includes(ext)) {
+      if ([".js", ".jsx", ".ts", ".tsx"].includes(ext)) {
         // Extract Classes, Functions, Interfaces, Types
-        let match = trimmed.match(/^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function|class|interface|type)\s+([A-Za-z0-9_]+)/);
-        if (match) { symbols.push(trimmed.replace(/\s*\{.*$/, '')); continue; }
+        let match = trimmed.match(
+          /^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function|class|interface|type)\s+([A-Za-z0-9_]+)/,
+        );
+        if (match) {
+          symbols.push(trimmed.replace(/\s*\{.*$/, ""));
+          continue;
+        }
         // Extract Arrow Functions assigned to variables
-        match = trimmed.match(/^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_]+)\s*=>/);
-        if (match) { symbols.push(trimmed.replace(/\s*=>.*$/, '=> { ... }')); continue; }
-      } else if (['.py'].includes(ext)) {
-        if (/^(?:async\s+)?(?:def|class)\s+[A-Za-z0-9_]+/.test(trimmed)) { symbols.push(trimmed.replace(/:.*$/, '')); }
-      } else if (['.go'].includes(ext)) {
-        if (/^func\s+[A-Za-z0-9_]+/.test(trimmed) || /^type\s+[A-Za-z0-9_]+\s+(?:struct|interface)/.test(trimmed)) { symbols.push(trimmed.replace(/\{.*$/, '')); }
+        match = trimmed.match(
+          /^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_]+)\s*=>/,
+        );
+        if (match) {
+          symbols.push(trimmed.replace(/\s*=>.*$/, "=> { ... }"));
+          continue;
+        }
+      } else if ([".py"].includes(ext)) {
+        if (/^(?:async\s+)?(?:def|class)\s+[A-Za-z0-9_]+/.test(trimmed)) {
+          symbols.push(trimmed.replace(/:.*$/, ""));
+        }
+      } else if ([".go"].includes(ext)) {
+        if (
+          /^func\s+[A-Za-z0-9_]+/.test(trimmed) ||
+          /^type\s+[A-Za-z0-9_]+\s+(?:struct|interface)/.test(trimmed)
+        ) {
+          symbols.push(trimmed.replace(/\{.*$/, ""));
+        }
       }
     }
 
     if (symbols.length > 0) {
       mapOutput += file + ":\n";
-      symbols.forEach(s => mapOutput += "│ " + s + "\n");
+      symbols.forEach((s) => (mapOutput += "│ " + s + "\n"));
     } else {
       mapOutput += file + "\n";
     }
@@ -87,15 +118,16 @@ const getDependencyMap = (basePath, filesList) => {
 
   for (const file of filesList) {
     const ext = path.extname(file).toLowerCase();
-    if (!['.js', '.jsx', '.ts', '.tsx'].includes(ext)) continue;
+    if (![".js", ".jsx", ".ts", ".tsx"].includes(ext)) continue;
 
     try {
       const fullPath = path.join(basePath, file);
-      const content = fs.readFileSync(fullPath, 'utf-8');
+      const content = fs.readFileSync(fullPath, "utf-8");
       const imports = new Set();
 
       // Matches import/export statements: import ... from '...' or require('...')
-      const importRegex = /(?:import|export)\s+[\s\S]*?\s+from\s+['"]([^'"]+)['"]|require\(['"]([^'"]+)['"]\)/g;
+      const importRegex =
+        /(?:import|export)\s+[\s\S]*?\s+from\s+['"]([^'"]+)['"]|require\(['"]([^'"]+)['"]\)/g;
       let match;
 
       while ((match = importRegex.exec(content)) !== null) {
@@ -103,14 +135,16 @@ const getDependencyMap = (basePath, filesList) => {
         if (!importPath) continue;
 
         // Resolve path aliases like `@/`
-        if (importPath.startsWith('@/')) {
-          importPath = './' + importPath.slice(2);
+        if (importPath.startsWith("@/")) {
+          importPath = "./" + importPath.slice(2);
         }
 
         // Only resolve local relative imports (starting with . or /)
-        if (importPath.startsWith('.')) {
+        if (importPath.startsWith(".")) {
           const fileDir = path.dirname(file);
-          const rawResolved = path.normalize(path.join(fileDir, importPath)).replace(/\\/g, '/');
+          const rawResolved = path
+            .normalize(path.join(fileDir, importPath))
+            .replace(/\\/g, "/");
 
           // Candidate file extensions to test
           const candidates = [
@@ -122,7 +156,7 @@ const getDependencyMap = (basePath, filesList) => {
             `${rawResolved}/index.tsx`,
             `${rawResolved}/index.ts`,
             `${rawResolved}/index.jsx`,
-            `${rawResolved}/index.js`
+            `${rawResolved}/index.js`,
           ];
 
           for (const cand of candidates) {
@@ -146,20 +180,27 @@ const getDependencyMap = (basePath, filesList) => {
 };
 
 // API: Get Current Repo Path, Files, Repo Map, Stats & Dependency Map
-app.get('/api/repo', (req, res) => {
+app.get("/api/repo", (req, res) => {
   try {
     const files = getAllFiles(targetRepoPath);
     const repoMap = generateRepoMap(targetRepoPath, files);
     const fileStats = getFileStats(targetRepoPath, files);
     const dependencyMap = getDependencyMap(targetRepoPath, files);
-    res.json({ success: true, path: targetRepoPath, files, repoMap, fileStats, dependencyMap });
+    res.json({
+      success: true,
+      path: targetRepoPath,
+      files,
+      repoMap,
+      fileStats,
+      dependencyMap,
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // API: Change Repo Path
-app.post('/api/repo', (req, res) => {
+app.post("/api/repo", (req, res) => {
   const { newPath } = req.body;
   if (fs.existsSync(newPath) && fs.statSync(newPath).isDirectory()) {
     targetRepoPath = path.resolve(newPath);
@@ -167,63 +208,144 @@ app.post('/api/repo', (req, res) => {
     const repoMap = generateRepoMap(targetRepoPath, files);
     const fileStats = getFileStats(targetRepoPath, files);
     const dependencyMap = getDependencyMap(targetRepoPath, files);
-    res.json({ success: true, path: targetRepoPath, files, repoMap, fileStats, dependencyMap });
+    res.json({
+      success: true,
+      path: targetRepoPath,
+      files,
+      repoMap,
+      fileStats,
+      dependencyMap,
+    });
   } else {
-    res.status(400).json({ success: false, error: 'Invalid or missing directory path.' });
+    res
+      .status(400)
+      .json({ success: false, error: "Invalid or missing directory path." });
   }
 });
 
 // API: Fetch File Contents for Prompt Assembly
-app.post('/api/files', (req, res) => {
+app.post("/api/files", (req, res) => {
   const { files } = req.body;
   const contents = {};
-  files.forEach(f => {
-    try { contents[f] = fs.readFileSync(path.join(targetRepoPath, f), 'utf-8'); } catch(e){}
+  files.forEach((f) => {
+    try {
+      contents[f] = fs.readFileSync(path.join(targetRepoPath, f), "utf-8");
+    } catch (e) {}
   });
   res.json({ success: true, contents });
 });
 
-// 1. API: Apply Changes & Commit to Git
-app.post('/api/apply', (req, res) => {
+// 1. API: Apply Changes & Commit to Git (with Smart Indentation Recovery)
+app.post("/api/apply", (req, res) => {
   const { blocks, commitMessage } = req.body;
 
   try {
-    // Git Safety Checkpoint BEFORE editing (wrapped in try/catch to not crash if nothing to commit)
-    try { execSync('git add . && git commit -m "pre-ai-edit"', { cwd: targetRepoPath, stdio: 'ignore' }); } catch (e) { /* ignore */ }
+    try {
+      execSync('git add . && git commit -m "pre-ai-edit"', {
+        cwd: targetRepoPath,
+        stdio: "ignore",
+      });
+    } catch (e) {
+      /* ignore */
+    }
 
-    // Apply each diff block to the real file system
     for (const block of blocks) {
       const fullPath = path.resolve(targetRepoPath, block.file);
+      if (!fs.existsSync(fullPath)) {
+        fs.writeFileSync(fullPath, block.replace, "utf-8");
+        continue;
+      }
 
-      // Handle Full Overwrites or Empty Search Blocks
-      if (!block.search.trim()) {
-        fs.writeFileSync(fullPath, block.replace, 'utf-8');
+      let content = fs.readFileSync(fullPath, "utf-8");
+
+      if (!block.search.trim() || block.file === "Active File") {
+        fs.writeFileSync(fullPath, block.replace, "utf-8");
+        continue;
+      }
+
+      const normContent = content.replace(/\r\n/g, "\n");
+      const normSearch = block.search.replace(/\r\n/g, "\n");
+      const normReplace = block.replace.replace(/\r\n/g, "\n");
+
+      if (normContent.includes(normSearch)) {
+        // Exact match
+        const updated = normContent.replace(normSearch, normReplace);
+        fs.writeFileSync(fullPath, updated, "utf-8");
       } else {
-        // Handle Partial Search & Replace
-        let content = fs.readFileSync(fullPath, 'utf-8');
-        if (content.includes(block.search)) {
-          content = content.replace(block.search, block.replace);
-          fs.writeFileSync(fullPath, content, 'utf-8');
+        // Smart Fuzzy Indentation Replacement
+        const searchLines = normSearch
+          .split("\n")
+          .map((l) => l.trim())
+          .filter(Boolean);
+        const contentLines = normContent.split("\n");
+
+        let matchIndex = -1;
+        for (let i = 0; i <= contentLines.length - searchLines.length; i++) {
+          let isCandidate = true;
+          for (let j = 0; j < searchLines.length; j++) {
+            if (contentLines[i + j].trim() !== searchLines[j]) {
+              isCandidate = false;
+              break;
+            }
+          }
+          if (isCandidate) {
+            matchIndex = i;
+            break;
+          }
+        }
+
+        if (matchIndex !== -1) {
+          // Detect original indentation of the target line
+          const indentMatch = contentLines[matchIndex].match(/^[ \t]*/);
+          const indent = indentMatch ? indentMatch[0] : '';
+
+          const replaceLines = normReplace.split('\n').map(line => {
+            return line.trim() ? indent + line.replace(/^[ \t]*/, '') : '';
+          });
+
+          contentLines.splice(matchIndex, searchLines.length, ...replaceLines);
+          fs.writeFileSync(fullPath, contentLines.join('\n'), 'utf-8');
+        } else {
+          // Fallback: overwrite if no match
+          fs.writeFileSync(fullPath, block.replace, 'utf-8');
         }
       }
     }
 
-    // Git Commit AFTER editing
+    // AUTO-FORMAT MODIFIED FILES WITH PRETTIER
+    for (const block of blocks) {
+      if (block.file && block.file !== 'Active File') {
+        try {
+          execSync(`npx prettier --write "${block.file}"`, { cwd: targetRepoPath, stdio: 'ignore' });
+        } catch (e) {
+          // Gracefully ignore if prettier fails or is unsupported for this file
+        }
+      }
+    }
+
     execSync(`git add . && git commit -m "${commitMessage || 'ai-edit: updated files'}"`, { cwd: targetRepoPath, stdio: 'ignore' });
-    res.json({ success: true, message: 'Changes applied and committed to Git!' });
+    res.json({ success: true, message: 'Changes applied, auto-formatted & committed to Git!' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // 2. API: Git Reset / Undo Last Edit
-app.post('/api/undo', (req, res) => {
+app.post("/api/undo", (req, res) => {
   try {
-    execSync('git reset --hard HEAD~1', { cwd: targetRepoPath, stdio: 'ignore' });
-    res.json({ success: true, message: 'Hard reset to previous commit successful!' });
+    execSync("git reset --hard HEAD~1", {
+      cwd: targetRepoPath,
+      stdio: "ignore",
+    });
+    res.json({
+      success: true,
+      message: "Hard reset to previous commit successful!",
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-app.listen(3001, () => console.log('🚀 Local Patch Backend running on http://localhost:3001'));
+app.listen(3001, () =>
+  console.log("🚀 Local Patch Backend running on http://localhost:3001"),
+);

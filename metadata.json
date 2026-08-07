@@ -2,7 +2,5 @@
   "name": "RepoMap Patch Studio",
   "description": "A developer-focused GUI for managing AI code edits using a copy-paste workflow with Repo Maps and Git safety.",
   "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

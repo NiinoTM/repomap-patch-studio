@@ -1,7 +1,7 @@
 export interface DiffBlock {
   id: string;
   file: string;
-  status: 'match' | 'no-match';
+  status: "match" | "no-match";
   search: string;
   replace: string;
 }

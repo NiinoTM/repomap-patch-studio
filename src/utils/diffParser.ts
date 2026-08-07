@@ -1,4 +1,4 @@
-import { DiffBlock } from '../types';
+import { DiffBlock } from "../types";
 
 export function parseDiffBlocks(rawText: string): DiffBlock[] {
   console.log("[Parser] Starting parse. Input length:", rawText?.length);
@@ -9,10 +9,10 @@ export function parseDiffBlocks(rawText: string): DiffBlock[] {
   const blocks: DiffBlock[] = [];
   let index = 1;
 
-  let state: 'IDLE' | 'SEARCH' | 'REPLACE' = 'IDLE';
+  let state: "IDLE" | "SEARCH" | "REPLACE" = "IDLE";
   let currentSearch: string[] = [];
   let currentReplace: string[] = [];
-  let currentFile = 'Active File';
+  let currentFile = "Active File";
 
   console.log(`[Parser] Processing ${lines.length} lines...`);
 
@@ -20,64 +20,77 @@ export function parseDiffBlocks(rawText: string): DiffBlock[] {
     const line = lines[i];
     const trimmed = line.trim();
 
-    if (state === 'IDLE') {
-      const fileMatch = trimmed.match(/^(?:FILE|OVERWRITE FILE|File|Path|###|\*\*)\s*:?\s*[`"']?([^`"']+\.[a-zA-Z0-9]+)[`"']?/i);
+    if (state === "IDLE") {
+      const fileMatch = trimmed.match(
+        /^(?:FILE|OVERWRITE FILE|File|Path|###|\*\*)\s*:?\s*[`"']?([^`"']+\.[a-zA-Z0-9]+)[`"']?/i,
+      );
       if (fileMatch) currentFile = fileMatch[1];
 
-      if (trimmed.startsWith('<<<<<<< SEARCH')) {
+      if (trimmed.startsWith("<<<<<<< SEARCH")) {
         console.log(`[Parser] 🟢 Found SEARCH start at line ${i + 1}`);
-        state = 'SEARCH';
+        state = "SEARCH";
         currentSearch = [];
         currentReplace = [];
       }
-    } 
-    else if (state === 'SEARCH') {
-      if (trimmed.startsWith('=======')) {
+    } else if (state === "SEARCH") {
+      if (trimmed.startsWith("=======")) {
         console.log(`[Parser] 🟡 Found DIVIDER at line ${i + 1}`);
-        state = 'REPLACE';
+        state = "REPLACE";
       } else {
         currentSearch.push(line);
       }
-    } 
-    else if (state === 'REPLACE') {
-      if (trimmed.startsWith('>>>>>>> REPLACE')) {
-        console.log(`[Parser] 🔴 Found REPLACE end at line ${i + 1}. Pushing block!`);
-        
-        const sText = currentSearch.join('\n').replace(/^```[a-zA-Z]*\n/, '').replace(/\n```$/, '');
-        const rText = currentReplace.join('\n').replace(/^```[a-zA-Z]*\n/, '').replace(/\n```$/, '');
+    } else if (state === "REPLACE") {
+      if (trimmed.startsWith(">>>>>>> REPLACE")) {
+        console.log(
+          `[Parser] 🔴 Found REPLACE end at line ${i + 1}. Pushing block!`,
+        );
+
+        const sText = currentSearch
+          .join("\n")
+          .replace(/^```[a-zA-Z]*\n/, "")
+          .replace(/\n```$/, "");
+        const rText = currentReplace
+          .join("\n")
+          .replace(/^```[a-zA-Z]*\n/, "")
+          .replace(/\n```$/, "");
 
         blocks.push({
           id: String(index++),
           file: currentFile,
-          status: 'match',
+          status: "match",
           search: sText,
-          replace: rText
+          replace: rText,
         });
-        
-        state = 'IDLE';
-        currentFile = 'Active File';
+
+        state = "IDLE";
+        currentFile = "Active File";
       } else {
         currentReplace.push(line);
       }
     }
   }
 
-  console.log(`[Parser] Finished state machine. Found ${blocks.length} blocks.`);
+  console.log(
+    `[Parser] Finished state machine. Found ${blocks.length} blocks.`,
+  );
 
   // 2. FALLBACK FOR "Create 'file'" OVERWRITES
-  const createRegex = /(?:Create|Overwriting|File:)[ \t]*['"]?([^'":\n]+?\.[a-zA-Z0-9]+)['"]?:?[ \t]*\n```[a-zA-Z]*\n([\s\S]*?)\n```/gi;
+  const createRegex =
+    /(?:Create|Overwriting|File:)[ \t]*['"]?([^'":\n]+?\.[a-zA-Z0-9]+)['"]?:?[ \t]*\n```[a-zA-Z]*\n([\s\S]*?)\n```/gi;
   let match;
   while ((match = createRegex.exec(rawText)) !== null) {
     const filePath = match[1].trim();
     const replaceContent = match[2];
-    if (!blocks.some(b => b.file === filePath && b.replace === replaceContent)) {
+    if (
+      !blocks.some((b) => b.file === filePath && b.replace === replaceContent)
+    ) {
       console.log(`[Parser] 📝 Found Create/Overwrite block for ${filePath}`);
       blocks.push({
         id: String(index++),
         file: filePath,
-        status: 'match',
-        search: '', 
-        replace: replaceContent
+        status: "match",
+        search: "",
+        replace: replaceContent,
       });
     }
   }
