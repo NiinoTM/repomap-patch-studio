@@ -115,6 +115,8 @@ const getFileStats = (basePath, filesList) => {
 const getDependencyMap = (basePath, filesList) => {
   const outbound = {};
   const inboundMap = {};
+  const apiOutbound = {};
+  const apiInboundMap = {};
   const fileSet = new Set(filesList);
 
   // 1. Module Imports Parser (import ... from '...' or require('...'))
@@ -222,13 +224,14 @@ const getDependencyMap = (basePath, filesList) => {
         if (routeHandlers[cleanRoute]) {
           for (const backendFile of routeHandlers[cleanRoute]) {
             if (backendFile !== file) {
-              if (!outbound[file]) outbound[file] = [];
-              if (!outbound[file].includes(backendFile)) {
-                outbound[file].push(backendFile);
+              if (!apiOutbound[file]) apiOutbound[file] = [];
+              if (!apiOutbound[file].includes(backendFile)) {
+                apiOutbound[file].push(backendFile);
               }
 
-              if (!inboundMap[backendFile]) inboundMap[backendFile] = new Set();
-              inboundMap[backendFile].add(file);
+              if (!apiInboundMap[backendFile])
+                apiInboundMap[backendFile] = new Set();
+              apiInboundMap[backendFile].add(file);
             }
           }
         }
@@ -241,7 +244,12 @@ const getDependencyMap = (basePath, filesList) => {
     inbound[key] = Array.from(inboundMap[key]);
   }
 
-  return { outbound, inbound };
+  const apiInbound = {};
+  for (const key in apiInboundMap) {
+    apiInbound[key] = Array.from(apiInboundMap[key]);
+  }
+
+  return { outbound, inbound, apiOutbound, apiInbound };
 };
 
 // API: Get Current Repo Path, Files, Repo Map, Stats & Dependency Map
@@ -302,11 +310,13 @@ app.post("/api/files", (req, res) => {
 
 // Helper to find exact character ranges ignoring comments, newlines, whitespace, JSX {" "}, commas, quotes, parens, and semicolons
 function findCondensedRange(content, search) {
-  const preCleanContent = content.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '').replace(/\{\s*["']\s*["']\s*\}/g, '');
+  const preCleanContent = content
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
+    .replace(/\{\s*["']\s*["']\s*\}/g, "");
   const cleanSearch = search
-    .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '')
-    .replace(/\{\s*["']\s*["']\s*\}/g, '')
-    .replace(/[\s,'"`();]+/g, '');
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
+    .replace(/\{\s*["']\s*["']\s*\}/g, "")
+    .replace(/[\s,'"`();]+/g, "");
 
   if (!cleanSearch) return null;
 
@@ -343,7 +353,7 @@ function findCondensedRange(content, search) {
 }
 
 // 1. API: Apply Changes & Commit to Git (with Multi-line & Indentation Recovery)
-app.post('/api/apply', (req, res) => {
+app.post("/api/apply", (req, res) => {
   const { blocks, commitMessage } = req.body;
 
   try {
@@ -404,23 +414,30 @@ app.post('/api/apply', (req, res) => {
         if (matchIndex !== -1) {
           // Detect original indentation of the target line
           const indentMatch = contentLines[matchIndex].match(/^[ \t]*/);
-          const indent = indentMatch ? indentMatch[0] : '';
+          const indent = indentMatch ? indentMatch[0] : "";
 
-          const replaceLines = normReplace.split('\n').map(line => {
-            return line.trim() ? indent + line.replace(/^[ \t]*/, '') : '';
+          const replaceLines = normReplace.split("\n").map((line) => {
+            return line.trim() ? indent + line.replace(/^[ \t]*/, "") : "";
           });
 
           contentLines.splice(matchIndex, searchLines.length, ...replaceLines);
-          fs.writeFileSync(fullPath, contentLines.join('\n'), 'utf-8');
+          fs.writeFileSync(fullPath, contentLines.join("\n"), "utf-8");
         } else {
           // 3. Condensed Token Stream Replacement
-          const cleanNormContent = normContent.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '').replace(/\{\s*["']\s*["']\s*\}/g, '');
+          const cleanNormContent = normContent
+            .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
+            .replace(/\{\s*["']\s*["']\s*\}/g, "");
           const range = findCondensedRange(normContent, normSearch);
           if (range) {
-            const updated = cleanNormContent.slice(0, range.start) + normReplace + cleanNormContent.slice(range.end);
-            fs.writeFileSync(fullPath, updated, 'utf-8');
+            const updated =
+              cleanNormContent.slice(0, range.start) +
+              normReplace +
+              cleanNormContent.slice(range.end);
+            fs.writeFileSync(fullPath, updated, "utf-8");
           } else {
-            console.warn(`[Apply Warning] Could not find SEARCH block for ${block.file}. File left untouched to prevent corruption.`);
+            console.warn(
+              `[Apply Warning] Could not find SEARCH block for ${block.file}. File left untouched to prevent corruption.`,
+            );
           }
         }
       }
@@ -428,17 +445,26 @@ app.post('/api/apply', (req, res) => {
 
     // AUTO-FORMAT MODIFIED FILES WITH PRETTIER
     for (const block of blocks) {
-      if (block.file && block.file !== 'Active File') {
+      if (block.file && block.file !== "Active File") {
         try {
-          execSync(`npx prettier --write "${block.file}"`, { cwd: targetRepoPath, stdio: 'ignore' });
+          execSync(`npx prettier --write "${block.file}"`, {
+            cwd: targetRepoPath,
+            stdio: "ignore",
+          });
         } catch (e) {
           // Gracefully ignore if prettier fails or is unsupported for this file
         }
       }
     }
 
-    execSync(`git add . && git commit -m "${commitMessage || 'ai-edit: updated files'}"`, { cwd: targetRepoPath, stdio: 'ignore' });
-    res.json({ success: true, message: 'Changes applied, auto-formatted & committed to Git!' });
+    execSync(
+      `git add . && git commit -m "${commitMessage || "ai-edit: updated files"}"`,
+      { cwd: targetRepoPath, stdio: "ignore" },
+    );
+    res.json({
+      success: true,
+      message: "Changes applied, auto-formatted & committed to Git!",
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

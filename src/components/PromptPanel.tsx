@@ -18,6 +18,7 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
+  Globe,
 } from "lucide-react";
 
 interface PromptPanelProps {
@@ -29,6 +30,8 @@ interface PromptPanelProps {
   dependencyMap?: {
     outbound: Record<string, string[]>;
     inbound: Record<string, string[]>;
+    apiOutbound?: Record<string, string[]>;
+    apiInbound?: Record<string, string[]>;
   };
   onTokenStatsChange?: (stats: {
     total: number;
@@ -56,7 +59,7 @@ interface FuzzyResult {
 
 interface SuggestedFile {
   filePath: string;
-  type: "parent" | "child" | "hub";
+  type: "parent" | "child" | "hub" | "api";
   importedActiveFiles: string[];
   importingActiveFiles: string[];
   tooltip: string;
@@ -289,7 +292,10 @@ export function PromptPanel({
   const suggestedFiles = useMemo(() => {
     if (
       !dependencyMap ||
-      (!dependencyMap.outbound && !dependencyMap.inbound) ||
+      (!dependencyMap.outbound &&
+        !dependencyMap.inbound &&
+        !dependencyMap.apiOutbound &&
+        !dependencyMap.apiInbound) ||
       seedFiles.size === 0
     ) {
       return [];
@@ -297,6 +303,8 @@ export function PromptPanel({
 
     const outboundMap = dependencyMap.outbound || {};
     const inboundMap = dependencyMap.inbound || {};
+    const apiOutboundMap = dependencyMap.apiOutbound || {};
+    const apiInboundMap = dependencyMap.apiInbound || {};
 
     const candidates = new Set<string>();
 
@@ -304,16 +312,22 @@ export function PromptPanel({
     seedFiles.forEach((file) => {
       const children = outboundMap[file] || [];
       children.forEach((child) => {
-        if (!selectedFiles.has(child)) {
-          candidates.add(child);
-        }
+        if (!selectedFiles.has(child)) candidates.add(child);
       });
 
       const parents = inboundMap[file] || [];
       parents.forEach((parent) => {
-        if (!selectedFiles.has(parent)) {
-          candidates.add(parent);
-        }
+        if (!selectedFiles.has(parent)) candidates.add(parent);
+      });
+
+      const apiTargets = apiOutboundMap[file] || [];
+      apiTargets.forEach((apiTarget) => {
+        if (!selectedFiles.has(apiTarget)) candidates.add(apiTarget);
+      });
+
+      const apiCallers = apiInboundMap[file] || [];
+      apiCallers.forEach((apiCaller) => {
+        if (!selectedFiles.has(apiCaller)) candidates.add(apiCaller);
       });
     });
 
@@ -322,8 +336,31 @@ export function PromptPanel({
     candidates.forEach((candPath) => {
       const candOutbound = outboundMap[candPath] || [];
       const candInbound = inboundMap[candPath] || [];
+      const candApiOutbound = apiOutboundMap[candPath] || [];
+      const candApiInbound = apiInboundMap[candPath] || [];
 
-      // Check relationships against seed files for tooltips & directionality
+      // Check API route relationships first
+      const isApiHandler = candApiInbound.some((f) => seedFiles.has(f));
+      const isApiClient = candApiOutbound.some((f) => seedFiles.has(f));
+
+      if (isApiHandler || isApiClient) {
+        const seedNames =
+          seedFiles.size > 0
+            ? Array.from(seedFiles)
+                .map((f) => f.split("/").pop() || f)
+                .join(", ")
+            : "";
+        results.push({
+          filePath: candPath,
+          type: "api",
+          importedActiveFiles: [],
+          importingActiveFiles: [],
+          tooltip: `API Endpoint Link: Handles network calls for ${seedNames}`,
+        });
+        return;
+      }
+
+      // Standard ES Module import relationships
       const importedSeed = candOutbound.filter((f) => seedFiles.has(f));
       const importingSeed = candInbound.filter((f) => seedFiles.has(f));
 
@@ -703,6 +740,22 @@ export function PromptPanel({
           <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto custom-scrollbar">
             {suggestedFiles.map((item) => {
               const fileName = item.filePath.split("/").pop() || item.filePath;
+
+              if (item.type === "api") {
+                return (
+                  <button
+                    key={item.filePath}
+                    onClick={() => handleToggleSuggestion(item.filePath)}
+                    title={item.tooltip}
+                    className="text-[10px] bg-emerald-950/50 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/70 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors shadow-sm"
+                  >
+                    <Globe className="w-3 h-3 text-emerald-400 shrink-0" />
+                    <span className="font-mono truncate max-w-[130px]">
+                      {fileName}
+                    </span>
+                  </button>
+                );
+              }
 
               if (item.type === "parent") {
                 return (
