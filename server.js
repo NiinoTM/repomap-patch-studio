@@ -456,8 +456,9 @@ function applyBlockToContent(content, block) {
 
 // 1. Transactional API: Pre-Flight Validation -> In-Memory Syntax Check -> Deferred Disk Write
 app.post("/api/apply", (req, res) => {
-  const { blocks, commitMessage, skipCommit, commit } = req.body;
+  const { blocks, commitMessage, skipCommit, commit, dryRun } = req.body;
   const shouldCommit = commit === true || (commit !== false && !skipCommit);
+  const isDryRun = dryRun === true;
 
   if (!blocks || !Array.isArray(blocks) || blocks.length === 0) {
     return res
@@ -466,14 +467,16 @@ app.post("/api/apply", (req, res) => {
   }
 
   try {
-    // Git Safety Snapshot before writing
-    try {
-      execSync('git add . && git commit -m "pre-ai-edit"', {
-        cwd: targetRepoPath,
-        stdio: "ignore",
-      });
-    } catch (e) {
-      /* ignore git snapshot errors if tree is clean */
+    // Git Safety Snapshot before writing (skipped entirely for dry-run validation passes)
+    if (!isDryRun) {
+      try {
+        execSync('git add . && git commit -m "pre-ai-edit"', {
+          cwd: targetRepoPath,
+          stdio: "ignore",
+        });
+      } catch (e) {
+        /* ignore git snapshot errors if tree is clean */
+      }
     }
 
     // PHASE 1: IN-MEMORY DRY-RUN & SYNTAX VALIDATION
@@ -517,6 +520,18 @@ app.post("/api/apply", (req, res) => {
         success: false,
         error: detailedMsg,
         details: validationErrors,
+      });
+    }
+
+    // DRY-RUN: validation & syntax checks passed, but stop here — nothing is
+    // written to disk and no commit happens. This lets the client confirm/edit
+    // a commit message with full confidence the batch will actually succeed.
+    if (isDryRun) {
+      return res.json({
+        success: true,
+        dryRun: true,
+        message: "✅ Pre-flight validation passed. No files were modified.",
+        validatedFiles: Array.from(pendingWrites.keys()),
       });
     }
 
