@@ -1,4 +1,4 @@
-// server.js
+
 import express from "express";
 import fs from "fs";
 import path from "path";
@@ -9,7 +9,7 @@ app.use(express.json());
 
 let targetRepoPath = process.cwd();
 
-// Helper to recursively get files
+
 const getAllFiles = (dir, basePath = dir, fileList = []) => {
   if (!fs.existsSync(dir)) return fileList;
   const files = fs.readdirSync(dir);
@@ -37,7 +37,7 @@ const getAllFiles = (dir, basePath = dir, fileList = []) => {
   return fileList;
 };
 
-// AST-Lite Heuristic Parser (Strips implementation details, extracts signatures like Aider)
+
 const generateRepoMap = (basePath, filesList) => {
   let mapOutput = "";
   for (const file of filesList) {
@@ -56,7 +56,7 @@ const generateRepoMap = (basePath, filesList) => {
     for (let line of lines) {
       const trimmed = line.trim();
       if ([".js", ".jsx", ".ts", ".tsx"].includes(ext)) {
-        // Extract Classes, Functions, Interfaces, Types
+        
         let match = trimmed.match(
           /^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function|class|interface|type)\s+([A-Za-z0-9_]+)/,
         );
@@ -64,7 +64,7 @@ const generateRepoMap = (basePath, filesList) => {
           symbols.push(trimmed.replace(/\s*\{.*$/, ""));
           continue;
         }
-        // Extract Arrow Functions assigned to variables
+        
         match = trimmed.match(
           /^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_]+)\s*=>/,
         );
@@ -96,7 +96,7 @@ const generateRepoMap = (basePath, filesList) => {
   return mapOutput.trim();
 };
 
-// Helper to calculate file sizes & estimated tokens (~3.8 chars per token for code)
+
 const getFileStats = (basePath, filesList) => {
   const stats = {};
   for (const file of filesList) {
@@ -111,7 +111,7 @@ const getFileStats = (basePath, filesList) => {
   return stats;
 };
 
-// Helper to build a Bidirectional Dependency Map (Module Imports + Local API Endpoint Boundary Linker)
+
 const getDependencyMap = (basePath, filesList) => {
   const outbound = {};
   const inboundMap = {};
@@ -119,7 +119,7 @@ const getDependencyMap = (basePath, filesList) => {
   const apiInboundMap = {};
   const fileSet = new Set(filesList);
 
-  // 1. Module Imports Parser (import ... from '...' or require('...'))
+  
   for (const file of filesList) {
     const ext = path.extname(file).toLowerCase();
     if (![".js", ".jsx", ".ts", ".tsx"].includes(ext)) continue;
@@ -176,13 +176,13 @@ const getDependencyMap = (basePath, filesList) => {
         }
       }
     } catch (e) {
-      /* ignore read errors */
+      
     }
   }
 
-  // 2. Option 1: Local API Endpoint Boundary Linker
-  // Step A: Index backend endpoint handlers (e.g., app.post('/api/apply'))
-  const routeHandlers = {}; // routeUrl -> Set of backend files
+  
+  
+  const routeHandlers = {}; 
 
   const apiRouteHandlerRegex =
     /(?:app|router|server)\s*\.\s*(?:get|post|put|delete|patch|all|use)\s*\(\s*[`'"]([^`'"]+)[`'"]/gi;
@@ -205,7 +205,7 @@ const getDependencyMap = (basePath, filesList) => {
     } catch (e) {}
   }
 
-  // Step B: Index frontend API client calls (e.g., fetch('/api/apply'), axios.post('/api/...'))
+  
   const apiClientRegex =
     /(?:fetch|axios\.(?:get|post|put|delete|patch)|apiCall)\s*\(\s*[`'"]([^`'"${}\n]+)[`'"]/gi;
 
@@ -252,7 +252,7 @@ const getDependencyMap = (basePath, filesList) => {
   return { outbound, inbound, apiOutbound, apiInbound };
 };
 
-// API: Get Current Repo Path, Files, Repo Map, Stats & Dependency Map
+
 app.get("/api/repo", (req, res) => {
   try {
     const files = getAllFiles(targetRepoPath);
@@ -272,7 +272,7 @@ app.get("/api/repo", (req, res) => {
   }
 });
 
-// API: Change Repo Path
+
 app.post("/api/repo", (req, res) => {
   const { newPath } = req.body;
   if (fs.existsSync(newPath) && fs.statSync(newPath).isDirectory()) {
@@ -296,7 +296,7 @@ app.post("/api/repo", (req, res) => {
   }
 });
 
-// API: Fetch File Contents for Prompt Assembly
+
 app.post("/api/files", (req, res) => {
   const { files } = req.body;
   const contents = {};
@@ -308,7 +308,7 @@ app.post("/api/files", (req, res) => {
   res.json({ success: true, contents });
 });
 
-// Helper to find exact character ranges ignoring comments, newlines, whitespace, JSX {" "}, commas, quotes, parens, and semicolons
+
 function findCondensedRange(content, search) {
   const preCleanContent = content
     .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
@@ -352,125 +352,165 @@ function findCondensedRange(content, search) {
   return null;
 }
 
-// 1. API: Apply Changes & Commit to Git (with Multi-line & Indentation Recovery)
+
+// Pure In-Memory Block Application Engine (Exact, Fuzzy Indentation & Condensed Token Stream)
+function applyBlockToContent(content, block) {
+  if (!block.search || !block.search.trim() || block.file === "Active File") {
+    return { success: true, newContent: block.replace };
+  }
+
+  const normContent = content.replace(/\r\n/g, "\n");
+  const normSearch = block.search.replace(/\r\n/g, "\n");
+  const normReplace = block.replace.replace(/\r\n/g, "\n");
+
+  // 1. Exact Match
+  if (normContent.includes(normSearch)) {
+    return { success: true, newContent: normContent.replace(normSearch, normReplace) };
+  }
+
+  // 2. Smart Fuzzy Indentation Match
+  const searchLines = normSearch.split("\n").map((l) => l.trim()).filter(Boolean);
+  const contentLines = normContent.split("\n");
+
+  let matchIndex = -1;
+  for (let i = 0; i <= contentLines.length - searchLines.length; i++) {
+    let isCandidate = true;
+    for (let j = 0; j < searchLines.length; j++) {
+      if (contentLines[i + j].trim() !== searchLines[j]) {
+        isCandidate = false;
+        break;
+      }
+    }
+    if (isCandidate) {
+      matchIndex = i;
+      break;
+    }
+  }
+
+  if (matchIndex !== -1) {
+    const indentMatch = contentLines[matchIndex].match(/^[ \t]*/);
+    const indent = indentMatch ? indentMatch[0] : "";
+    const replaceLines = normReplace.split("\n").map((line) => {
+      return line.trim() ? indent + line.replace(/^[ \t]*/, "") : "";
+    });
+
+    contentLines.splice(matchIndex, searchLines.length, ...replaceLines);
+    return { success: true, newContent: contentLines.join("\n") };
+  }
+
+  // 3. Condensed Token Stream Replacement
+  const range = findCondensedRange(normContent, normSearch);
+  if (range) {
+    const cleanNormContent = normContent.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "").replace(/\{\s*["']\s*["']\s*\}/g, "");
+    const newContent = cleanNormContent.slice(0, range.start) + normReplace + cleanNormContent.slice(range.end);
+    return { success: true, newContent };
+  }
+
+  return { success: false, error: `SEARCH block match failed for file: ${block.file}` };
+}
+
+// 1. Transactional API: Pre-Flight Validation -> In-Memory Buffer -> Deferred Disk Write
 app.post("/api/apply", (req, res) => {
-  const { blocks, commitMessage } = req.body;
+  const { blocks, commitMessage, skipCommit, commit } = req.body;
+  const shouldCommit = commit === true || (commit !== false && !skipCommit);
+
+  if (!blocks || !Array.isArray(blocks) || blocks.length === 0) {
+    return res.status(400).json({ success: false, error: "No diff blocks provided." });
+  }
 
   try {
+    // Git Safety Snapshot before writing
     try {
       execSync('git add . && git commit -m "pre-ai-edit"', {
         cwd: targetRepoPath,
         stdio: "ignore",
       });
     } catch (e) {
-      /* ignore */
+      /* ignore git snapshot errors if tree is clean */
     }
 
+    // PHASE 1: IN-MEMORY DRY-RUN & VALIDATION
+    const pendingWrites = new Map(); // filePath -> updatedContent
+    const validationErrors = [];
+
     for (const block of blocks) {
+      if (!block.file || block.file === "Active File") continue;
       const fullPath = path.resolve(targetRepoPath, block.file);
-      if (!fs.existsSync(fullPath)) {
-        fs.writeFileSync(fullPath, block.replace, "utf-8");
-        continue;
+
+      // Get current in-memory content from previous blocks in batch, or read from disk
+      let currentContent = pendingWrites.get(block.file);
+      const fileExists = fs.existsSync(fullPath);
+
+      if (currentContent === undefined) {
+        currentContent = fileExists ? fs.readFileSync(fullPath, "utf-8") : "";
       }
 
-      let content = fs.readFileSync(fullPath, "utf-8");
-
-      if (!block.search.trim() || block.file === "Active File") {
-        fs.writeFileSync(fullPath, block.replace, "utf-8");
-        continue;
-      }
-
-      const normContent = content.replace(/\r\n/g, "\n");
-      const normSearch = block.search.replace(/\r\n/g, "\n");
-      const normReplace = block.replace.replace(/\r\n/g, "\n");
-
-      if (normContent.includes(normSearch)) {
-        // Exact match
-        const updated = normContent.replace(normSearch, normReplace);
-        fs.writeFileSync(fullPath, updated, "utf-8");
+      const result = applyBlockToContent(currentContent, block);
+      if (result.success) {
+        pendingWrites.set(block.file, result.newContent);
       } else {
-        // Smart Fuzzy Indentation Replacement
-        const searchLines = normSearch
-          .split("\n")
-          .map((l) => l.trim())
-          .filter(Boolean);
-        const contentLines = normContent.split("\n");
-
-        let matchIndex = -1;
-        for (let i = 0; i <= contentLines.length - searchLines.length; i++) {
-          let isCandidate = true;
-          for (let j = 0; j < searchLines.length; j++) {
-            if (contentLines[i + j].trim() !== searchLines[j]) {
-              isCandidate = false;
-              break;
-            }
-          }
-          if (isCandidate) {
-            matchIndex = i;
-            break;
-          }
-        }
-
-        if (matchIndex !== -1) {
-          // Detect original indentation of the target line
-          const indentMatch = contentLines[matchIndex].match(/^[ \t]*/);
-          const indent = indentMatch ? indentMatch[0] : "";
-
-          const replaceLines = normReplace.split("\n").map((line) => {
-            return line.trim() ? indent + line.replace(/^[ \t]*/, "") : "";
-          });
-
-          contentLines.splice(matchIndex, searchLines.length, ...replaceLines);
-          fs.writeFileSync(fullPath, contentLines.join("\n"), "utf-8");
-        } else {
-          // 3. Condensed Token Stream Replacement
-          const cleanNormContent = normContent
-            .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
-            .replace(/\{\s*["']\s*["']\s*\}/g, "");
-          const range = findCondensedRange(normContent, normSearch);
-          if (range) {
-            const updated =
-              cleanNormContent.slice(0, range.start) +
-              normReplace +
-              cleanNormContent.slice(range.end);
-            fs.writeFileSync(fullPath, updated, "utf-8");
-          } else {
-            console.warn(
-              `[Apply Warning] Could not find SEARCH block for ${block.file}. File left untouched to prevent corruption.`,
-            );
-          }
-        }
+        validationErrors.push(result.error);
       }
+    }
+
+    // ALL-OR-NOTHING GATEKEEPER: Abort if any block failed pre-flight validation
+    if (validationErrors.length > 0) {
+      return res.status(422).json({
+        success: false,
+        error: `Transaction aborted. ${validationErrors.length} block(s) failed validation. 0 files modified on disk.`,
+        details: validationErrors,
+      });
+    }
+
+    // PHASE 2: TOPOLOGICAL / DEFERRED WRITES QUEUE
+    // Move high-risk process/server files to the end of the write queue
+    const CRITICAL_FILES = ["server.js", "package.json", "vite.config.ts", "tsconfig.json"];
+    const filesToCommit = Array.from(pendingWrites.keys()).sort((a, b) => {
+      const isACritical = CRITICAL_FILES.some((f) => a.endsWith(f));
+      const isBCritical = CRITICAL_FILES.some((f) => b.endsWith(f));
+      if (isACritical && !isBCritical) return 1;
+      if (!isACritical && isBCritical) return -1;
+      return 0;
+    });
+
+    // PHASE 3: ATOMIC DISK COMMIT
+    for (const file of filesToCommit) {
+      const fullPath = path.resolve(targetRepoPath, file);
+      const dirPath = path.dirname(fullPath);
+      if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+      }
+      fs.writeFileSync(fullPath, pendingWrites.get(file), "utf-8");
     }
 
     // AUTO-FORMAT MODIFIED FILES WITH PRETTIER
-    for (const block of blocks) {
-      if (block.file && block.file !== "Active File") {
-        try {
-          execSync(`npx prettier --write "${block.file}"`, {
-            cwd: targetRepoPath,
-            stdio: "ignore",
-          });
-        } catch (e) {
-          // Gracefully ignore if prettier fails or is unsupported for this file
-        }
+    for (const file of filesToCommit) {
+      try {
+        execSync(`npx prettier --write "${file}"`, { cwd: targetRepoPath, stdio: "ignore" });
+      } catch (e) {
+        /* ignore prettier errors */
       }
     }
 
-    execSync(
-      `git add . && git commit -m "${commitMessage || "ai-edit: updated files"}"`,
-      { cwd: targetRepoPath, stdio: "ignore" },
-    );
+    // OPTIONAL GIT COMMIT
+    if (shouldCommit) {
+      const msg = commitMessage && commitMessage.trim() ? commitMessage.trim() : "ai-edit: updated files";
+      execSync(`git add . && git commit -m "${msg}"`, { cwd: targetRepoPath, stdio: "ignore" });
+    }
+
     res.json({
       success: true,
-      message: "Changes applied, auto-formatted & committed to Git!",
+      message: shouldCommit
+        ? "✅ Transaction complete: Edits applied, formatted & committed to Git!"
+        : "✅ Transaction complete: Edits applied to disk!",
+      appliedFiles: filesToCommit,
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
-});
+}););
 
-// 2. API: Git Reset / Undo Last Edit
+
 app.post("/api/undo", (req, res) => {
   try {
     execSync("git reset --hard HEAD~1", {
@@ -487,5 +527,5 @@ app.post("/api/undo", (req, res) => {
 });
 
 app.listen(3001, () =>
-  console.log("🚀 Local Patch Backend running on http://localhost:3001"),
+  console.log("🚀 Local Patch Backend running on http:
 );
