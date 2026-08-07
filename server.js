@@ -65,12 +65,28 @@ const generateRepoMap = (basePath, filesList) => {
   return mapOutput.trim();
 };
 
-// API: Get Current Repo Path, Files & Repo Map
+// Helper to calculate file sizes & estimated tokens (~3.8 chars per token for code)
+const getFileStats = (basePath, filesList) => {
+  const stats = {};
+  for (const file of filesList) {
+    try {
+      const fullPath = path.join(basePath, file);
+      const size = fs.statSync(fullPath).size;
+      stats[file] = { size, tokens: Math.ceil(size / 3.8) };
+    } catch (e) {
+      stats[file] = { size: 0, tokens: 0 };
+    }
+  }
+  return stats;
+};
+
+// API: Get Current Repo Path, Files, Repo Map & Stats
 app.get('/api/repo', (req, res) => {
   try {
     const files = getAllFiles(targetRepoPath);
     const repoMap = generateRepoMap(targetRepoPath, files);
-    res.json({ success: true, path: targetRepoPath, files, repoMap });
+    const fileStats = getFileStats(targetRepoPath, files);
+    res.json({ success: true, path: targetRepoPath, files, repoMap, fileStats });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -83,7 +99,8 @@ app.post('/api/repo', (req, res) => {
     targetRepoPath = path.resolve(newPath);
     const files = getAllFiles(targetRepoPath);
     const repoMap = generateRepoMap(targetRepoPath, files);
-    res.json({ success: true, path: targetRepoPath, files, repoMap });
+    const fileStats = getFileStats(targetRepoPath, files);
+    res.json({ success: true, path: targetRepoPath, files, repoMap, fileStats });
   } else {
     res.status(400).json({ success: false, error: 'Invalid or missing directory path.' });
   }

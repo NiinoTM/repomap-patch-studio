@@ -195,12 +195,28 @@ const generateRepoMap = (basePath, filesList) => {
   return mapOutput.trim();
 };
 
-// API: Get Current Repo Path, Files & Repo Map
+// Helper to calculate file sizes & estimated tokens (~3.8 chars per token for code)
+const getFileStats = (basePath, filesList) => {
+  const stats = {};
+  for (const file of filesList) {
+    try {
+      const fullPath = path.join(basePath, file);
+      const size = fs.statSync(fullPath).size;
+      stats[file] = { size, tokens: Math.ceil(size / 3.8) };
+    } catch (e) {
+      stats[file] = { size: 0, tokens: 0 };
+    }
+  }
+  return stats;
+};
+
+// API: Get Current Repo Path, Files, Repo Map & Stats
 app.get('/api/repo', (req, res) => {
   try {
     const files = getAllFiles(targetRepoPath);
     const repoMap = generateRepoMap(targetRepoPath, files);
-    res.json({ success: true, path: targetRepoPath, files, repoMap });
+    const fileStats = getFileStats(targetRepoPath, files);
+    res.json({ success: true, path: targetRepoPath, files, repoMap, fileStats });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -213,7 +229,8 @@ app.post('/api/repo', (req, res) => {
     targetRepoPath = path.resolve(newPath);
     const files = getAllFiles(targetRepoPath);
     const repoMap = generateRepoMap(targetRepoPath, files);
-    res.json({ success: true, path: targetRepoPath, files, repoMap });
+    const fileStats = getFileStats(targetRepoPath, files);
+    res.json({ success: true, path: targetRepoPath, files, repoMap, fileStats });
   } else {
     res.status(400).json({ success: false, error: 'Invalid or missing directory path.' });
   }
@@ -360,6 +377,7 @@ export default function App() {
   const [repoPath, setRepoPath] = useState<string>('Loading...');
   const [repoFiles, setRepoFiles] = useState<string[]>([]);
   const [repoMap, setRepoMap] = useState<string>('');
+  const [fileStats, setFileStats] = useState<Record<string, { size: number; tokens: number }>>({});
 
   useEffect(() => {
     fetch('/api/repo')
@@ -369,6 +387,7 @@ export default function App() {
           setRepoPath(data.path);
           setRepoFiles(data.files);
           setRepoMap(data.repoMap);
+          setFileStats(data.fileStats || {});
         }
       })
       .catch(err => console.error('Failed to fetch repo context:', err));
@@ -468,7 +487,7 @@ export default function App() {
       
       <main className="flex-1 flex overflow-hidden">
         <aside className="w-[420px] flex-shrink-0">
-          <PromptPanel onCopy={handleCopy} onCopyMap={handleCopyMap} files={repoFiles} repoMap={repoMap} />
+          <PromptPanel onCopy={handleCopy} onCopyMap={handleCopyMap} files={repoFiles} repoMap={repoMap} fileStats={fileStats} />
         </aside>
         
         <section className="flex-1 flex-shrink-0">
@@ -497,8 +516,8 @@ export default function App() {
 ==================================================
 FILE PATH: src\index.css
 ==================================================
-@import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
 
 @theme {
   --font-mono: 'JetBrains Mono', 'Courier New', monospace;
@@ -879,6 +898,7 @@ interface PromptPanelProps {
   onCopyMap: (mapText: string) => void;
   files: string[];
   repoMap: string;
+  fileStats?: Record<string, { size: number; tokens: number }>;
 }
 
 export function PromptPanel({ onCopy, onCopyMap, files, repoMap }: PromptPanelProps) {

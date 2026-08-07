@@ -9,6 +9,7 @@ interface PromptPanelProps {
   onCopyMap: (mapText: string) => void;
   files: string[];
   repoMap: string;
+  fileStats?: Record<string, { size: number; tokens: number }>;
 }
 
 interface TreeNode {
@@ -19,7 +20,7 @@ interface TreeNode {
   allFiles: string[];
 }
 
-export function PromptPanel({ onCopy, onCopyMap, files, repoMap }: PromptPanelProps) {
+export function PromptPanel({ onCopy, onCopyMap, files, repoMap, fileStats }: PromptPanelProps) {
   const [request, setRequest] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
@@ -27,9 +28,7 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap }: PromptPanelPr
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['root']));
 
-  // ==========================================
-  // @MENTION SYSTEM STATE & REFS
-  // ==========================================
+  // @Mention State
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1);
@@ -40,7 +39,7 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap }: PromptPanelPr
     if (mentionQuery === null) return [];
     return files
       .filter(f => f.toLowerCase().includes(mentionQuery.toLowerCase()))
-      .slice(0, 8); // Top 8 matches
+      .slice(0, 8);
   }, [files, mentionQuery]);
 
   // Reset selected files when repo changes
@@ -96,14 +95,37 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap }: PromptPanelPr
   }, [files, searchQuery]);
 
   // ==========================================
-  // @MENTION HANDLERS
+  // TOKEN BUDGET CALCULATION ENGINE
   // ==========================================
+  const TARGET_BUDGET = 30000;
+
+  const repoMapTokens = useMemo(() => Math.ceil((repoMap?.length || 0) / 3.8), [repoMap]);
+
+  const selectedFilesTokens = useMemo(() => {
+    let total = 0;
+    selectedFiles.forEach(file => {
+      total += fileStats?.[file]?.tokens || 0;
+    });
+    return total;
+  }, [selectedFiles, fileStats]);
+
+  const promptOverheadTokens = useMemo(() => Math.ceil((request.length + 800) / 3.8), [request]);
+
+  const totalEstimatedTokens = repoMapTokens + selectedFilesTokens + promptOverheadTokens;
+  const budgetPercentage = Math.min(100, Math.round((totalEstimatedTokens / TARGET_BUDGET) * 100));
+
+  const budgetStatus = useMemo(() => {
+    if (totalEstimatedTokens <= 15000) return { label: 'Optimal Focus', bg: 'bg-emerald-500', text: 'text-emerald-400' };
+    if (totalEstimatedTokens <= 30000) return { label: 'Heavy Context', bg: 'bg-amber-500', text: 'text-amber-400' };
+    return { label: 'Context Overload', bg: 'bg-rose-500', text: 'text-rose-400' };
+  }, [totalEstimatedTokens]);
+
+  // @Mention Handlers
   const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     const cursorPos = e.target.selectionStart;
     setRequest(value);
 
-    // Look backward from cursor to see if we are inside an @mention
     const textBeforeCursor = value.slice(0, cursorPos);
     const match = textBeforeCursor.match(/@([a-zA-Z0-9_\-./]*)$/);
 
@@ -123,20 +145,15 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap }: PromptPanelPr
     const before = request.slice(0, mentionStartIndex);
     const after = request.slice(cursorPos);
     
-    // Format as @filePath with a space after
     const newText = `${before}@${filePath} ${after}`;
     setRequest(newText);
 
-    // Automatically check/select this file in the context selector
     setSelectedFiles(prev => new Set(prev).add(filePath));
-
-    // Close mention popup
     setMentionQuery(null);
 
-    // Reposition cursor after inserted mention
     setTimeout(() => {
       if (textareaRef.current) {
-        const newCursorPos = mentionStartIndex + filePath.length + 2; // +2 for '@' and ' '
+        const newCursorPos = mentionStartIndex + filePath.length + 2;
         textareaRef.current.focus();
         textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
       }
@@ -144,7 +161,6 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap }: PromptPanelPr
   };
 
   const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // If @mention popup is open, handle arrow navigation and selection
     if (mentionQuery !== null && mentionMatches.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -161,7 +177,7 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap }: PromptPanelPr
     }
   };
 
-  // Bulk Tree Actions
+  // Bulk Actions
   const handleSelectAll = () => setSelectedFiles(new Set(files));
   const handleDeselectAll = () => setSelectedFiles(new Set());
 
@@ -285,7 +301,7 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap }: PromptPanelPr
           </div>
           <div>
             <p className="text-xs font-semibold text-zinc-200">Repo Map Ready</p>
-            <p className="text-[10px] text-zinc-500">~{(files.length * 95).toLocaleString()} tokens / {files.length} files</p>
+            <p className="text-[10px] text-zinc-500">~{repoMapTokens.toLocaleString()} map tokens / {files.length} files</p>
           </div>
         </div>
         <button 
@@ -295,6 +311,35 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap }: PromptPanelPr
         >
           <Eye className="w-4 h-4" />
         </button>
+      </div>
+
+      {/* LIVE TOKEN BUDGET BAR */}
+      <div className="bg-zinc-900/90 border border-zinc-800 rounded-lg p-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <span className={`w-2 h-2 rounded-full ${budgetStatus.bg} animate-pulse`} />
+            <span className="text-xs font-semibold text-zinc-200">Token Budget</span>
+            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded bg-zinc-800 ${budgetStatus.text}`}>
+              {budgetStatus.label}
+            </span>
+          </div>
+          <span className="font-mono text-xs font-bold text-zinc-100">
+            {totalEstimatedTokens.toLocaleString()}{' '}
+            <span className="text-[10px] font-normal text-zinc-500">/ 30k</span>
+          </span>
+        </div>
+
+        <div className="w-full bg-zinc-800/80 h-1.5 rounded-full overflow-hidden flex">
+          <div 
+            className={`h-full transition-all duration-300 ${budgetStatus.bg}`}
+            style={{ width: `${budgetPercentage}%` }}
+          />
+        </div>
+
+        <div className="flex justify-between text-[10px] text-zinc-500 font-mono pt-0.5">
+          <span>Map: {repoMapTokens.toLocaleString()} tks</span>
+          <span>Files ({selectedFiles.size}): {selectedFilesTokens.toLocaleString()} tks</span>
+        </div>
       </div>
 
       {/* Context Selection Tree */}
@@ -343,9 +388,7 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap }: PromptPanelPr
         </div>
       </div>
 
-      {/* ========================================================= */}
       {/* USER REQUEST TEXTAREA WITH FLOATING @MENTION POPUP */}
-      {/* ========================================================= */}
       <div className="space-y-2 relative">
         <div className="flex items-center justify-between">
           <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold flex items-center">
@@ -356,7 +399,6 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap }: PromptPanelPr
           </label>
         </div>
 
-        {/* FLOATING @MENTION AUTOCOMPLETE POPUP */}
         {mentionQuery !== null && mentionMatches.length > 0 && (
           <div className="absolute bottom-full mb-1 left-0 right-0 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-50 overflow-hidden max-h-48 overflow-y-auto custom-scrollbar">
             <div className="p-1.5 bg-zinc-950 border-b border-zinc-800 text-[10px] text-zinc-400 font-medium flex justify-between">
@@ -476,7 +518,7 @@ ${request}`;
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-2xl flex flex-col overflow-hidden shadow-2xl">
             <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900">
-              <h2 className="text-sm font-bold text-zinc-200">Repo Map Context Preview (~{(files.length * 95).toLocaleString()} tokens)</h2>
+              <h2 className="text-sm font-bold text-zinc-200">Repo Map Context Preview (~{repoMapTokens.toLocaleString()} tokens)</h2>
               <button onClick={() => setIsMapModalOpen(false)} className="text-zinc-400 hover:text-zinc-200 p-1 rounded-md hover:bg-zinc-800 transition-colors">
                 <X className="w-5 h-5" />
               </button>
