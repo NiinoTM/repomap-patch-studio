@@ -1015,31 +1015,32 @@ export function PromptPanel({
         </label>
       </div>
 
-      <button
-        onClick={async () => {
-          setIsCopying(true);
-          try {
-            const res = await fetch("/api/files", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ files: Array.from(selectedFiles) }),
-            });
-            const data = await res.json();
+      <div className="flex space-x-2 shrink-0">
+        <button
+          onClick={async () => {
+            setIsCopying(true);
+            try {
+              const res = await fetch("/api/files", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ files: Array.from(selectedFiles) }),
+              });
+              const data = await res.json();
 
-            let activeFilesText = "";
-            if (selectedFiles.size > 0) {
-              for (const f of selectedFiles) {
-                activeFilesText += `--- START OF FILE ${f} ---\n${data.contents[f] || ""}\n--- END OF FILE ${f} ---\n\n`;
+              let activeFilesText = "";
+              if (selectedFiles.size > 0) {
+                for (const f of selectedFiles) {
+                  activeFilesText += `--- START OF FILE ${f} ---\n${data.contents[f] || ""}\n--- END OF FILE ${f} ---\n\n`;
+                }
+              } else {
+                activeFilesText = "No specific files selected.";
               }
-            } else {
-              activeFilesText = "No specific files selected.";
-            }
 
-            const SEARCH_MARKER = "<".repeat(7) + " SEARCH";
-            const EQUALS_MARKER = "=".repeat(7);
-            const REPLACE_MARKER = ">".repeat(7) + " REPLACE";
+              const SEARCH_MARKER = "<".repeat(7) + " SEARCH";
+              const EQUALS_MARKER = "=".repeat(7);
+              const REPLACE_MARKER = ">".repeat(7) + " REPLACE";
 
-            const finalPrompt = `ROLE: Senior Software Architect & Elite Developer
+              const finalPrompt = `ROLE: Senior Software Architect & Elite Developer
 You write clean, production-grade, type-safe, and secure code, keeping system architecture and long-term maintainability in mind.
 
 ADVISORY PROTOCOL:
@@ -1094,60 +1095,60 @@ ${activeFilesText}
 USER REQUEST:
 ${request}`;
 
-            onCopy(finalPrompt);
-          } finally {
-            setIsCopying(false);
-          }
-        }}
-        disabled={isCopying}
-        className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold py-3 rounded-lg shadow-lg shadow-cyan-500/10 flex items-center justify-center space-x-2 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
-      >
-        <Copy className="w-4 h-4" />
-        <span>
-          {isCopying
-            ? "Assembling..."
-            : `Copy Context (${selectedFiles.size} Files) + Prompt`}
-        </span>
-      </button>
-
-      <button
-        onClick={async () => {
-          setIsCopyingFiles(true);
-          try {
-            const res = await fetch("/api/files", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ files: Array.from(selectedFiles) }),
-            });
-            const data = await res.json();
-
-            let activeFilesText = "";
-            if (selectedFiles.size > 0) {
-              for (const f of selectedFiles) {
-                activeFilesText += `--- START OF FILE ${f} ---\n${data.contents[f] || ""}\n--- END OF FILE ${f} ---\n\n`;
-              }
-            } else {
-              activeFilesText = "No specific files selected.";
+              onCopy(finalPrompt);
+            } finally {
+              setIsCopying(false);
             }
+          }}
+          disabled={isCopying || isCopyingFiles}
+          className="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold py-2.5 rounded-lg shadow-lg shadow-cyan-500/10 flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer text-[11px]"
+        >
+          <Copy className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">
+            {isCopying
+              ? "Assembling..."
+              : `Full Context (${selectedFiles.size})`}
+          </span>
+        </button>
 
-            // Stripped down prompt with JUST the active files context
-            const finalPrompt = `==================================================\nACTIVE FILES CONTEXT:\n${activeFilesText}`;
+        <button
+          onClick={async () => {
+            setIsCopyingFiles(true);
+            try {
+              const res = await fetch("/api/files", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ files: Array.from(selectedFiles) }),
+              });
+              const data = await res.json();
 
-            onCopy(finalPrompt);
-          } finally {
-            setIsCopyingFiles(false);
-          }
-        }}
-        disabled={isCopying || isCopyingFiles || selectedFiles.size === 0}
-        className="w-full mt-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold py-2.5 rounded-lg flex items-center justify-center space-x-2 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer border border-zinc-700"
-      >
-        <FileText className="w-4 h-4" />
-        <span>
-          {isCopyingFiles
-            ? "Fetching..."
-            : `Copy Files Only (${selectedFiles.size} Files)`}
-        </span>
-      </button>
+              let activeFilesText = "";
+              if (selectedFiles.size > 0) {
+                for (const f of selectedFiles) {
+                  activeFilesText += `--- START OF FILE ${f} ---\n${data.contents[f] || ""}\n--- END OF FILE ${f} ---\n\n`;
+                }
+              } else {
+                activeFilesText = "No specific files selected.";
+              }
+
+              const finalPrompt = `==================================================\nACTIVE FILES CONTEXT:\n${activeFilesText}==================================================\nUSER REQUEST:\n${request}`;
+
+              onCopy(finalPrompt);
+            } finally {
+              setIsCopyingFiles(false);
+            }
+          }}
+          disabled={isCopying || isCopyingFiles || selectedFiles.size === 0}
+          className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold py-2.5 rounded-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer border border-zinc-700 text-[11px]"
+        >
+          <FileText className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">
+            {isCopyingFiles
+              ? "Fetching..."
+              : `Files + Prompt (${selectedFiles.size})`}
+          </span>
+        </button>
+      </div>
 
       {isMapModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
