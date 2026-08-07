@@ -44,9 +44,37 @@ const getAllFilesFallback = (dir, basePath = dir, fileList = []) => {
   return fileList;
 };
 
-// Primary file listing: defers entirely to git so the tool automatically
-// respects whatever the project already excludes via .gitignore (backups,
-// db files, build output, etc.) with zero maintenance on our end.
+// Safety-net filter applied on TOP of git's own filtering. --exclude-standard
+// only affects --others (untracked) files — it does NOT retroactively hide
+// files that were committed to git before .gitignore excluded them (e.g. a
+// node_modules folder or *.sqlite backups checked in early in the project's
+// history). Those stay tracked and will keep showing up in `git ls-files
+// --cached` forever, ignore rules or not, until someone runs
+// `git rm -r --cached <path>`. This backstop guards against that regardless
+// of the repo's git hygiene.
+const HEAVY_DIR_SEGMENTS = new Set([
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  "coverage",
+  ".vscode",
+  ".idea",
+  "backups",
+]);
+
+const HEAVY_FILE_EXTENSIONS = new Set([".sqlite", ".sqlite3", ".db", ".log"]);
+
+const isHeavyOrJunkPath = (filePath) => {
+  const segments = filePath.split("/");
+  if (segments.some((seg) => HEAVY_DIR_SEGMENTS.has(seg))) return true;
+  const ext = path.extname(filePath).toLowerCase();
+  return HEAVY_FILE_EXTENSIONS.has(ext);
+};
+
+// Primary file listing: defers to git so the tool automatically respects
+// whatever the project excludes via .gitignore, then applies the backstop
+// above so accidentally-tracked bloat can't flood the context window.
 //   --cached           tracked files
 //   --others           untracked files
 //   --exclude-standard apply .gitignore, .git/info/exclude, and global excludes
@@ -60,7 +88,8 @@ const getAllFiles = (dir, basePath = dir) => {
       .split(/\r?\n/)
       .map((f) => f.trim())
       .filter(Boolean)
-      .filter((f) => !isSecretFile(path.basename(f)));
+      .filter((f) => !isSecretFile(path.basename(f)))
+      .filter((f) => !isHeavyOrJunkPath(f));
   } catch (e) {
     // Not a git repo, or git isn't installed/on PATH — fall back so the
     // tool still works outside version control.
