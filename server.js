@@ -508,9 +508,11 @@ app.post("/api/apply", (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
-}););
+});
 
 
+
+// 2. API: Git Reset / Undo Last Edit
 app.post("/api/undo", (req, res) => {
   try {
     execSync("git reset --hard HEAD~1", {
@@ -527,5 +529,5 @@ app.post("/api/undo", (req, res) => {
 });
 
 app.listen(3001, () =>
-  console.log("🚀 Local Patch Backend running on http:
+  console.log("🚀 Local Patch Backend running on http://localhost:3001")
 );
