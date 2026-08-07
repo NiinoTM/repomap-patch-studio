@@ -26,21 +26,21 @@ export function parseDiffBlocks(rawText: string): DiffBlock[] {
       );
       if (fileMatch) currentFile = fileMatch[1];
 
-      if (trimmed.startsWith("<<<<<<< SEARCH")) {
+      if (trimmed === "<<<<<<< SEARCH") {
         console.log(`[Parser] 🟢 Found SEARCH start at line ${i + 1}`);
         state = "SEARCH";
         currentSearch = [];
         currentReplace = [];
       }
     } else if (state === "SEARCH") {
-      if (trimmed.startsWith("=======")) {
+      if (trimmed === "=======") {
         console.log(`[Parser] 🟡 Found DIVIDER at line ${i + 1}`);
         state = "REPLACE";
       } else {
         currentSearch.push(line);
       }
     } else if (state === "REPLACE") {
-      if (trimmed.startsWith(">>>>>>> REPLACE")) {
+      if (trimmed === ">>>>>>> REPLACE") {
         console.log(
           `[Parser] 🔴 Found REPLACE end at line ${i + 1}. Pushing block!`,
         );
