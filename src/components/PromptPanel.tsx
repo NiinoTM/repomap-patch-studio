@@ -20,6 +20,82 @@ interface TreeNode {
   allFiles: string[];
 }
 
+interface FuzzyResult {
+  filePath: string;
+  fileName: string;
+  dirPath: string;
+  score: number;
+  matchedIndices: Set<number>;
+}
+
+// ==========================================
+// FUZZY MATCHING & SCORING ENGINE
+// ==========================================
+function fuzzySearchFiles(files: string[], query: string): FuzzyResult[] {
+  if (!query) {
+    return files.slice(0, 8).map(f => {
+      const parts = f.split('/');
+      const fileName = parts.pop() || f;
+      return {
+        filePath: f,
+        fileName,
+        dirPath: parts.join('/'),
+        score: 0,
+        matchedIndices: new Set()
+      };
+    });
+  }
+
+  const q = query.toLowerCase();
+  const results: FuzzyResult[] = [];
+
+  for (const file of files) {
+    const lowerFile = file.toLowerCase();
+    let qIdx = 0;
+    let score = 0;
+    let consecutive = 0;
+    const matchedIndices = new Set<number>();
+
+    const parts = file.split('/');
+    const fileName = parts.pop() || file;
+    const dirPath = parts.join('/');
+    const fileNameStartIdx = file.lastIndexOf('/') + 1;
+
+    for (let i = 0; i < file.length; i++) {
+      if (qIdx < q.length && lowerFile[i] === q[qIdx]) {
+        matchedIndices.add(i);
+        qIdx++;
+        score += 10;
+        consecutive += 1;
+        score += consecutive * 5; // Consecutive bonus
+
+        // Bonus if match is inside filename vs directory
+        if (i >= fileNameStartIdx) score += 15;
+
+        // Bonus for boundary match (start of word, after /, ., _, -)
+        if (i === 0 || i === fileNameStartIdx || " /._-".includes(file[i - 1])) {
+          score += 20;
+        }
+      } else {
+        consecutive = 0;
+      }
+    }
+
+    // Only include if all characters in the query matched in order
+    if (qIdx === q.length) {
+      results.push({
+        filePath: file,
+        fileName,
+        dirPath,
+        score,
+        matchedIndices
+      });
+    }
+  }
+
+  return results.sort((a, b) => b.score - a.score).slice(0, 8);
+}
+
 export function PromptPanel({ onCopy, onCopyMap, files, repoMap, fileStats }: PromptPanelProps) {
   const [request, setRequest] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
@@ -30,17 +106,65 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap, fileStats }: Pr
 
   // @Mention State
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mentionPopupRef = useRef<HTMLDivElement>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1);
   const [activeMentionIndex, setActiveMentionIndex] = useState<number>(0);
 
-  // Filter files matching the @mention query
+  // Perform fuzzy search whenever query changes
   const mentionMatches = useMemo(() => {
     if (mentionQuery === null) return [];
-    return files
-      .filter(f => f.toLowerCase().includes(mentionQuery.toLowerCase()))
-      .slice(0, 8);
+    return fuzzySearchFiles(files, mentionQuery);
   }, [files, mentionQuery]);
+
+  // ==========================================
+  // DYNAMIC @MENTION SYNCHRONIZATION
+  // Automatically select/unselect files when @mentions are typed or deleted
+  // ==========================================
+  const prevMentionsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const matches = Array.from(request.matchAll(/@([a-zA-Z0-9_\-./]+)/g));
+    const currentMentions = new Set<string>();
+
+    for (const match of matches) {
+      const path = match[1];
+      if (files.includes(path)) {
+        currentMentions.add(path);
+      }
+    }
+
+    const prevMentions = prevMentionsRef.current;
+    const removedMentions = Array.from(prevMentions).filter(f => !currentMentions.has(f));
+    const addedMentions = Array.from(currentMentions).filter(f => !prevMentions.has(f));
+
+    if (removedMentions.length > 0 || addedMentions.length > 0) {
+      setSelectedFiles(prev => {
+        const next = new Set(prev);
+        removedMentions.forEach(f => next.delete(f));
+        addedMentions.forEach(f => next.add(f));
+        return next;
+      });
+    }
+
+    prevMentionsRef.current = currentMentions;
+  }, [request, files]);
+
+  // Click outside listener to close mention popup
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        mentionPopupRef.current && 
+        !mentionPopupRef.current.contains(e.target as Node) &&
+        textareaRef.current &&
+        !textareaRef.current.contains(e.target as Node)
+      ) {
+        setMentionQuery(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Reset selected files when repo changes
   useEffect(() => {
@@ -148,6 +272,7 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap, fileStats }: Pr
     const newText = `${before}@${filePath} ${after}`;
     setRequest(newText);
 
+    // Automatically check file in tree selector
     setSelectedFiles(prev => new Set(prev).add(filePath));
     setMentionQuery(null);
 
@@ -170,14 +295,14 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap, fileStats }: Pr
         setActiveMentionIndex(prev => (prev - 1 + mentionMatches.length) % mentionMatches.length);
       } else if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
-        insertMention(mentionMatches[activeMentionIndex]);
+        insertMention(mentionMatches[activeMentionIndex].filePath);
       } else if (e.key === 'Escape') {
         setMentionQuery(null);
       }
     }
   };
 
-  // Bulk Actions
+  // Bulk Tree Actions
   const handleSelectAll = () => setSelectedFiles(new Set(files));
   const handleDeselectAll = () => setSelectedFiles(new Set());
 
@@ -291,6 +416,26 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap, fileStats }: Pr
     );
   };
 
+  // Helper to render fuzzy character highlighting
+  const renderFuzzyPath = (result: FuzzyResult) => {
+    const chars = result.filePath.split('');
+    return (
+      <span className="font-mono text-xs truncate">
+        {chars.map((char, idx) => {
+          const isMatched = result.matchedIndices.has(idx);
+          return (
+            <span 
+              key={idx} 
+              className={isMatched ? 'text-cyan-400 font-bold bg-cyan-950/60 rounded-[1px]' : 'text-zinc-400'}
+            >
+              {char}
+            </span>
+          );
+        })}
+      </span>
+    );
+  };
+
   return (
     <div className="border-r border-zinc-800 flex flex-col h-full p-4 space-y-4 bg-zinc-950/50">
       {/* Repo Map Status Header */}
@@ -388,7 +533,7 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap, fileStats }: Pr
         </div>
       </div>
 
-      {/* USER REQUEST TEXTAREA WITH FLOATING @MENTION POPUP */}
+      {/* USER REQUEST TEXTAREA WITH FUZZY @MENTION POPUP */}
       <div className="space-y-2 relative">
         <div className="flex items-center justify-between">
           <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold flex items-center">
@@ -399,25 +544,36 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap, fileStats }: Pr
           </label>
         </div>
 
+        {/* FLOATING FUZZY @MENTION AUTOCOMPLETE POPUP */}
         {mentionQuery !== null && mentionMatches.length > 0 && (
-          <div className="absolute bottom-full mb-1 left-0 right-0 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-50 overflow-hidden max-h-48 overflow-y-auto custom-scrollbar">
+          <div 
+            ref={mentionPopupRef}
+            className="absolute bottom-full mb-1 left-0 right-0 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-50 overflow-hidden max-h-52 overflow-y-auto custom-scrollbar"
+          >
             <div className="p-1.5 bg-zinc-950 border-b border-zinc-800 text-[10px] text-zinc-400 font-medium flex justify-between">
-              <span>Matching Files for "@{mentionQuery}"</span>
+              <span>Fuzzy Matches for "@{mentionQuery}"</span>
               <span className="text-zinc-600">↑↓ to navigate, Enter to select</span>
             </div>
-            {mentionMatches.map((filePath, idx) => (
+            {mentionMatches.map((res, idx) => (
               <div
-                key={filePath}
-                onClick={() => insertMention(filePath)}
+                key={res.filePath}
+                onClick={() => insertMention(res.filePath)}
                 onMouseEnter={() => setActiveMentionIndex(idx)}
-                className={`px-3 py-1.5 text-xs flex items-center cursor-pointer transition-colors ${
+                className={`px-3 py-1.5 text-xs flex items-center justify-between cursor-pointer transition-colors ${
                   idx === activeMentionIndex 
                     ? 'bg-cyan-600/30 text-cyan-200 border-l-2 border-cyan-500' 
                     : 'text-zinc-300 hover:bg-zinc-800/50'
                 }`}
               >
-                <FileText className="w-3.5 h-3.5 mr-2 text-zinc-400 shrink-0" />
-                <span className="truncate font-mono">{filePath}</span>
+                <div className="flex items-center min-w-0 mr-2">
+                  <FileText className="w-3.5 h-3.5 mr-2 text-zinc-400 shrink-0" />
+                  {renderFuzzyPath(res)}
+                </div>
+                {selectedFiles.has(res.filePath) && (
+                  <span className="text-[9px] bg-cyan-500/20 text-cyan-400 font-mono px-1 py-0.5 rounded border border-cyan-500/30 shrink-0">
+                    Added
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -426,7 +582,7 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap, fileStats }: Pr
         <textarea 
           ref={textareaRef}
           className="w-full h-24 bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-sm text-zinc-300 focus:outline-none focus:border-cyan-500/50 resize-none font-sans"
-          placeholder="Describe the changes needed... (type @ to reference a file)"
+          placeholder="Describe the changes needed... (type @ to fuzzy match files)"
           value={request}
           onChange={handleTextareaChange}
           onKeyDown={handleTextareaKeyDown}
