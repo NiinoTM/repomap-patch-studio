@@ -151,6 +151,7 @@ export function PromptPanel({
 
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [isCopying, setIsCopying] = useState(false);
+  const [isCopyingFiles, setIsCopyingFiles] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     new Set(["root"]),
@@ -1106,6 +1107,45 @@ ${request}`;
           {isCopying
             ? "Assembling..."
             : `Copy Context (${selectedFiles.size} Files) + Prompt`}
+        </span>
+      </button>
+
+      <button
+        onClick={async () => {
+          setIsCopyingFiles(true);
+          try {
+            const res = await fetch("/api/files", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ files: Array.from(selectedFiles) }),
+            });
+            const data = await res.json();
+
+            let activeFilesText = "";
+            if (selectedFiles.size > 0) {
+              for (const f of selectedFiles) {
+                activeFilesText += `--- START OF FILE ${f} ---\n${data.contents[f] || ""}\n--- END OF FILE ${f} ---\n\n`;
+              }
+            } else {
+              activeFilesText = "No specific files selected.";
+            }
+
+            // Stripped down prompt with JUST the active files context
+            const finalPrompt = `==================================================\nACTIVE FILES CONTEXT:\n${activeFilesText}`;
+
+            onCopy(finalPrompt);
+          } finally {
+            setIsCopyingFiles(false);
+          }
+        }}
+        disabled={isCopying || isCopyingFiles || selectedFiles.size === 0}
+        className="w-full mt-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold py-2.5 rounded-lg flex items-center justify-center space-x-2 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer border border-zinc-700"
+      >
+        <FileText className="w-4 h-4" />
+        <span>
+          {isCopyingFiles
+            ? "Fetching..."
+            : `Copy Files Only (${selectedFiles.size} Files)`}
         </span>
       </button>
 
