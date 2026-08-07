@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ClipboardPaste } from 'lucide-react';
+import { ClipboardPaste, AlertTriangle } from 'lucide-react';
 import { DiffBlock } from '../types';
 
 interface DiffPanelProps {
@@ -54,64 +54,80 @@ export function DiffPanel({ parsedBlocks, onPaste, onClear, pastedContent }: Dif
               <span className="text-xs uppercase font-bold tracking-widest">Click to paste response</span>
             </div>
           </div>
+        ) : parsedBlocks.length === 0 ? (
+          /* FALLBACK WARNING WHEN PASTED TEXT HAS NO PARSABLE BLOCKS */
+          <div className="flex-1 border border-amber-500/30 bg-amber-950/20 rounded-xl p-6 flex flex-col items-center justify-center text-center space-y-3">
+            <AlertTriangle className="w-8 h-8 text-amber-400" />
+            <p className="text-sm font-semibold text-zinc-200">No Diff Blocks Detected</p>
+            <p className="text-xs text-zinc-400 max-w-md">
+              The pasted clipboard text does not contain valid <code className="text-cyan-400">&lt;&lt;&lt;&lt;&lt;&lt;&lt; SEARCH</code> or <code className="text-cyan-400">Create 'file'</code> blocks. Ensure your AI output used the required block format.
+            </p>
+            <button 
+              onClick={onClear}
+              className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs rounded-lg transition-colors cursor-pointer"
+            >
+              Clear and Try Again
+            </button>
+          </div>
         ) : (
           <>
             <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4">
               {parsedBlocks.map((block) => {
                 const isIgnored = ignoredBlocks.has(block.id);
                 return (
-                <div key={block.id} className={`bg-zinc-900/30 border border-zinc-800 rounded-xl flex flex-col overflow-hidden transition-opacity ${isIgnored ? 'opacity-50 grayscale' : ''}`}>
-                  <div className="px-4 py-2 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-xs font-mono text-zinc-300">{block.file}</span>
-                      {block.status === 'match' ? (
-                        <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase">
-                          Match Found
-                        </span>
-                      ) : (
-                        <span className="bg-rose-500/20 text-rose-400 text-[10px] px-1.5 py-0.5 rounded border border-rose-500/20 font-bold uppercase">
-                          Not Found
-                        </span>
-                      )}
-                    </div>
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <span className={`text-[10px] font-bold uppercase ${!isIgnored ? 'text-cyan-500' : 'text-zinc-500'}`}>
-                        {isIgnored ? 'Ignored' : 'Accepted'}
-                      </span>
-                      <div className={`w-8 h-4 rounded-full flex items-center transition-colors p-0.5 ${!isIgnored ? 'bg-cyan-500' : 'bg-zinc-700'}`}>
-                        <div className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${!isIgnored ? 'translate-x-4' : 'translate-x-0'}`} />
+                  <div key={block.id} className={`bg-zinc-900/30 border border-zinc-800 rounded-xl flex flex-col overflow-hidden transition-opacity ${isIgnored ? 'opacity-50 grayscale' : ''}`}>
+                    <div className="px-4 py-2 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs font-mono text-zinc-300">{block.file}</span>
+                        {block.status === 'match' ? (
+                          <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase">
+                            Match Found
+                          </span>
+                        ) : (
+                          <span className="bg-rose-500/20 text-rose-400 text-[10px] px-1.5 py-0.5 rounded border border-rose-500/20 font-bold uppercase">
+                            Not Found
+                          </span>
+                        )}
                       </div>
-                      <input 
-                        type="checkbox" 
-                        className="hidden" 
-                        checked={!isIgnored} 
-                        onChange={() => toggleBlock(block.id)} 
-                      />
-                    </label>
-                  </div>
-                  
-                  <div className="p-4 font-mono text-[11px] overflow-x-auto custom-scrollbar leading-relaxed">
-                    <div className="text-rose-500 opacity-50 select-none">{"<<<<<<< SEARCH"}</div>
-                    <div className="pl-4 text-zinc-500 whitespace-pre">
-                      {block.search}
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <span className={`text-[10px] font-bold uppercase ${!isIgnored ? 'text-cyan-500' : 'text-zinc-500'}`}>
+                          {isIgnored ? 'Ignored' : 'Accepted'}
+                        </span>
+                        <div className={`w-8 h-4 rounded-full flex items-center transition-colors p-0.5 ${!isIgnored ? 'bg-cyan-500' : 'bg-zinc-700'}`}>
+                          <div className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${!isIgnored ? 'translate-x-4' : 'translate-x-0'}`} />
+                        </div>
+                        <input 
+                          type="checkbox" 
+                          className="hidden" 
+                          checked={!isIgnored} 
+                          onChange={() => toggleBlock(block.id)} 
+                        />
+                      </label>
                     </div>
-                    <div className="text-emerald-500 opacity-50 select-none">{"======="}</div>
-                    <div className="pl-4 text-zinc-200 whitespace-pre">
-                      {block.replace}
+                    
+                    <div className="p-4 font-mono text-[11px] overflow-x-auto custom-scrollbar leading-relaxed">
+                      <div className="text-rose-500 opacity-50 select-none">{"<<<<<<< SEARCH"}</div>
+                      <div className="pl-4 text-zinc-500 whitespace-pre">
+                        {block.search}
+                      </div>
+                      <div className="text-emerald-500 opacity-50 select-none">{"======="}</div>
+                      <div className="pl-4 text-zinc-200 whitespace-pre">
+                        {block.replace}
+                      </div>
+                      <div className="text-emerald-500 opacity-50 select-none">{">>>>>>> REPLACE"}</div>
                     </div>
-                    <div className="text-emerald-500 opacity-50 select-none">{">>>>>>> REPLACE"}</div>
                   </div>
-                </div>
-              )})}
+                );
+              })}
             </div>
             
             <div 
               onClick={onPaste}
-              className="h-24 shrink-0 border-2 border-dashed border-zinc-800 rounded-xl flex items-center justify-center cursor-pointer hover:bg-zinc-900/30 transition-colors"
+              className="h-20 shrink-0 border-2 border-dashed border-zinc-800 rounded-xl flex items-center justify-center cursor-pointer hover:bg-zinc-900/30 transition-colors"
             >
               <div className="flex flex-col items-center text-zinc-600">
-                <ClipboardPaste className="w-6 h-6 mb-1" />
-                <span className="text-[11px] uppercase font-bold tracking-widest">Paste additional block</span>
+                <ClipboardPaste className="w-5 h-5 mb-1" />
+                <span className="text-[10px] uppercase font-bold tracking-widest">Paste additional block</span>
               </div>
             </div>
           </>
