@@ -9,6 +9,9 @@ import {
   XCircle,
   FoldVertical,
   UnfoldVertical,
+  Copy,
+  Edit2,
+  Save,
 } from "lucide-react";
 import { DiffBlock } from "../types";
 
@@ -17,6 +20,7 @@ interface DiffPanelProps {
   onPaste: (append?: boolean) => void;
   onClear: () => void;
   pastedContent: string;
+  onBlockEdit?: (id: string, search: string, replace: string) => void;
 }
 
 export function DiffPanel({
@@ -24,12 +28,41 @@ export function DiffPanel({
   onPaste,
   onClear,
   pastedContent,
+  onBlockEdit,
 }: DiffPanelProps) {
   const [ignoredBlocks, setIgnoredBlocks] = useState<Set<string>>(new Set());
   const [showDebug, setShowDebug] = useState(false);
   const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(
     new Set(),
   );
+
+  const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
+  const [editSearch, setEditSearch] = useState("");
+  const [editReplace, setEditReplace] = useState("");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleCopyBlock = (block: DiffBlock) => {
+    const text = `FILE: ${block.file}\n<<<<<<< SEARCH\n${block.search}\n=======\n${block.replace}\n>>>>>>> REPLACE`;
+    navigator.clipboard.writeText(text);
+    setCopiedId(block.id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const startEditing = (block: DiffBlock) => {
+    setEditingBlockId(block.id);
+    setEditSearch(block.search);
+    setEditReplace(block.replace);
+    if (collapsedBlocks.has(block.id)) {
+      toggleCollapse(block.id);
+    }
+  };
+
+  const saveEdit = () => {
+    if (editingBlockId && onBlockEdit) {
+      onBlockEdit(editingBlockId, editSearch, editReplace);
+    }
+    setEditingBlockId(null);
+  };
 
   // Auto-retract blocks if multiple blocks or large diff sizes are detected on load
   useEffect(() => {
@@ -383,6 +416,50 @@ export function DiffPanel({
                           </span>
                         )}
                       </div>
+
+                      <div className="flex items-center space-x-1 shrink-0 pr-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCopyBlock(block);
+                          }}
+                          className="text-zinc-500 hover:text-cyan-400 p-1.5 rounded hover:bg-zinc-800 transition-colors"
+                          title="Copy block"
+                        >
+                          {copiedId === block.id ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+
+                        {editingBlockId === block.id ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              saveEdit();
+                            }}
+                            className="text-emerald-500 hover:text-emerald-400 p-1.5 rounded hover:bg-emerald-500/10 transition-colors"
+                            title="Save changes"
+                          >
+                            <Save className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              startEditing(block);
+                            }}
+                            className="text-zinc-500 hover:text-cyan-400 p-1.5 rounded hover:bg-zinc-800 transition-colors"
+                            title="Edit block"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
+                        <div className="w-px h-4 bg-zinc-800 mx-1"></div>
+                      </div>
+
                       <label
                         className="flex items-center space-x-2 cursor-pointer shrink-0"
                         onClick={(e) => e.stopPropagation()}
@@ -429,6 +506,35 @@ export function DiffPanel({
                         <span className="text-[10px] text-cyan-500/80 font-sans hover:underline ml-2 shrink-0">
                           Click to expand
                         </span>
+                      </div>
+                    ) : editingBlockId === block.id ? (
+                      <div className="p-4 bg-zinc-950/50 flex flex-col space-y-4 border-t border-zinc-800/50">
+                        <div className="flex flex-col space-y-1.5">
+                          <label className="text-[10px] text-rose-400/80 uppercase font-bold tracking-wider flex items-center">
+                            <span className="text-rose-500/50 mr-2">
+                              {"<<<<<<< SEARCH"}
+                            </span>
+                          </label>
+                          <textarea
+                            value={editSearch}
+                            onChange={(e) => setEditSearch(e.target.value)}
+                            className="w-full bg-zinc-900/80 border border-zinc-800 rounded p-3 text-[11px] font-mono text-zinc-400 h-32 custom-scrollbar focus:border-rose-500/50 focus:outline-none resize-y"
+                            spellCheck={false}
+                          />
+                        </div>
+                        <div className="flex flex-col space-y-1.5">
+                          <label className="text-[10px] text-emerald-400/80 uppercase font-bold tracking-wider flex items-center">
+                            <span className="text-emerald-500/50 mr-2">
+                              {"======="} (REPLACE)
+                            </span>
+                          </label>
+                          <textarea
+                            value={editReplace}
+                            onChange={(e) => setEditReplace(e.target.value)}
+                            className="w-full bg-zinc-900/80 border border-zinc-800 rounded p-3 text-[11px] font-mono text-zinc-200 h-40 custom-scrollbar focus:border-emerald-500/50 focus:outline-none resize-y"
+                            spellCheck={false}
+                          />
+                        </div>
                       </div>
                     ) : (
                       <div className="p-4 font-mono text-[11px] overflow-x-auto custom-scrollbar leading-relaxed min-w-0 w-full bg-zinc-950/50">

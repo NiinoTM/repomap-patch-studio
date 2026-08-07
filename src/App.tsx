@@ -237,6 +237,11 @@ export default function App() {
             parsedBlocks={diffBlocks}
             onPaste={handlePaste}
             onClear={handleClear}
+            onBlockEdit={(id, search, replace) => {
+              setDiffBlocks((prev) =>
+                prev.map((b) => (b.id === id ? { ...b, search, replace } : b)),
+              );
+            }}
           />
         </section>
       </main>
