@@ -15,7 +15,9 @@ import {
   Search,
   AtSign,
   Sparkles,
-  Plus,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
 } from "lucide-react";
 
 interface PromptPanelProps {
@@ -24,13 +26,24 @@ interface PromptPanelProps {
   files: string[];
   repoMap: string;
   fileStats?: Record<string, { size: number; tokens: number }>;
-  dependencyMap?: Record<string, string[]>;
+  dependencyMap?: {
+    outbound: Record<string, string[]>;
+    inbound: Record<string, string[]>;
+  };
   onTokenStatsChange?: (stats: {
     total: number;
     map: number;
     files: number;
     selectedCount: number;
   }) => void;
+}
+
+interface SuggestedFile {
+  filePath: string;
+  type: "parent" | "child" | "hub";
+  importedActiveFiles: string[];
+  importingActiveFiles: string[];
+  tooltip: string;
 }
 
 interface TreeNode {
@@ -252,25 +265,83 @@ export function PromptPanel({
   }, [files, searchQuery]);
 
   const suggestedFiles = useMemo(() => {
-    if (!dependencyMap || selectedFiles.size === 0) return [];
+    if (
+      !dependencyMap ||
+      (!dependencyMap.outbound && !dependencyMap.inbound) ||
+      selectedFiles.size === 0
+    ) {
+      return [];
+    }
 
-    const suggestions = new Set<string>();
+    const outboundMap = dependencyMap.outbound || {};
+    const inboundMap = dependencyMap.inbound || {};
+
+    const candidates = new Set<string>();
+
     selectedFiles.forEach((file) => {
-      const imports = dependencyMap[file] || [];
-      imports.forEach((imp) => {
-        if (!selectedFiles.has(imp)) {
-          suggestions.add(imp);
+      const children = outboundMap[file] || [];
+      children.forEach((child) => {
+        if (!selectedFiles.has(child)) {
+          candidates.add(child);
+        }
+      });
+
+      const parents = inboundMap[file] || [];
+      parents.forEach((parent) => {
+        if (!selectedFiles.has(parent)) {
+          candidates.add(parent);
         }
       });
     });
 
-    return Array.from(suggestions);
+    const results: SuggestedFile[] = [];
+
+    candidates.forEach((candPath) => {
+      const candOutbound = outboundMap[candPath] || [];
+      const candInbound = inboundMap[candPath] || [];
+
+      const importedActive = candOutbound.filter((f) => selectedFiles.has(f));
+      const importingActive = candInbound.filter((f) => selectedFiles.has(f));
+
+      const isParent = importedActive.length > 0;
+      const isChild = importingActive.length > 0;
+
+      let type: "parent" | "child" | "hub" = "child";
+      let tooltip = "";
+
+      if (isParent && isChild) {
+        type = "hub";
+        tooltip = "Hub: Both a parent and child across active context";
+      } else if (isParent) {
+        type = "parent";
+        const fileNames = importedActive
+          .map((f) => f.split("/").pop() || f)
+          .join(", ");
+        tooltip = `Parent: Imports ${fileNames}`;
+      } else {
+        type = "child";
+        const fileNames = importingActive
+          .map((f) => f.split("/").pop() || f)
+          .join(", ");
+        tooltip = `Child: Imported by ${fileNames}`;
+      }
+
+      results.push({
+        filePath: candPath,
+        type,
+        importedActiveFiles: importedActive,
+        importingActiveFiles: importingActive,
+        tooltip,
+      });
+    });
+
+    return results;
   }, [selectedFiles, dependencyMap]);
 
   const handleAddAllSuggestions = () => {
     setSelectedFiles((prev) => {
       const next = new Set(prev);
-      suggestedFiles.forEach((f) => next.add(f));
+      suggestedFiles.forEach((item) => next.add(item.filePath));
       return next;
     });
   };
@@ -546,33 +617,69 @@ export function PromptPanel({
 
       {/* SMART IMPORT DEPENDENCY SUGGESTIONS BANNER */}
       {suggestedFiles.length > 0 && (
-        <div className="bg-cyan-950/40 border border-cyan-500/30 rounded-lg p-2.5 space-y-2 animate-fadeIn shrink-0">
+        <div className="bg-zinc-900/90 border border-zinc-800 rounded-lg p-2.5 space-y-2 animate-fadeIn shrink-0">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-cyan-300 font-semibold flex items-center">
-              <Sparkles className="w-3.5 h-3.5 mr-1.5 text-cyan-400" />
+            <span className="text-xs text-zinc-200 font-semibold flex items-center">
+              <Sparkles className="w-3.5 h-3.5 mr-1.5 text-indigo-400" />
               Suggested Context ({suggestedFiles.length})
             </span>
             <button
               onClick={handleAddAllSuggestions}
-              className="text-[10px] bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-2 py-0.5 rounded transition-colors cursor-pointer"
+              className="text-[10px] bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-2 py-0.5 rounded transition-colors cursor-pointer"
             >
               + Add All
             </button>
           </div>
-          <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto custom-scrollbar">
-            {suggestedFiles.map((file) => (
-              <button
-                key={file}
-                onClick={() => toggleFile(file)}
-                className="text-[10px] bg-zinc-900 hover:bg-zinc-800 text-zinc-300 px-1.5 py-0.5 rounded border border-zinc-700 flex items-center space-x-1 cursor-pointer transition-colors"
-                title={`Imported by active context. Click to add ${file}`}
-              >
-                <Plus className="w-2.5 h-2.5 text-cyan-400" />
-                <span className="font-mono truncate max-w-[130px]">
-                  {file.split("/").pop()}
-                </span>
-              </button>
-            ))}
+          <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto custom-scrollbar">
+            {suggestedFiles.map((item) => {
+              const fileName = item.filePath.split("/").pop() || item.filePath;
+
+              if (item.type === "parent") {
+                return (
+                  <button
+                    key={item.filePath}
+                    onClick={() => toggleFile(item.filePath)}
+                    title={item.tooltip}
+                    className="text-[10px] bg-purple-950/40 border border-purple-500/40 text-purple-300 hover:bg-purple-900/60 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
+                  >
+                    <ArrowUp className="w-3 h-3 text-purple-400 shrink-0" />
+                    <span className="font-mono truncate max-w-[130px]">
+                      {fileName}
+                    </span>
+                  </button>
+                );
+              }
+
+              if (item.type === "child") {
+                return (
+                  <button
+                    key={item.filePath}
+                    onClick={() => toggleFile(item.filePath)}
+                    title={item.tooltip}
+                    className="text-[10px] bg-cyan-950/40 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-900/60 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
+                  >
+                    <ArrowDown className="w-3 h-3 text-cyan-400 shrink-0" />
+                    <span className="font-mono truncate max-w-[130px]">
+                      {fileName}
+                    </span>
+                  </button>
+                );
+              }
+
+              return (
+                <button
+                  key={item.filePath}
+                  onClick={() => toggleFile(item.filePath)}
+                  title={item.tooltip}
+                  className="text-[10px] bg-gradient-to-r from-purple-950/50 to-cyan-950/50 border border-indigo-500/50 text-indigo-200 hover:from-purple-900/70 hover:to-cyan-900/70 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
+                >
+                  <ArrowUpDown className="w-3 h-3 text-indigo-300 shrink-0" />
+                  <span className="font-mono truncate max-w-[130px]">
+                    {fileName}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

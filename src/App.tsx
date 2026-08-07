@@ -17,9 +17,10 @@ export default function App() {
   const [fileStats, setFileStats] = useState<
     Record<string, { size: number; tokens: number }>
   >({});
-  const [dependencyMap, setDependencyMap] = useState<Record<string, string[]>>(
-    {},
-  );
+  const [dependencyMap, setDependencyMap] = useState<{
+    outbound: Record<string, string[]>;
+    inbound: Record<string, string[]>;
+  }>({ outbound: {}, inbound: {} });
   const [tokenStats, setTokenStats] = useState({
     total: 0,
     map: 0,
@@ -36,7 +37,9 @@ export default function App() {
           setRepoFiles(data.files);
           setRepoMap(data.repoMap);
           setFileStats(data.fileStats || {});
-          setDependencyMap(data.dependencyMap || {});
+          setDependencyMap(
+            data.dependencyMap || { outbound: {}, inbound: {} },
+          );
         }
       })
       .catch((err) => console.error("Failed to fetch repo context:", err));
@@ -57,6 +60,10 @@ export default function App() {
         setRepoPath(data.path);
         setRepoFiles(data.files);
         setRepoMap(data.repoMap);
+        setFileStats(data.fileStats || {});
+        setDependencyMap(
+          data.dependencyMap || { outbound: {}, inbound: {} },
+        );
         setToastMessage("Repository context updated successfully!");
       } else {
         alert("Error: " + data.error);

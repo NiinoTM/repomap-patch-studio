@@ -111,9 +111,10 @@ const getFileStats = (basePath, filesList) => {
   return stats;
 };
 
-// Helper to build a Dependency Map of imports between files
+// Helper to build a Bidirectional Dependency Map (outbound & inbound imports)
 const getDependencyMap = (basePath, filesList) => {
-  const depMap = {};
+  const outbound = {};
+  const inboundMap = {};
   const fileSet = new Set(filesList);
 
   for (const file of filesList) {
@@ -169,14 +170,23 @@ const getDependencyMap = (basePath, filesList) => {
       }
 
       if (imports.size > 0) {
-        depMap[file] = Array.from(imports);
+        outbound[file] = Array.from(imports);
+        for (const imp of imports) {
+          if (!inboundMap[imp]) inboundMap[imp] = new Set();
+          inboundMap[imp].add(file);
+        }
       }
     } catch (e) {
       /* ignore read errors */
     }
   }
 
-  return depMap;
+  const inbound = {};
+  for (const key in inboundMap) {
+    inbound[key] = Array.from(inboundMap[key]);
+  }
+
+  return { outbound, inbound };
 };
 
 // API: Get Current Repo Path, Files, Repo Map, Stats & Dependency Map
