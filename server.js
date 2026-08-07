@@ -9,7 +9,15 @@ app.use(express.json());
 
 let targetRepoPath = process.cwd();
 
-const getAllFiles = (dir, basePath = dir, fileList = []) => {
+// Secrets sometimes get committed by accident even when a project has a
+// .gitignore — keep a narrow safety net so tracked .env files never end up
+// in the prompt, regardless of what git reports.
+const isSecretFile = (fileName) => /^\.env(\..+)?$/.test(fileName);
+
+// Manual filesystem walk, used only as a fallback when the target directory
+// isn't a git repo (or git isn't available). Mirrors a sane default ignore
+// list since there's no .gitignore to defer to in that case.
+const getAllFilesFallback = (dir, basePath = dir, fileList = []) => {
   if (!fs.existsSync(dir)) return fileList;
   const files = fs.readdirSync(dir);
   for (const file of files) {
@@ -27,13 +35,37 @@ const getAllFiles = (dir, basePath = dir, fileList = []) => {
           ".idea",
         ].includes(file)
       ) {
-        getAllFiles(filePath, basePath, fileList);
+        getAllFilesFallback(filePath, basePath, fileList);
       }
-    } else {
+    } else if (!isSecretFile(file)) {
       fileList.push(path.relative(basePath, filePath).replace(/\\/g, "/"));
     }
   }
   return fileList;
+};
+
+// Primary file listing: defers entirely to git so the tool automatically
+// respects whatever the project already excludes via .gitignore (backups,
+// db files, build output, etc.) with zero maintenance on our end.
+//   --cached           tracked files
+//   --others           untracked files
+//   --exclude-standard apply .gitignore, .git/info/exclude, and global excludes
+const getAllFiles = (dir, basePath = dir) => {
+  try {
+    const raw = execSync("git ls-files --cached --others --exclude-standard", {
+      cwd: basePath,
+      encoding: "utf-8",
+    });
+    return raw
+      .split(/\r?\n/)
+      .map((f) => f.trim())
+      .filter(Boolean)
+      .filter((f) => !isSecretFile(path.basename(f)));
+  } catch (e) {
+    // Not a git repo, or git isn't installed/on PATH — fall back so the
+    // tool still works outside version control.
+    return getAllFilesFallback(dir, basePath);
+  }
 };
 
 const generateRepoMap = (basePath, filesList) => {
