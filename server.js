@@ -355,8 +355,7 @@ app.post('/api/apply', (req, res) => {
             const updated = cleanNormContent.slice(0, range.start) + normReplace + cleanNormContent.slice(range.end);
             fs.writeFileSync(fullPath, updated, 'utf-8');
           } else {
-            // Fallback: overwrite if no match
-            fs.writeFileSync(fullPath, block.replace, 'utf-8');
+            console.warn(`[Apply Warning] Could not find SEARCH block for ${block.file}. File left untouched to prevent corruption.`);
           }
         }
       }
