@@ -20,6 +20,12 @@ export default function App() {
   const [dependencyMap, setDependencyMap] = useState<Record<string, string[]>>(
     {},
   );
+  const [tokenStats, setTokenStats] = useState({
+    total: 0,
+    map: 0,
+    files: 0,
+    selectedCount: 0,
+  });
 
   useEffect(() => {
     fetch("/api/repo")
@@ -115,8 +121,6 @@ export default function App() {
         return;
       }
 
-      // Exclude "Active File" from the backend validation fetch
-      // since it doesn't represent a real file path yet.
       const uniqueFiles = Array.from(
         new Set(parsed.map((b) => b.file).filter((f) => f !== "Active File")),
       );
@@ -131,7 +135,7 @@ export default function App() {
         });
         data = await res.json();
       } else {
-        data.success = true; // Proceed even if we only have "Active File" blocks
+        data.success = true;
       }
 
       if (data.success) {
@@ -143,27 +147,32 @@ export default function App() {
           const content = data.contents[block.file];
           if (!content) return { ...block, status: "no-match" as const };
 
-          // 1. Exact match test
           const normContent = content.replace(/\r\n/g, "\n");
           const normSearch = block.search.replace(/\r\n/g, "\n");
           let isMatch = normContent.includes(normSearch);
 
-          // 2. Fuzzy whitespace match test (ignores leading indentation spaces)
           if (!isMatch) {
-            const searchLines = normSearch.split('\n').map(l => l.trim()).filter(Boolean);
-            const contentLines = normContent.split('\n').map(l => l.trim()).filter(Boolean);
+            const searchLines = normSearch
+              .split("\n")
+              .map((l) => l.trim())
+              .filter(Boolean);
+            const contentLines = normContent
+              .split("\n")
+              .map((l) => l.trim())
+              .filter(Boolean);
             if (searchLines.length > 0) {
-              isMatch = contentLines.join('\n').includes(searchLines.join('\n'));
+              isMatch = contentLines
+                .join("\n")
+                .includes(searchLines.join("\n"));
             }
           }
 
-          // 3. Ultra-Lenient Token Stream (Ignores comments, JSX {" "}, spaces, commas, quotes, parens, and semicolons)
           if (!isMatch) {
-            const tokenize = (str: string) => 
+            const tokenize = (str: string) =>
               str
-                .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '') // Strip comments // and /* */
-                .replace(/\{\s*["']\s*["']\s*\}/g, '')   // Strip Prettier JSX space expressions
-                .replace(/[\s,'"`();]+/g, '');
+                .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
+                .replace(/\{\s*["']\s*["']\s*\}/g, "")
+                .replace(/[\s,'"`();]+/g, "");
 
             const tokenSearch = tokenize(normSearch);
             const tokenContent = tokenize(normContent);
@@ -172,7 +181,10 @@ export default function App() {
             }
           }
 
-          return { ...block, status: isMatch ? 'match' as const : 'no-match' as const };
+          return {
+            ...block,
+            status: isMatch ? ("match" as const) : ("no-match" as const),
+          };
         });
         setDiffBlocks(validatedBlocks);
       } else {
@@ -186,7 +198,11 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen w-full bg-zinc-950 overflow-hidden font-sans text-zinc-300 selection:bg-cyan-500/30 antialiased">
-      <Header repoPath={repoPath} onChangeRepo={handleChangeRepo} />
+      <Header
+        repoPath={repoPath}
+        onChangeRepo={handleChangeRepo}
+        tokenStats={tokenStats}
+      />
 
       <main className="flex-1 flex overflow-hidden">
         <aside className="w-[420px] flex-shrink-0">
@@ -197,6 +213,7 @@ export default function App() {
             repoMap={repoMap}
             fileStats={fileStats}
             dependencyMap={dependencyMap}
+            onTokenStatsChange={setTokenStats}
           />
         </aside>
 

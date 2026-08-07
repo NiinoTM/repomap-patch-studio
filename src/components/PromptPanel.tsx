@@ -25,6 +25,12 @@ interface PromptPanelProps {
   repoMap: string;
   fileStats?: Record<string, { size: number; tokens: number }>;
   dependencyMap?: Record<string, string[]>;
+  onTokenStatsChange?: (stats: {
+    total: number;
+    map: number;
+    files: number;
+    selectedCount: number;
+  }) => void;
 }
 
 interface TreeNode {
@@ -43,9 +49,6 @@ interface FuzzyResult {
   matchedIndices: Set<number>;
 }
 
-// ==========================================
-// FUZZY MATCHING & SCORING ENGINE
-// ==========================================
 function fuzzySearchFiles(files: string[], query: string): FuzzyResult[] {
   if (!query) {
     return files.slice(0, 8).map((f) => {
@@ -82,12 +85,10 @@ function fuzzySearchFiles(files: string[], query: string): FuzzyResult[] {
         qIdx++;
         score += 10;
         consecutive += 1;
-        score += consecutive * 5; // Consecutive bonus
+        score += consecutive * 5;
 
-        // Bonus if match is inside filename vs directory
         if (i >= fileNameStartIdx) score += 15;
 
-        // Bonus for boundary match (start of word, after /, ., _, -)
         if (
           i === 0 ||
           i === fileNameStartIdx ||
@@ -100,7 +101,6 @@ function fuzzySearchFiles(files: string[], query: string): FuzzyResult[] {
       }
     }
 
-    // Only include if all characters in the query matched in order
     if (qIdx === q.length) {
       results.push({
         filePath: file,
@@ -122,8 +122,10 @@ export function PromptPanel({
   repoMap,
   fileStats,
   dependencyMap,
+  onTokenStatsChange,
 }: PromptPanelProps) {
   const [request, setRequest] = useState("");
+  ("");
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [isCopying, setIsCopying] = useState(false);
@@ -132,23 +134,17 @@ export function PromptPanel({
     new Set(["root"]),
   );
 
-  // @Mention State
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mentionPopupRef = useRef<HTMLDivElement>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1);
   const [activeMentionIndex, setActiveMentionIndex] = useState<number>(0);
 
-  // Perform fuzzy search whenever query changes
   const mentionMatches = useMemo(() => {
     if (mentionQuery === null) return [];
     return fuzzySearchFiles(files, mentionQuery);
   }, [files, mentionQuery]);
 
-  // ==========================================
-  // DYNAMIC @MENTION SYNCHRONIZATION
-  // Automatically select/unselect files when @mentions are typed or deleted
-  // ==========================================
   const prevMentionsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -182,7 +178,6 @@ export function PromptPanel({
     prevMentionsRef.current = currentMentions;
   }, [request, files]);
 
-  // Click outside listener to close mention popup
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (
@@ -198,12 +193,10 @@ export function PromptPanel({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Reset selected files when repo changes
   useEffect(() => {
     setSelectedFiles(new Set());
   }, [files]);
 
-  // Build tree data for Context Selector
   const treeData = useMemo(() => {
     const root: TreeNode = {
       name: "root",
@@ -258,9 +251,6 @@ export function PromptPanel({
     return root;
   }, [files, searchQuery]);
 
-  // ==========================================
-  // IMPORT DEPENDENCY SUGGESTION ENGINE
-  // ==========================================
   const suggestedFiles = useMemo(() => {
     if (!dependencyMap || selectedFiles.size === 0) return [];
 
@@ -268,7 +258,6 @@ export function PromptPanel({
     selectedFiles.forEach((file) => {
       const imports = dependencyMap[file] || [];
       imports.forEach((imp) => {
-        // Only suggest files that are NOT already in selectedFiles
         if (!selectedFiles.has(imp)) {
           suggestions.add(imp);
         }
@@ -285,11 +274,6 @@ export function PromptPanel({
       return next;
     });
   };
-
-  // ==========================================
-  // TOKEN BUDGET CALCULATION ENGINE
-  // ==========================================
-  const TARGET_BUDGET = 30000;
 
   const repoMapTokens = useMemo(
     () => Math.ceil((repoMap?.length || 0) / 3.8),
@@ -308,35 +292,26 @@ export function PromptPanel({
     () => Math.ceil((request.length + 800) / 3.8),
     [request],
   );
-
   const totalEstimatedTokens =
     repoMapTokens + selectedFilesTokens + promptOverheadTokens;
-  const budgetPercentage = Math.min(
-    100,
-    Math.round((totalEstimatedTokens / TARGET_BUDGET) * 100),
-  );
 
-  const budgetStatus = useMemo(() => {
-    if (totalEstimatedTokens <= 15000)
-      return {
-        label: "Optimal Focus",
-        bg: "bg-emerald-500",
-        text: "text-emerald-400",
-      };
-    if (totalEstimatedTokens <= 30000)
-      return {
-        label: "Heavy Context",
-        bg: "bg-amber-500",
-        text: "text-amber-400",
-      };
-    return {
-      label: "Context Overload",
-      bg: "bg-rose-500",
-      text: "text-rose-400",
-    };
-  }, [totalEstimatedTokens]);
+  useEffect(() => {
+    if (onTokenStatsChange) {
+      onTokenStatsChange({
+        total: totalEstimatedTokens,
+        map: repoMapTokens,
+        files: selectedFilesTokens,
+        selectedCount: selectedFiles.size,
+      });
+    }
+  }, [
+    totalEstimatedTokens,
+    repoMapTokens,
+    selectedFilesTokens,
+    selectedFiles.size,
+    onTokenStatsChange,
+  ]);
 
-  // @Mention Handlers
   const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     const cursorPos = e.target.selectionStart;
@@ -364,7 +339,6 @@ export function PromptPanel({
     const newText = `${before}@${filePath} ${after}`;
     setRequest(newText);
 
-    // Automatically check file in tree selector
     setSelectedFiles((prev) => new Set(prev).add(filePath));
     setMentionQuery(null);
 
@@ -398,7 +372,6 @@ export function PromptPanel({
     }
   };
 
-  // Bulk Tree Actions
   const handleSelectAll = () => setSelectedFiles(new Set(files));
   const handleDeselectAll = () => setSelectedFiles(new Set());
 
@@ -521,7 +494,6 @@ export function PromptPanel({
     );
   };
 
-  // Helper to render fuzzy character highlighting
   const renderFuzzyPath = (result: FuzzyResult) => {
     const chars = result.filePath.split("");
     return (
@@ -547,7 +519,7 @@ export function PromptPanel({
 
   return (
     <div className="border-r border-zinc-800 flex flex-col h-full p-4 space-y-4 bg-zinc-950/50">
-      {/* Repo Map Status Header */}
+      {}
       <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-lg flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div className="p-2 bg-cyan-500/10 rounded">
@@ -558,7 +530,7 @@ export function PromptPanel({
               Repo Map Ready
             </p>
             <p className="text-[10px] text-zinc-500">
-              ~{repoMapTokens.toLocaleString()} map tokens / {files.length}{" "}
+              ~{repoMapTokens.toLocaleString()} map tokens / {files.length}
               files
             </p>
           </div>
@@ -570,44 +542,6 @@ export function PromptPanel({
         >
           <Eye className="w-4 h-4" />
         </button>
-      </div>
-
-      {/* LIVE TOKEN BUDGET BAR */}
-      <div className="bg-zinc-900/90 border border-zinc-800 rounded-lg p-3 space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <span
-              className={`w-2 h-2 rounded-full ${budgetStatus.bg} animate-pulse`}
-            />
-            <span className="text-xs font-semibold text-zinc-200">
-              Token Budget
-            </span>
-            <span
-              className={`text-[10px] font-medium px-1.5 py-0.5 rounded bg-zinc-800 ${budgetStatus.text}`}
-            >
-              {budgetStatus.label}
-            </span>
-          </div>
-          <span className="font-mono text-xs font-bold text-zinc-100">
-            {totalEstimatedTokens.toLocaleString()}{" "}
-            <span className="text-[10px] font-normal text-zinc-500">/ 30k</span>
-          </span>
-        </div>
-
-        <div className="w-full bg-zinc-800/80 h-1.5 rounded-full overflow-hidden flex">
-          <div
-            className={`h-full transition-all duration-300 ${budgetStatus.bg}`}
-            style={{ width: `${budgetPercentage}%` }}
-          />
-        </div>
-
-        <div className="flex justify-between text-[10px] text-zinc-500 font-mono pt-0.5">
-          <span>Map: {repoMapTokens.toLocaleString()} tks</span>
-          <span>
-            Files ({selectedFiles.size}): {selectedFilesTokens.toLocaleString()}{" "}
-            tks
-          </span>
-        </div>
       </div>
 
       {/* SMART IMPORT DEPENDENCY SUGGESTIONS BANNER */}
@@ -643,7 +577,7 @@ export function PromptPanel({
         </div>
       )}
 
-      {/* Context Selection Tree */}
+      {}
       <div className="flex-1 flex flex-col space-y-2 min-h-0">
         <div className="flex items-center justify-between">
           <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold">
@@ -666,7 +600,7 @@ export function PromptPanel({
           </div>
         </div>
 
-        {/* Filter input */}
+        {}
         <div className="relative flex items-center">
           <Search className="w-3.5 h-3.5 absolute left-2.5 text-zinc-500 pointer-events-none" />
           <input
@@ -686,7 +620,7 @@ export function PromptPanel({
           )}
         </div>
 
-        {/* Tree view */}
+        {}
         <div className="flex-1 bg-zinc-900/50 border border-zinc-800 rounded-md overflow-hidden flex flex-col">
           <div className="p-2 space-y-0.5 overflow-y-auto custom-scrollbar flex-1">
             {treeData.children.length > 0 ? (
@@ -700,7 +634,7 @@ export function PromptPanel({
         </div>
       </div>
 
-      {/* USER REQUEST TEXTAREA WITH FUZZY @MENTION POPUP */}
+      {}
       <div className="space-y-2 relative">
         <div className="flex items-center justify-between">
           <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold flex items-center">
@@ -711,7 +645,7 @@ export function PromptPanel({
           </label>
         </div>
 
-        {/* FLOATING FUZZY @MENTION AUTOCOMPLETE POPUP */}
+        {}
         {mentionQuery !== null && mentionMatches.length > 0 && (
           <div
             ref={mentionPopupRef}
@@ -765,7 +699,7 @@ export function PromptPanel({
         </label>
       </div>
 
-      {/* Copy Context Button */}
+      {}
       <button
         onClick={async () => {
           setIsCopying(true);
@@ -842,13 +776,13 @@ ${request}`;
         </span>
       </button>
 
-      {/* Repo Map Modal */}
+      {}
       {isMapModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-2xl flex flex-col overflow-hidden shadow-2xl">
             <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900">
               <h2 className="text-sm font-bold text-zinc-200">
-                Repo Map Context Preview (~{repoMapTokens.toLocaleString()}{" "}
+                Repo Map Context Preview (~{repoMapTokens.toLocaleString()}
                 tokens)
               </h2>
               <button
