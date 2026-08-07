@@ -4,7 +4,7 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import { execSync } from "child_process";
-import { transformSync } from "esbuild";";
+import { transformSync } from "esbuild";
 
 const app = express();
 app.use(express.json());
@@ -564,5 +564,5 @@ app.post("/api/undo", (req, res) => {
 });
 
 app.listen(3001, () =>
-  console.log("🚀 Local Patch Backend running on http:
+  console.log("🚀 Local Patch Backend running on http://localhost:3001")
 );
