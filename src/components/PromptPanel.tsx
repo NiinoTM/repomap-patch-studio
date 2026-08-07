@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   Copy,
   Map,
@@ -160,6 +161,13 @@ export function PromptPanel({
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1);
   const [activeMentionIndex, setActiveMentionIndex] = useState<number>(0);
+  const [mentionPos, setMentionPos] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    maxHeight: number;
+    direction: "up" | "down";
+  } | null>(null);
 
   // Combined active context for prompts & stats: Seed Files + Accepted Suggestions
   const selectedFiles = useMemo(() => {
@@ -228,6 +236,50 @@ export function PromptPanel({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Positions the mention dropdown via a fixed-position portal so it can
+  // never be clipped by the sidebar's own bounding box, and flips to open
+  // downward when there isn't enough room above the textarea.
+  useEffect(() => {
+    if (mentionQuery === null || !textareaRef.current) {
+      setMentionPos(null);
+      return;
+    }
+
+    const MARGIN = 8;
+    const MAX_PANEL_HEIGHT = 260;
+    const MIN_PANEL_HEIGHT = 120;
+
+    const updatePosition = () => {
+      const rect = textareaRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const spaceAbove = rect.top - MARGIN;
+      const spaceBelow = window.innerHeight - rect.bottom - MARGIN;
+      const openUp = spaceAbove >= 160 || spaceAbove >= spaceBelow;
+
+      const maxHeight = Math.min(
+        MAX_PANEL_HEIGHT,
+        Math.max(MIN_PANEL_HEIGHT, (openUp ? spaceAbove : spaceBelow) - MARGIN),
+      );
+
+      setMentionPos({
+        top: openUp ? rect.top - MARGIN : rect.bottom + MARGIN,
+        left: rect.left,
+        width: rect.width,
+        maxHeight,
+        direction: openUp ? "up" : "down",
+      });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [mentionQuery, mentionMatches.length]);
 
   useEffect(() => {
     setSeedFiles(new Set());
@@ -673,25 +725,46 @@ export function PromptPanel({
     );
   };
 
+  // Renders the matched path with the DIRECTORY truncated (ellipsis on the
+  // left) and the FILENAME always shown in full. Truncating the whole path
+  // hides the part users actually need to read to tell matches apart.
   const renderFuzzyPath = (result: FuzzyResult) => {
-    const chars = result.filePath.split("");
+    const dirLen = result.dirPath ? result.dirPath.length + 1 : 0; // +1 for "/"
+    const dirChars = result.filePath.slice(0, dirLen).split("");
+    const fileChars = result.filePath.slice(dirLen).split("");
+
+    const renderChars = (chars: string[], offset: number) =>
+      chars.map((char, i) => {
+        const idx = offset + i;
+        const isMatched = result.matchedIndices.has(idx);
+        return (
+          <span
+            key={idx}
+            className={
+              isMatched
+                ? "text-cyan-400 font-bold bg-cyan-950/60 rounded-[1px]"
+                : "text-zinc-400"
+            }
+          >
+            {char}
+          </span>
+        );
+      });
+
     return (
-      <span className="font-mono text-xs truncate">
-        {chars.map((char, idx) => {
-          const isMatched = result.matchedIndices.has(idx);
-          return (
-            <span
-              key={idx}
-              className={
-                isMatched
-                  ? "text-cyan-400 font-bold bg-cyan-950/60 rounded-[1px]"
-                  : "text-zinc-400"
-              }
-            >
-              {char}
-            </span>
-          );
-        })}
+      <span className="font-mono text-xs flex items-center min-w-0">
+        {dirChars.length > 0 && (
+          <span
+            className="overflow-hidden whitespace-nowrap text-ellipsis shrink"
+            style={{ direction: "rtl", textAlign: "left" }}
+            title={result.dirPath}
+          >
+            {renderChars(dirChars, 0)}
+          </span>
+        )}
+        <span className="whitespace-nowrap shrink-0">
+          {renderChars(fileChars, dirLen)}
+        </span>
       </span>
     );
   };
@@ -732,41 +805,58 @@ export function PromptPanel({
           </label>
         </div>
 
-        {mentionQuery !== null && mentionMatches.length > 0 && (
-          <div
-            ref={mentionPopupRef}
-            className="absolute bottom-full mb-1 left-0 right-0 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-50 overflow-hidden max-h-52 overflow-y-auto custom-scrollbar"
-          >
-            <div className="p-1.5 bg-zinc-950 border-b border-zinc-800 text-[10px] text-zinc-400 font-medium flex justify-between">
-              <span>Fuzzy Matches for "@{mentionQuery}"</span>
-              <span className="text-zinc-600">
-                ↑↓ to navigate, Enter to select
-              </span>
-            </div>
-            {mentionMatches.map((res, idx) => (
-              <div
-                key={res.filePath}
-                onClick={() => insertMention(res.filePath)}
-                onMouseEnter={() => setActiveMentionIndex(idx)}
-                className={`px-3 py-1.5 text-xs flex items-center justify-between cursor-pointer transition-colors ${
-                  idx === activeMentionIndex
-                    ? "bg-cyan-600/30 text-cyan-200 border-l-2 border-cyan-500"
-                    : "text-zinc-300 hover:bg-zinc-800/50"
-                }`}
-              >
-                <div className="flex items-center min-w-0 mr-2">
-                  <FileText className="w-3.5 h-3.5 mr-2 text-zinc-400 shrink-0" />
-                  {renderFuzzyPath(res)}
-                </div>
-                {selectedFiles.has(res.filePath) && (
-                  <span className="text-[9px] bg-cyan-500/20 text-cyan-400 font-mono px-1 py-0.5 rounded border border-cyan-500/30 shrink-0">
-                    Added
-                  </span>
-                )}
+        {mentionQuery !== null &&
+          mentionMatches.length > 0 &&
+          mentionPos &&
+          createPortal(
+            <div
+              ref={mentionPopupRef}
+              className="fixed bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-[100] flex flex-col"
+              style={{
+                left: mentionPos.left,
+                width: mentionPos.width,
+                maxHeight: mentionPos.maxHeight,
+                top:
+                  mentionPos.direction === "down" ? mentionPos.top : undefined,
+                bottom:
+                  mentionPos.direction === "up"
+                    ? window.innerHeight - mentionPos.top
+                    : undefined,
+              }}
+            >
+              <div className="p-1.5 bg-zinc-950 border-b border-zinc-800 text-[10px] text-zinc-400 font-medium flex justify-between shrink-0">
+                <span>Fuzzy Matches for "@{mentionQuery}"</span>
+                <span className="text-zinc-600">
+                  ↑↓ to navigate, Enter to select
+                </span>
               </div>
-            ))}
-          </div>
-        )}
+              <div className="overflow-y-auto custom-scrollbar">
+                {mentionMatches.map((res, idx) => (
+                  <div
+                    key={res.filePath}
+                    onClick={() => insertMention(res.filePath)}
+                    onMouseEnter={() => setActiveMentionIndex(idx)}
+                    className={`px-3 py-1.5 text-xs flex items-center justify-between cursor-pointer transition-colors gap-2 ${
+                      idx === activeMentionIndex
+                        ? "bg-cyan-600/30 text-cyan-200 border-l-2 border-cyan-500"
+                        : "text-zinc-300 hover:bg-zinc-800/50"
+                    }`}
+                  >
+                    <div className="flex items-center min-w-0 flex-1">
+                      <FileText className="w-3.5 h-3.5 mr-2 text-zinc-400 shrink-0" />
+                      {renderFuzzyPath(res)}
+                    </div>
+                    {selectedFiles.has(res.filePath) && (
+                      <span className="text-[9px] bg-cyan-500/20 text-cyan-400 font-mono px-1 py-0.5 rounded border border-cyan-500/30 shrink-0">
+                        Added
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>,
+            document.body,
+          )}
 
         <textarea
           ref={textareaRef}
