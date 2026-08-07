@@ -48,7 +48,12 @@ export function Footer({
         );
         if (onApplySuccess) onApplySuccess();
       } else {
-        alert("❌ Error applying edits: " + (data.error || "Unknown error"));
+        const errorDetails =
+          data.details && Array.isArray(data.details) && data.details.length > 0
+            ? `❌ Transaction Aborted (0 files modified on disk):\n\n` +
+              data.details.map((d: string) => `• ${d}`).join("\n")
+            : `❌ Error applying edits:\n${data.error || "Unknown error"}`;
+        alert(errorDetails);
       }
     } catch (err) {
       alert(

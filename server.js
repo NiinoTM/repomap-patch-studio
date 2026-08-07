@@ -1,5 +1,3 @@
-
-
 import express from "express";
 import fs from "fs";
 import path from "path";
@@ -10,7 +8,6 @@ const app = express();
 app.use(express.json());
 
 let targetRepoPath = process.cwd();
-
 
 const getAllFiles = (dir, basePath = dir, fileList = []) => {
   if (!fs.existsSync(dir)) return fileList;
@@ -39,7 +36,6 @@ const getAllFiles = (dir, basePath = dir, fileList = []) => {
   return fileList;
 };
 
-
 const generateRepoMap = (basePath, filesList) => {
   let mapOutput = "";
   for (const file of filesList) {
@@ -58,7 +54,6 @@ const generateRepoMap = (basePath, filesList) => {
     for (let line of lines) {
       const trimmed = line.trim();
       if ([".js", ".jsx", ".ts", ".tsx"].includes(ext)) {
-        
         let match = trimmed.match(
           /^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function|class|interface|type)\s+([A-Za-z0-9_]+)/,
         );
@@ -66,7 +61,7 @@ const generateRepoMap = (basePath, filesList) => {
           symbols.push(trimmed.replace(/\s*\{.*$/, ""));
           continue;
         }
-        
+
         match = trimmed.match(
           /^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_]+)\s*=>/,
         );
@@ -98,7 +93,6 @@ const generateRepoMap = (basePath, filesList) => {
   return mapOutput.trim();
 };
 
-
 const getFileStats = (basePath, filesList) => {
   const stats = {};
   for (const file of filesList) {
@@ -113,7 +107,6 @@ const getFileStats = (basePath, filesList) => {
   return stats;
 };
 
-
 const getDependencyMap = (basePath, filesList) => {
   const outbound = {};
   const inboundMap = {};
@@ -121,7 +114,6 @@ const getDependencyMap = (basePath, filesList) => {
   const apiInboundMap = {};
   const fileSet = new Set(filesList);
 
-  
   for (const file of filesList) {
     const ext = path.extname(file).toLowerCase();
     if (![".js", ".jsx", ".ts", ".tsx"].includes(ext)) continue;
@@ -177,14 +169,10 @@ const getDependencyMap = (basePath, filesList) => {
           inboundMap[imp].add(file);
         }
       }
-    } catch (e) {
-      
-    }
+    } catch (e) {}
   }
 
-  
-  
-  const routeHandlers = {}; 
+  const routeHandlers = {};
 
   const apiRouteHandlerRegex =
     /(?:app|router|server)\s*\.\s*(?:get|post|put|delete|patch|all|use)\s*\(\s*[`'"]([^`'"]+)[`'"]/gi;
@@ -207,7 +195,6 @@ const getDependencyMap = (basePath, filesList) => {
     } catch (e) {}
   }
 
-  
   const apiClientRegex =
     /(?:fetch|axios\.(?:get|post|put|delete|patch)|apiCall)\s*\(\s*[`'"]([^`'"${}\n]+)[`'"]/gi;
 
@@ -254,7 +241,6 @@ const getDependencyMap = (basePath, filesList) => {
   return { outbound, inbound, apiOutbound, apiInbound };
 };
 
-
 app.get("/api/repo", (req, res) => {
   try {
     const files = getAllFiles(targetRepoPath);
@@ -273,7 +259,6 @@ app.get("/api/repo", (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
-
 
 app.post("/api/repo", (req, res) => {
   const { newPath } = req.body;
@@ -298,7 +283,6 @@ app.post("/api/repo", (req, res) => {
   }
 });
 
-
 app.post("/api/files", (req, res) => {
   const { files } = req.body;
   const contents = {};
@@ -309,7 +293,6 @@ app.post("/api/files", (req, res) => {
   });
   res.json({ success: true, contents });
 });
-
 
 function findCondensedRange(content, search) {
   const preCleanContent = content
@@ -354,8 +337,6 @@ function findCondensedRange(content, search) {
   return null;
 }
 
-
-
 // Helper to validate JS/TS/JSX/TSX syntax in memory before writing
 function validateSyntax(content, filePath) {
   const ext = path.extname(filePath).toLowerCase();
@@ -394,11 +375,17 @@ function applyBlockToContent(content, block) {
 
   // 1. Exact Match
   if (normContent.includes(normSearch)) {
-    return { success: true, newContent: normContent.replace(normSearch, normReplace) };
+    return {
+      success: true,
+      newContent: normContent.replace(normSearch, normReplace),
+    };
   }
 
   // 2. Smart Fuzzy Indentation Match
-  const searchLines = normSearch.split("\n").map((l) => l.trim()).filter(Boolean);
+  const searchLines = normSearch
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
   const contentLines = normContent.split("\n");
 
   let matchIndex = -1;
@@ -430,12 +417,20 @@ function applyBlockToContent(content, block) {
   // 3. Condensed Token Stream Replacement
   const range = findCondensedRange(normContent, normSearch);
   if (range) {
-    const cleanNormContent = normContent.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "").replace(/\{\s*["']\s*["']\s*\}/g, "");
-    const newContent = cleanNormContent.slice(0, range.start) + normReplace + cleanNormContent.slice(range.end);
+    const cleanNormContent = normContent
+      .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
+      .replace(/\{\s*["']\s*["']\s*\}/g, "");
+    const newContent =
+      cleanNormContent.slice(0, range.start) +
+      normReplace +
+      cleanNormContent.slice(range.end);
     return { success: true, newContent };
   }
 
-  return { success: false, error: `SEARCH block match failed for file: ${block.file}` };
+  return {
+    success: false,
+    error: `SEARCH block match failed for file: ${block.file}`,
+  };
 }
 
 // 1. Transactional API: Pre-Flight Validation -> In-Memory Syntax Check -> Deferred Disk Write
@@ -444,7 +439,9 @@ app.post("/api/apply", (req, res) => {
   const shouldCommit = commit === true || (commit !== false && !skipCommit);
 
   if (!blocks || !Array.isArray(blocks) || blocks.length === 0) {
-    return res.status(400).json({ success: false, error: "No diff blocks provided." });
+    return res
+      .status(400)
+      .json({ success: false, error: "No diff blocks provided." });
   }
 
   try {
@@ -490,16 +487,24 @@ app.post("/api/apply", (req, res) => {
 
     // ALL-OR-NOTHING GATEKEEPER: Abort if any block failed pre-flight validation or syntax check
     if (validationErrors.length > 0) {
+      const detailedMsg =
+        `Transaction aborted. ${validationErrors.length} validation/syntax error(s) detected:\n` +
+        validationErrors.map((err) => `• ${err}`).join("\n") +
+        "\n\n0 files were modified on disk.";
+
       return res.status(422).json({
         success: false,
-        error: `Transaction aborted. ${validationErrors.length} validation/syntax error(s) detected. 0 files modified on disk.`,
+        error: detailedMsg,
         details: validationErrors,
       });
     }
 
-    
-    
-    const CRITICAL_FILES = ["server.js", "package.json", "vite.config.ts", "tsconfig.json"];
+    const CRITICAL_FILES = [
+      "server.js",
+      "package.json",
+      "vite.config.ts",
+      "tsconfig.json",
+    ];
     const filesToCommit = Array.from(pendingWrites.keys()).sort((a, b) => {
       const isACritical = CRITICAL_FILES.some((f) => a.endsWith(f));
       const isBCritical = CRITICAL_FILES.some((f) => b.endsWith(f));
@@ -508,7 +513,6 @@ app.post("/api/apply", (req, res) => {
       return 0;
     });
 
-    
     for (const file of filesToCommit) {
       const fullPath = path.resolve(targetRepoPath, file);
       const dirPath = path.dirname(fullPath);
@@ -518,19 +522,24 @@ app.post("/api/apply", (req, res) => {
       fs.writeFileSync(fullPath, pendingWrites.get(file), "utf-8");
     }
 
-    
     for (const file of filesToCommit) {
       try {
-        execSync(`npx prettier --write "${file}"`, { cwd: targetRepoPath, stdio: "ignore" });
-      } catch (e) {
-        
-      }
+        execSync(`npx prettier --write "${file}"`, {
+          cwd: targetRepoPath,
+          stdio: "ignore",
+        });
+      } catch (e) {}
     }
 
-    
     if (shouldCommit) {
-      const msg = commitMessage && commitMessage.trim() ? commitMessage.trim() : "ai-edit: updated files";
-      execSync(`git add . && git commit -m "${msg}"`, { cwd: targetRepoPath, stdio: "ignore" });
+      const msg =
+        commitMessage && commitMessage.trim()
+          ? commitMessage.trim()
+          : "ai-edit: updated files";
+      execSync(`git add . && git commit -m "${msg}"`, {
+        cwd: targetRepoPath,
+        stdio: "ignore",
+      });
     }
 
     res.json({
@@ -544,9 +553,6 @@ app.post("/api/apply", (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
-
-
-
 
 app.post("/api/undo", (req, res) => {
   try {
@@ -564,5 +570,5 @@ app.post("/api/undo", (req, res) => {
 });
 
 app.listen(3001, () =>
-  console.log("🚀 Local Patch Backend running on http://localhost:3001")
+  console.log("🚀 Local Patch Backend running on http://localhost:3001"),
 );
