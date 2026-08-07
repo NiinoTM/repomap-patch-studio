@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { GitCommit, History, RotateCcw } from "lucide-react";
+import { Check, GitCommit, History, RotateCcw } from "lucide-react";
 import { DiffBlock, HistoryLog } from "../types";
 
 interface FooterProps {
@@ -20,7 +20,7 @@ export function Footer({
   const [isApplying, setIsApplying] = useState(false);
 
   // 1. The Apply Changes Handler (calls /api/apply on your Express backend)
-  const handleApplyChanges = async () => {
+  const handleApplyChanges = async (shouldCommit = true) => {
     if (diffBlocks.length === 0) {
       alert("No diff blocks detected to apply!");
       return;
@@ -31,12 +31,21 @@ export function Footer({
       const response = await fetch("/api/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ blocks: diffBlocks, commitMessage }),
+        body: JSON.stringify({
+          blocks: diffBlocks,
+          commitMessage: shouldCommit ? commitMessage : "",
+          skipCommit: !shouldCommit,
+          commit: shouldCommit,
+        }),
       });
 
       const data = await response.json();
       if (data.success) {
-        alert("✅ Edits written to disk & committed to Git!");
+        alert(
+          shouldCommit
+            ? "✅ Edits written to disk & committed to Git!"
+            : "✅ Edits written to disk!",
+        );
         if (onApplySuccess) onApplySuccess();
       } else {
         alert("❌ Error applying edits: " + (data.error || "Unknown error"));
@@ -110,9 +119,18 @@ export function Footer({
             </span>
           </button>
 
+          <button
+            onClick={() => handleApplyChanges(false)}
+            disabled={!hasChanges || isApplying}
+            className="bg-blue-600 hover:bg-blue-500 text-white px-6 h-12 rounded-lg font-bold shadow-lg shadow-blue-500/10 flex items-center space-x-2 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <span>{isApplying ? "Applying..." : "Apply Changes"}</span>
+            <Check className="w-4 h-4" />
+          </button>
+
           {/* 2. Connected onClick={handleApplyChanges} to the Green Apply Button */}
           <button
-            onClick={handleApplyChanges}
+            onClick={() => handleApplyChanges(true)}
             disabled={!hasChanges || isApplying}
             className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 h-12 rounded-lg font-bold shadow-lg shadow-emerald-500/10 flex items-center space-x-2 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
