@@ -15,6 +15,7 @@ export default function App() {
   const [repoFiles, setRepoFiles] = useState<string[]>([]);
   const [repoMap, setRepoMap] = useState<string>('');
   const [fileStats, setFileStats] = useState<Record<string, { size: number; tokens: number }>>({});
+  const [dependencyMap, setDependencyMap] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     fetch('/api/repo')
@@ -25,6 +26,7 @@ export default function App() {
           setRepoFiles(data.files);
           setRepoMap(data.repoMap);
           setFileStats(data.fileStats || {});
+          setDependencyMap(data.dependencyMap || {});
         }
       })
       .catch(err => console.error('Failed to fetch repo context:', err));
@@ -124,7 +126,14 @@ export default function App() {
       
       <main className="flex-1 flex overflow-hidden">
         <aside className="w-[420px] flex-shrink-0">
-          <PromptPanel onCopy={handleCopy} onCopyMap={handleCopyMap} files={repoFiles} repoMap={repoMap} fileStats={fileStats} />
+          <PromptPanel 
+  onCopy={handleCopy} 
+  onCopyMap={handleCopyMap} 
+  files={repoFiles} 
+  repoMap={repoMap} 
+  fileStats={fileStats} 
+  dependencyMap={dependencyMap} 
+/>
         </aside>
         
         <section className="flex-1 flex-shrink-0">

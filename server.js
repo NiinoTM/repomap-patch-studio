@@ -80,13 +80,79 @@ const getFileStats = (basePath, filesList) => {
   return stats;
 };
 
-// API: Get Current Repo Path, Files, Repo Map & Stats
+// Helper to build a Dependency Map of imports between files
+const getDependencyMap = (basePath, filesList) => {
+  const depMap = {};
+  const fileSet = new Set(filesList);
+
+  for (const file of filesList) {
+    const ext = path.extname(file).toLowerCase();
+    if (!['.js', '.jsx', '.ts', '.tsx'].includes(ext)) continue;
+
+    try {
+      const fullPath = path.join(basePath, file);
+      const content = fs.readFileSync(fullPath, 'utf-8');
+      const imports = new Set();
+
+      // Matches import/export statements: import ... from '...' or require('...')
+      const importRegex = /(?:import|export)\s+[\s\S]*?\s+from\s+['"]([^'"]+)['"]|require\(['"]([^'"]+)['"]\)/g;
+      let match;
+
+      while ((match = importRegex.exec(content)) !== null) {
+        let importPath = match[1] || match[2];
+        if (!importPath) continue;
+
+        // Resolve path aliases like `@/`
+        if (importPath.startsWith('@/')) {
+          importPath = './' + importPath.slice(2);
+        }
+
+        // Only resolve local relative imports (starting with . or /)
+        if (importPath.startsWith('.')) {
+          const fileDir = path.dirname(file);
+          const rawResolved = path.normalize(path.join(fileDir, importPath)).replace(/\\/g, '/');
+
+          // Candidate file extensions to test
+          const candidates = [
+            rawResolved,
+            `${rawResolved}.tsx`,
+            `${rawResolved}.ts`,
+            `${rawResolved}.jsx`,
+            `${rawResolved}.js`,
+            `${rawResolved}/index.tsx`,
+            `${rawResolved}/index.ts`,
+            `${rawResolved}/index.jsx`,
+            `${rawResolved}/index.js`
+          ];
+
+          for (const cand of candidates) {
+            if (fileSet.has(cand) && cand !== file) {
+              imports.add(cand);
+              break;
+            }
+          }
+        }
+      }
+
+      if (imports.size > 0) {
+        depMap[file] = Array.from(imports);
+      }
+    } catch (e) {
+      /* ignore read errors */
+    }
+  }
+
+  return depMap;
+};
+
+// API: Get Current Repo Path, Files, Repo Map, Stats & Dependency Map
 app.get('/api/repo', (req, res) => {
   try {
     const files = getAllFiles(targetRepoPath);
     const repoMap = generateRepoMap(targetRepoPath, files);
     const fileStats = getFileStats(targetRepoPath, files);
-    res.json({ success: true, path: targetRepoPath, files, repoMap, fileStats });
+    const dependencyMap = getDependencyMap(targetRepoPath, files);
+    res.json({ success: true, path: targetRepoPath, files, repoMap, fileStats, dependencyMap });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -100,7 +166,8 @@ app.post('/api/repo', (req, res) => {
     const files = getAllFiles(targetRepoPath);
     const repoMap = generateRepoMap(targetRepoPath, files);
     const fileStats = getFileStats(targetRepoPath, files);
-    res.json({ success: true, path: targetRepoPath, files, repoMap, fileStats });
+    const dependencyMap = getDependencyMap(targetRepoPath, files);
+    res.json({ success: true, path: targetRepoPath, files, repoMap, fileStats, dependencyMap });
   } else {
     res.status(400).json({ success: false, error: 'Invalid or missing directory path.' });
   }

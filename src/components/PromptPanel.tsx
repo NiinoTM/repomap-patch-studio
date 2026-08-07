@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Copy, Map, Eye, X, Folder, FolderOpen, FileText, 
-  ChevronRight, ChevronDown, CheckSquare, Square, MinusSquare, Search, AtSign
+  ChevronRight, ChevronDown, CheckSquare, Square, MinusSquare, Search, AtSign, Sparkles, Plus
 } from 'lucide-react';
 
 interface PromptPanelProps {
@@ -10,6 +10,7 @@ interface PromptPanelProps {
   files: string[];
   repoMap: string;
   fileStats?: Record<string, { size: number; tokens: number }>;
+  dependencyMap?: Record<string, string[]>;
 }
 
 interface TreeNode {
@@ -96,7 +97,7 @@ function fuzzySearchFiles(files: string[], query: string): FuzzyResult[] {
   return results.sort((a, b) => b.score - a.score).slice(0, 8);
 }
 
-export function PromptPanel({ onCopy, onCopyMap, files, repoMap, fileStats }: PromptPanelProps) {
+export function PromptPanel({ onCopy, onCopyMap, files, repoMap, fileStats, dependencyMap }: PromptPanelProps) {
   const [request, setRequest] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
@@ -217,6 +218,34 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap, fileStats }: Pr
 
     return root;
   }, [files, searchQuery]);
+
+  // ==========================================
+  // IMPORT DEPENDENCY SUGGESTION ENGINE
+  // ==========================================
+  const suggestedFiles = useMemo(() => {
+    if (!dependencyMap || selectedFiles.size === 0) return [];
+    
+    const suggestions = new Set<string>();
+    selectedFiles.forEach(file => {
+      const imports = dependencyMap[file] || [];
+      imports.forEach(imp => {
+        // Only suggest files that are NOT already in selectedFiles
+        if (!selectedFiles.has(imp)) {
+          suggestions.add(imp);
+        }
+      });
+    });
+
+    return Array.from(suggestions);
+  }, [selectedFiles, dependencyMap]);
+
+  const handleAddAllSuggestions = () => {
+    setSelectedFiles(prev => {
+      const next = new Set(prev);
+      suggestedFiles.forEach(f => next.add(f));
+      return next;
+    });
+  };
 
   // ==========================================
   // TOKEN BUDGET CALCULATION ENGINE
@@ -486,6 +515,37 @@ export function PromptPanel({ onCopy, onCopyMap, files, repoMap, fileStats }: Pr
           <span>Files ({selectedFiles.size}): {selectedFilesTokens.toLocaleString()} tks</span>
         </div>
       </div>
+
+      {/* SMART IMPORT DEPENDENCY SUGGESTIONS BANNER */}
+      {suggestedFiles.length > 0 && (
+        <div className="bg-cyan-950/40 border border-cyan-500/30 rounded-lg p-2.5 space-y-2 animate-fadeIn shrink-0">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-cyan-300 font-semibold flex items-center">
+              <Sparkles className="w-3.5 h-3.5 mr-1.5 text-cyan-400" />
+              Suggested Context ({suggestedFiles.length})
+            </span>
+            <button 
+              onClick={handleAddAllSuggestions}
+              className="text-[10px] bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-2 py-0.5 rounded transition-colors cursor-pointer"
+            >
+              + Add All
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto custom-scrollbar">
+            {suggestedFiles.map(file => (
+              <button
+                key={file}
+                onClick={() => toggleFile(file)}
+                className="text-[10px] bg-zinc-900 hover:bg-zinc-800 text-zinc-300 px-1.5 py-0.5 rounded border border-zinc-700 flex items-center space-x-1 cursor-pointer transition-colors"
+                title={`Imported by active context. Click to add ${file}`}
+              >
+                <Plus className="w-2.5 h-2.5 text-cyan-400" />
+                <span className="font-mono truncate max-w-[130px]">{file.split('/').pop()}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Context Selection Tree */}
       <div className="flex-1 flex flex-col space-y-2 min-h-0">
