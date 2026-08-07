@@ -294,6 +294,43 @@ app.post("/api/files", (req, res) => {
   res.json({ success: true, contents });
 });
 
+// Real Git history for the "Recent AI Edits" drawer. Uses a tab-separated
+// pretty-format (tabs are extremely unlikely inside a commit subject) so we
+// can safely split hash/date/subject, then --name-only to list touched
+// files per commit. Internal "pre-ai-edit" safety-snapshot commits are
+// filtered out since they're implementation detail, not a real edit.
+app.get("/api/history", (req, res) => {
+  try {
+    const raw = execSync(
+      `git log -n 30 --no-merges --pretty=format:%H%x09%ar%x09%s --name-only`,
+      { cwd: targetRepoPath, encoding: "utf-8" },
+    );
+
+    const logs = raw
+      .split(/\r?\n\r?\n/)
+      .map((block) => block.trim())
+      .filter(Boolean)
+      .map((block) => {
+        const lines = block.split(/\r?\n/);
+        const [hash, timestamp, message] = lines[0].split("\t");
+        const files = lines.slice(1).filter(Boolean);
+        return {
+          id: hash ? hash.slice(0, 7) : "unknown",
+          timestamp: timestamp || "",
+          message: message || "",
+          files,
+        };
+      })
+      .filter((log) => log.message !== "pre-ai-edit");
+
+    res.json({ success: true, logs });
+  } catch (err) {
+    // No commits yet, or not a git repo — return an empty history rather
+    // than erroring the whole UI.
+    res.json({ success: true, logs: [] });
+  }
+});
+
 app.post("/api/native-folder-dialog", (req, res) => {
   try {
     let cmd = "";

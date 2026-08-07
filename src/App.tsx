@@ -27,6 +27,22 @@ export default function App() {
     files: 0,
     selectedCount: 0,
   });
+  const [logs, setLogs] = useState<HistoryLog[]>([]);
+
+  // Pulls real commit history from the backend (`git log`) for the
+  // "Recent AI Edits" drawer. Re-run after every successful apply/commit
+  // and after a git-reset undo, so the drawer never goes stale.
+  const fetchHistory = async () => {
+    try {
+      const res = await fetch("/api/history");
+      const data = await res.json();
+      if (data.success) {
+        setLogs(data.logs);
+      }
+    } catch (err) {
+      console.error("Failed to fetch git history:", err);
+    }
+  };
 
   useEffect(() => {
     fetch("/api/repo")
@@ -41,6 +57,10 @@ export default function App() {
         }
       })
       .catch((err) => console.error("Failed to fetch repo context:", err));
+  }, []);
+
+  useEffect(() => {
+    fetchHistory();
   }, []);
 
   const handleChangeRepo = async (newPath: string) => {
@@ -60,6 +80,7 @@ export default function App() {
         setFileStats(data.fileStats || {});
         setDependencyMap(data.dependencyMap || { outbound: {}, inbound: {} });
         setToastMessage("Repository context updated successfully!");
+        fetchHistory();
       } else {
         alert("Error: " + data.error);
       }
@@ -67,33 +88,6 @@ export default function App() {
       alert("Failed to update repository path. Ensure backend is running.");
     }
   };
-
-  const mockLogs: HistoryLog[] = [
-    {
-      id: "c4f2a91",
-      timestamp: "10 mins ago",
-      files: ["src/App.tsx"],
-      message: "ai-edit: Add routing to App.tsx",
-    },
-    {
-      id: "8a1b3c4",
-      timestamp: "1 hour ago",
-      files: ["src/components/Button.tsx"],
-      message: "ai-edit: fix button padding",
-    },
-    {
-      id: "f2d4e56",
-      timestamp: "2 hours ago",
-      files: ["tailwind.config.js"],
-      message: "ai-edit: add custom colors",
-    },
-    {
-      id: "1e2f3a4",
-      timestamp: "Yesterday",
-      files: ["package.json"],
-      message: "ai-edit: install lucide-react",
-    },
-  ];
 
   const handleCopy = async (promptText: string) => {
     await navigator.clipboard.writeText(promptText);
@@ -108,6 +102,11 @@ export default function App() {
   const handleClear = () => {
     setPastedContent("");
     setDiffBlocks([]);
+  };
+
+  const handleApplySuccess = () => {
+    handleClear();
+    fetchHistory();
   };
 
   const handlePaste = async (append = false) => {
@@ -207,6 +206,7 @@ export default function App() {
       <Header
         repoPath={repoPath}
         onChangeRepo={handleChangeRepo}
+        onUndoSuccess={fetchHistory}
         tokenStats={tokenStats}
       />
 
@@ -234,10 +234,10 @@ export default function App() {
       </main>
 
       <Footer
-        logs={mockLogs}
+        logs={logs}
         hasChanges={diffBlocks.length > 0}
         diffBlocks={diffBlocks}
-        onApplySuccess={handleClear}
+        onApplySuccess={handleApplySuccess}
       />
 
       <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
