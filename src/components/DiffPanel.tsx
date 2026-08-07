@@ -64,7 +64,6 @@ export function DiffPanel({
     setEditingBlockId(null);
   };
 
-  // Auto-retract blocks if multiple blocks or large diff sizes are detected on load
   useEffect(() => {
     if (parsedBlocks.length > 1) {
       setCollapsedBlocks(new Set(parsedBlocks.map((b) => b.id)));
@@ -202,19 +201,18 @@ export function DiffPanel({
             </div>
           </div>
         ) : parsedBlocks.length === 0 ? (
-          /* FALLBACK WARNING & CLIPBOARD DEBUGGER */
           <div className="flex-1 border border-amber-500/30 bg-amber-950/20 rounded-xl p-6 flex flex-col items-center justify-center text-center space-y-3 overflow-y-auto custom-scrollbar">
             <AlertTriangle className="w-8 h-8 text-amber-400" />
             <p className="text-sm font-semibold text-zinc-200">
               No Diff Blocks Detected
             </p>
             <p className="text-xs text-zinc-400 max-w-md">
-              The pasted clipboard text does not contain valid{" "}
+              The pasted clipboard text does not contain valid
               <code className="text-cyan-400">
                 &lt;&lt;&lt;&lt;&lt;&lt;&lt; SEARCH
               </code>
-              , <code className="text-cyan-400">Create 'file'</code>, or{" "}
-              <code className="text-cyan-400">MOVE 'old' -&gt; 'new'</code>{" "}
+              , <code className="text-cyan-400">Create 'file'</code>, or
+              <code className="text-cyan-400">MOVE 'old' -&gt; 'new'</code>
               blocks.
             </p>
             <div className="flex items-center space-x-3 pt-2">
@@ -417,78 +415,80 @@ export function DiffPanel({
                         )}
                       </div>
 
-                      <div className="flex items-center space-x-1 shrink-0 pr-2">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleCopyBlock(block);
-                          }}
-                          className="text-zinc-500 hover:text-cyan-400 p-1.5 rounded hover:bg-zinc-800 transition-colors"
-                          title="Copy block"
-                        >
-                          {copiedId === block.id ? (
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-
-                        {editingBlockId === block.id ? (
+                      <div className="flex items-center shrink-0">
+                        <div className="flex items-center space-x-1 shrink-0 pr-2">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              saveEdit();
-                            }}
-                            className="text-emerald-500 hover:text-emerald-400 p-1.5 rounded hover:bg-emerald-500/10 transition-colors"
-                            title="Save changes"
-                          >
-                            <Save className="w-3.5 h-3.5" />
-                          </button>
-                        ) : (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              startEditing(block);
+                              handleCopyBlock(block);
                             }}
                             className="text-zinc-500 hover:text-cyan-400 p-1.5 rounded hover:bg-zinc-800 transition-colors"
-                            title="Edit block"
+                            title="Copy block"
                           >
-                            <Edit2 className="w-3.5 h-3.5" />
+                            {copiedId === block.id ? (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
                           </button>
-                        )}
 
-                        <div className="w-px h-4 bg-zinc-800 mx-1"></div>
-                      </div>
+                          {editingBlockId === block.id ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                saveEdit();
+                              }}
+                              className="text-emerald-500 hover:text-emerald-400 p-1.5 rounded hover:bg-emerald-500/10 transition-colors"
+                              title="Save changes"
+                            >
+                              <Save className="w-3.5 h-3.5" />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                startEditing(block);
+                              }}
+                              className="text-zinc-500 hover:text-cyan-400 p-1.5 rounded hover:bg-zinc-800 transition-colors"
+                              title="Edit block"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
 
-                      <label
-                        className="flex items-center space-x-2 cursor-pointer shrink-0"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <span
-                          className={`text-[10px] font-bold uppercase ${
-                            !isIgnored ? "text-cyan-500" : "text-zinc-500"
-                          }`}
-                        >
-                          {isIgnored ? "Ignored" : "Accepted"}
-                        </span>
-                        <div
-                          className={`w-8 h-4 rounded-full flex items-center transition-colors p-0.5 ${
-                            !isIgnored ? "bg-cyan-500" : "bg-zinc-700"
-                          }`}
-                        >
-                          <div
-                            className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${
-                              !isIgnored ? "translate-x-4" : "translate-x-0"
-                            }`}
-                          />
+                          <div className="w-px h-4 bg-zinc-800 mx-1"></div>
                         </div>
-                        <input
-                          type="checkbox"
-                          className="hidden"
-                          checked={!isIgnored}
-                          onChange={() => toggleBlock(block.id)}
-                        />
-                      </label>
+
+                        <label
+                          className="flex items-center space-x-2 cursor-pointer shrink-0"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <span
+                            className={`text-[10px] font-bold uppercase ${
+                              !isIgnored ? "text-cyan-500" : "text-zinc-500"
+                            }`}
+                          >
+                            {isIgnored ? "Ignored" : "Accepted"}
+                          </span>
+                          <div
+                            className={`w-8 h-4 rounded-full flex items-center transition-colors p-0.5 ${
+                              !isIgnored ? "bg-cyan-500" : "bg-zinc-700"
+                            }`}
+                          >
+                            <div
+                              className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${
+                                !isIgnored ? "translate-x-4" : "translate-x-0"
+                              }`}
+                            />
+                          </div>
+                          <input
+                            type="checkbox"
+                            className="hidden"
+                            checked={!isIgnored}
+                            onChange={() => toggleBlock(block.id)}
+                          />
+                        </label>
+                      </div>
                     </div>
 
                     {isCollapsed ? (
