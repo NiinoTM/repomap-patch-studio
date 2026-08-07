@@ -1061,13 +1061,25 @@ You must output code modifications using exact SEARCH/REPLACE blocks.
    - For partial edits (<80% of file changing): Use targeted SEARCH/REPLACE blocks.
    - For NEW files OR total file rewrites (>80% of file changing): Leave the SEARCH block EMPTY (${SEARCH_MARKER}\n${EQUALS_MARKER}\n[new code]\n${REPLACE_MARKER}) so you do not waste output tokens repeating old code.
 
-3. ANCHOR RULE (Keep SEARCH blocks small):
+3. FILE OPERATIONS RULE (Create & Move/Rename):
+   - CREATE a new file using the FILE: format above with an EMPTY SEARCH block (see Rule 2) — this is the ONLY syntax for new files.
+   - MOVE or RENAME an existing file with its own standalone line — no SEARCH/REPLACE markers, no code body:
+     MOVE: 'old/path/File.ext' -> 'new/path/File.ext'
+     RENAME: 'src/components/Header.tsx' -> 'src/components/AppHeader.tsx'
+   - If a MOVE changes a file's import path, you MUST also emit SEARCH/REPLACE blocks updating every import/require statement in any OTHER file shown in ACTIVE FILES CONTEXT that references the old path, in the SAME response. Never move a file without fixing its known importers.
+
+4. INTELLIGENT MODULARITY RULE (Structure for future token cost):
+   - Default to several small, single-responsibility files over one large one. Every file you fully rewrite becomes a future context cost — smaller, well-named files let later requests pull in only what's relevant instead of a monolith.
+   - Only propose splitting or moving EXISTING code when it's a clear, self-contained win (a file has grown unrelated responsibilities, or the user explicitly asked for restructuring). Do not reorganize files as an unsolicited side effect of an unrelated edit.
+   - When you do split a file, keep each new piece focused: use Rule 2's empty-SEARCH syntax for the new files and MOVE for anything relocated verbatim, rather than rewriting everything as one giant diff.
+
+5. ANCHOR RULE (Keep SEARCH blocks small):
    - Copy only 2-3 unique lines at the top/bottom of the edit area ("anchors") to keep blocks minimal.
 
-4. EXACT WHITESPACE RULE:
+6. EXACT WHITESPACE RULE:
    - Code inside SEARCH MUST match the original file's indentation, spaces, and tabs 100% exactly.
 
-5. SINGLE CODE BLOCK RULE:
+7. SINGLE CODE BLOCK RULE:
    - You MUST wrap your ENTIRE response, including all FILE paths and SEARCH/REPLACE blocks, inside a single markdown code block (using \`\`\`markdown and \`\`\`) to ensure easy copy-pasting.
    
 ==================================================
