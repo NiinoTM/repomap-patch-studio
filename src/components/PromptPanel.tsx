@@ -977,6 +977,9 @@ You must output code modifications using exact SEARCH/REPLACE blocks.
 4. EXACT WHITESPACE RULE:
    - Code inside SEARCH MUST match the original file's indentation, spaces, and tabs 100% exactly.
 
+5. SINGLE CODE BLOCK RULE:
+   - You MUST wrap your ENTIRE response, including all FILE paths and SEARCH/REPLACE blocks, inside a single markdown code block (using \`\`\`markdown and \`\`\`) to ensure easy copy-pasting.
+   
 ==================================================
 REPO MAP (Project Blueprint):
 ${repoMap || "No map generated."}
