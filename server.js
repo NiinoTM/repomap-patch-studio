@@ -111,12 +111,13 @@ const getFileStats = (basePath, filesList) => {
   return stats;
 };
 
-// Helper to build a Bidirectional Dependency Map (outbound & inbound imports)
+// Helper to build a Bidirectional Dependency Map (Module Imports + Local API Endpoint Boundary Linker)
 const getDependencyMap = (basePath, filesList) => {
   const outbound = {};
   const inboundMap = {};
   const fileSet = new Set(filesList);
 
+  // 1. Module Imports Parser (import ... from '...' or require('...'))
   for (const file of filesList) {
     const ext = path.extname(file).toLowerCase();
     if (![".js", ".jsx", ".ts", ".tsx"].includes(ext)) continue;
@@ -126,7 +127,6 @@ const getDependencyMap = (basePath, filesList) => {
       const content = fs.readFileSync(fullPath, "utf-8");
       const imports = new Set();
 
-      // Matches import/export statements: import ... from '...' or require('...')
       const importRegex =
         /(?:import|export)\s+[\s\S]*?\s+from\s+['"]([^'"]+)['"]|require\(['"]([^'"]+)['"]\)/g;
       let match;
@@ -135,19 +135,16 @@ const getDependencyMap = (basePath, filesList) => {
         let importPath = match[1] || match[2];
         if (!importPath) continue;
 
-        // Resolve path aliases like `@/`
         if (importPath.startsWith("@/")) {
           importPath = "./" + importPath.slice(2);
         }
 
-        // Only resolve local relative imports (starting with . or /)
         if (importPath.startsWith(".")) {
           const fileDir = path.dirname(file);
           const rawResolved = path
             .normalize(path.join(fileDir, importPath))
             .replace(/\\/g, "/");
 
-          // Candidate file extensions to test
           const candidates = [
             rawResolved,
             `${rawResolved}.tsx`,
@@ -179,6 +176,64 @@ const getDependencyMap = (basePath, filesList) => {
     } catch (e) {
       /* ignore read errors */
     }
+  }
+
+  // 2. Option 1: Local API Endpoint Boundary Linker
+  // Step A: Index backend endpoint handlers (e.g., app.post('/api/apply'))
+  const routeHandlers = {}; // routeUrl -> Set of backend files
+
+  const apiRouteHandlerRegex =
+    /(?:app|router|server)\s*\.\s*(?:get|post|put|delete|patch|all|use)\s*\(\s*[`'"]([^`'"]+)[`'"]/gi;
+
+  for (const file of filesList) {
+    const ext = path.extname(file).toLowerCase();
+    if (![".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs"].includes(ext)) continue;
+
+    try {
+      const fullPath = path.join(basePath, file);
+      const content = fs.readFileSync(fullPath, "utf-8");
+      let match;
+      while ((match = apiRouteHandlerRegex.exec(content)) !== null) {
+        const route = match[1];
+        if (route.startsWith("/api") || route.startsWith("/")) {
+          if (!routeHandlers[route]) routeHandlers[route] = new Set();
+          routeHandlers[route].add(file);
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Step B: Index frontend API client calls (e.g., fetch('/api/apply'), axios.post('/api/...'))
+  const apiClientRegex =
+    /(?:fetch|axios\.(?:get|post|put|delete|patch)|apiCall)\s*\(\s*[`'"]([^`'"${}\n]+)[`'"]/gi;
+
+  for (const file of filesList) {
+    const ext = path.extname(file).toLowerCase();
+    if (![".js", ".jsx", ".ts", ".tsx"].includes(ext)) continue;
+
+    try {
+      const fullPath = path.join(basePath, file);
+      const content = fs.readFileSync(fullPath, "utf-8");
+      let match;
+      while ((match = apiClientRegex.exec(content)) !== null) {
+        const rawRoute = match[1];
+        const cleanRoute = rawRoute.split("?")[0].split("#")[0];
+
+        if (routeHandlers[cleanRoute]) {
+          for (const backendFile of routeHandlers[cleanRoute]) {
+            if (backendFile !== file) {
+              if (!outbound[file]) outbound[file] = [];
+              if (!outbound[file].includes(backendFile)) {
+                outbound[file].push(backendFile);
+              }
+
+              if (!inboundMap[backendFile]) inboundMap[backendFile] = new Set();
+              inboundMap[backendFile].add(file);
+            }
+          }
+        }
+      }
+    } catch (e) {}
   }
 
   const inbound = {};
