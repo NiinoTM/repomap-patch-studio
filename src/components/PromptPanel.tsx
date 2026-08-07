@@ -722,6 +722,62 @@ export function PromptPanel({
         </button>
       </div>
 
+      <div className="space-y-2 relative">
+        <div className="flex items-center justify-between">
+          <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold flex items-center">
+            <span>User Request</span>
+            <span className="ml-2 text-[10px] text-cyan-500/80 normal-case font-normal flex items-center">
+              <AtSign className="w-3 h-3 inline mr-0.5" /> Type @ to link files
+            </span>
+          </label>
+        </div>
+
+        {mentionQuery !== null && mentionMatches.length > 0 && (
+          <div
+            ref={mentionPopupRef}
+            className="absolute bottom-full mb-1 left-0 right-0 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-50 overflow-hidden max-h-52 overflow-y-auto custom-scrollbar"
+          >
+            <div className="p-1.5 bg-zinc-950 border-b border-zinc-800 text-[10px] text-zinc-400 font-medium flex justify-between">
+              <span>Fuzzy Matches for "@{mentionQuery}"</span>
+              <span className="text-zinc-600">
+                ↑↓ to navigate, Enter to select
+              </span>
+            </div>
+            {mentionMatches.map((res, idx) => (
+              <div
+                key={res.filePath}
+                onClick={() => insertMention(res.filePath)}
+                onMouseEnter={() => setActiveMentionIndex(idx)}
+                className={`px-3 py-1.5 text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                  idx === activeMentionIndex
+                    ? "bg-cyan-600/30 text-cyan-200 border-l-2 border-cyan-500"
+                    : "text-zinc-300 hover:bg-zinc-800/50"
+                }`}
+              >
+                <div className="flex items-center min-w-0 mr-2">
+                  <FileText className="w-3.5 h-3.5 mr-2 text-zinc-400 shrink-0" />
+                  {renderFuzzyPath(res)}
+                </div>
+                {selectedFiles.has(res.filePath) && (
+                  <span className="text-[9px] bg-cyan-500/20 text-cyan-400 font-mono px-1 py-0.5 rounded border border-cyan-500/30 shrink-0">
+                    Added
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <textarea
+          ref={textareaRef}
+          className="w-full h-24 bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-sm text-zinc-300 focus:outline-none focus:border-cyan-500/50 resize-none font-sans"
+          placeholder="Describe the changes needed... (type @ to fuzzy match files)"
+          value={request}
+          onChange={handleTextareaChange}
+          onKeyDown={handleTextareaKeyDown}
+        />
+      </div>
+
       {/* SMART IMPORT DEPENDENCY SUGGESTIONS BANNER (1-Hop Seed Rule) */}
       {suggestedFiles.length > 0 && (
         <div className="bg-zinc-900/90 border border-zinc-800 rounded-lg p-2.5 space-y-2 animate-fadeIn shrink-0">
@@ -859,62 +915,6 @@ export function PromptPanel({
             )}
           </div>
         </div>
-      </div>
-
-      <div className="space-y-2 relative">
-        <div className="flex items-center justify-between">
-          <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold flex items-center">
-            <span>User Request</span>
-            <span className="ml-2 text-[10px] text-cyan-500/80 normal-case font-normal flex items-center">
-              <AtSign className="w-3 h-3 inline mr-0.5" /> Type @ to link files
-            </span>
-          </label>
-        </div>
-
-        {mentionQuery !== null && mentionMatches.length > 0 && (
-          <div
-            ref={mentionPopupRef}
-            className="absolute bottom-full mb-1 left-0 right-0 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-50 overflow-hidden max-h-52 overflow-y-auto custom-scrollbar"
-          >
-            <div className="p-1.5 bg-zinc-950 border-b border-zinc-800 text-[10px] text-zinc-400 font-medium flex justify-between">
-              <span>Fuzzy Matches for "@{mentionQuery}"</span>
-              <span className="text-zinc-600">
-                ↑↓ to navigate, Enter to select
-              </span>
-            </div>
-            {mentionMatches.map((res, idx) => (
-              <div
-                key={res.filePath}
-                onClick={() => insertMention(res.filePath)}
-                onMouseEnter={() => setActiveMentionIndex(idx)}
-                className={`px-3 py-1.5 text-xs flex items-center justify-between cursor-pointer transition-colors ${
-                  idx === activeMentionIndex
-                    ? "bg-cyan-600/30 text-cyan-200 border-l-2 border-cyan-500"
-                    : "text-zinc-300 hover:bg-zinc-800/50"
-                }`}
-              >
-                <div className="flex items-center min-w-0 mr-2">
-                  <FileText className="w-3.5 h-3.5 mr-2 text-zinc-400 shrink-0" />
-                  {renderFuzzyPath(res)}
-                </div>
-                {selectedFiles.has(res.filePath) && (
-                  <span className="text-[9px] bg-cyan-500/20 text-cyan-400 font-mono px-1 py-0.5 rounded border border-cyan-500/30 shrink-0">
-                    Added
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        <textarea
-          ref={textareaRef}
-          className="w-full h-24 bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-sm text-zinc-300 focus:outline-none focus:border-cyan-500/50 resize-none font-sans"
-          placeholder="Describe the changes needed... (type @ to fuzzy match files)"
-          value={request}
-          onChange={handleTextareaChange}
-          onKeyDown={handleTextareaKeyDown}
-        />
       </div>
 
       <div className="space-y-2 text-xs text-zinc-300">
