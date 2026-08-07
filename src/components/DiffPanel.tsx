@@ -14,7 +14,7 @@ import { DiffBlock } from "../types";
 
 interface DiffPanelProps {
   parsedBlocks: DiffBlock[];
-  onPaste: () => void;
+  onPaste: (append?: boolean) => void;
   onClear: () => void;
   pastedContent: string;
 }
@@ -158,7 +158,7 @@ export function DiffPanel({
       <div className="flex-1 flex flex-col space-y-4 overflow-hidden">
         {!pastedContent ? (
           <div
-            onClick={onPaste}
+            onClick={() => onPaste()}
             className="flex-1 border-2 border-dashed border-zinc-800 rounded-xl flex items-center justify-center cursor-pointer hover:bg-zinc-900/30 transition-colors group"
           >
             <div className="flex flex-col items-center text-zinc-600 group-hover:text-zinc-500 transition-colors">
@@ -391,7 +391,7 @@ export function DiffPanel({
             </div>
 
             <div
-              onClick={onPaste}
+              onClick={() => onPaste(true)}
               className="h-20 shrink-0 border-2 border-dashed border-zinc-800 rounded-xl flex items-center justify-center cursor-pointer hover:bg-zinc-900/30 transition-colors"
             >
               <div className="flex flex-col items-center text-zinc-600">

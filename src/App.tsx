@@ -110,13 +110,17 @@ export default function App() {
     setDiffBlocks([]);
   };
 
-  const handlePaste = async () => {
+  const handlePaste = async (append = false) => {
     try {
       const clipboardText = await navigator.clipboard.readText();
       if (!clipboardText) return;
 
-      setPastedContent(clipboardText);
-      const parsed = parseDiffBlocks(clipboardText);
+      const newContent =
+        append && pastedContent
+          ? pastedContent + "\n\n" + clipboardText
+          : clipboardText;
+      setPastedContent(newContent);
+      const parsed = parseDiffBlocks(newContent);
 
       if (parsed.length === 0) {
         setDiffBlocks([]);
