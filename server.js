@@ -294,49 +294,25 @@ app.post("/api/files", (req, res) => {
   res.json({ success: true, contents });
 });
 
-// Helper to list directories for folder browser
-function getDirectories(dirPath) {
+app.post("/api/native-folder-dialog", (req, res) => {
   try {
-    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-    return entries
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
-      .sort();
-  } catch (e) {
-    return [];
-  }
-}
-
-function getRootDrives() {
-  if (process.platform === 'win32') {
-    const drives = [];
-    for (let i = 67; i <= 90; i++) { // C-Z
-      const drive = String.fromCharCode(i) + ':';
-      if (fs.existsSync(drive + '\\')) {
-        drives.push(drive);
-      }
+    let cmd = "";
+    if (process.platform === "win32") {
+      cmd = `powershell -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; if($f.ShowDialog() -eq 'OK') { $f.SelectedPath }"`;
+    } else if (process.platform === "darwin") {
+      cmd = `osascript -e 'POSIX path of (choose folder)'`;
+    } else {
+      // Linux: try zenity first, then kdialog
+      cmd = `zenity --file-selection --directory 2>/dev/null || kdialog --getexistingdirectory 2>/dev/null`;
     }
-    return drives;
-  } else {
-    return ['/'];
-  }
-}
 
-app.get("/api/browse", (req, res) => {
-  const queryPath = req.query.path || '';
-  let absolutePath = '';
-  if (!queryPath) {
-    // Return root drives/directories
-    return res.json({ success: true, path: '', entries: getRootDrives() });
+    const selectedPath = execSync(cmd, { encoding: "utf-8" }).trim();
+    // If user cancels, the command returns empty or non‑zero exit; we return empty path
+    res.json({ success: true, path: selectedPath || "" });
+  } catch (err) {
+    // Dialog cancelled or command not found → return empty path
+    res.json({ success: true, path: "" });
   }
-  
-  absolutePath = path.resolve(queryPath); // Prevent path traversal
-  if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isDirectory()) {
-    return res.status(400).json({ success: false, error: "Invalid directory" });
-  }
-  
-  const dirs = getDirectories(absolutePath);
-  res.json({ success: true, path: absolutePath, entries: dirs });
 });
 
 function findCondensedRange(content, search) {
