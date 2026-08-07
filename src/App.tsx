@@ -150,25 +150,24 @@ export default function App() {
 
           // 2. Fuzzy whitespace match test (ignores leading indentation spaces)
           if (!isMatch) {
-            const searchLines = normSearch
-              .split("\n")
-              .map((l) => l.trim())
-              .filter(Boolean);
-            const contentLines = normContent
-              .split("\n")
-              .map((l) => l.trim())
-              .filter(Boolean);
+            const searchLines = normSearch.split('\n').map(l => l.trim()).filter(Boolean);
+            const contentLines = normContent.split('\n').map(l => l.trim()).filter(Boolean);
             if (searchLines.length > 0) {
-              isMatch = contentLines
-                .join("\n")
-                .includes(searchLines.join("\n"));
+              isMatch = contentLines.join('\n').includes(searchLines.join('\n'));
             }
           }
 
-          return {
-            ...block,
-            status: isMatch ? ("match" as const) : ("no-match" as const),
-          };
+          // 3. Ultra-Lenient Token Stream (Ignores multi-line, spaces, commas, AND quote styles)
+          if (!isMatch) {
+            const tokenize = (str: string) => str.replace(/[\s,'"`]+/g, '');
+            const tokenSearch = tokenize(normSearch);
+            const tokenContent = tokenize(normContent);
+            if (tokenSearch.length > 0) {
+              isMatch = tokenContent.includes(tokenSearch);
+            }
+          }
+
+          return { ...block, status: isMatch ? 'match' as const : 'no-match' as const };
         });
         setDiffBlocks(validatedBlocks);
       } else {
