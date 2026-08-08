@@ -9,7 +9,7 @@ interface FooterProps {
   diffBlocks?: DiffBlock[];
   onApplySuccess?: () => void;
 }
-
+ 
 export function Footer({
   logs,
   hasChanges,
@@ -60,7 +60,7 @@ export function Footer({
             : `❌ Error applying edits:\n${data.error || "Unknown error"}`;
         alert(errorDetails);
       }
-    } catch (err) {
+    } catch {
       alert(
         "❌ Failed to connect to local server. Ensure server is running!",
       );
@@ -90,7 +90,7 @@ export function Footer({
             : `❌ Error validating edits:\n${data.error || "Unknown error"}`;
         alert(errorDetails);
       }
-    } catch (err) {
+    } catch {
       alert(
         "❌ Failed to connect to local server. Ensure server is running!",
       );

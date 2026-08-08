@@ -27,47 +27,14 @@ export default [
       ],
       "max-lines-per-function": ["warn", { max: 50, skipBlankLines: true }],
       complexity: ["warn", { max: 10 }],
-      "boundaries/element-types": [
-        "error",
-        {
-          default: "allow",
-          rules: [
-            {
-              from: "adapters",
-              disallow: [
-                "routes",
-                "services",
-                "utils",
-                "components",
-                "hooks",
-                "api",
-                "features",
-              ],
-              message:
-                "Adapters are the lowest layer and cannot import upwards.",
-            },
-            {
-              from: "utils",
-              disallow: [
-                "components",
-                "hooks",
-                "api",
-                "features",
-                "routes",
-                "services",
-                "adapters",
-              ],
-              message:
-                "Utils must remain pure and cannot import feature or framework logic.",
-            },
-            {
-              from: "services",
-              disallow: ["routes"],
-              message: "Services cannot import routes (downward flow only).",
-            },
-          ],
-        },
-      ],
+      "boundaries/dependencies": ["error", {
+        default: "allow",
+        rules: [
+          { from: "adapters", disallow: ["routes", "services", "utils", "components", "hooks", "api", "features"], message: "Adapters are the lowest layer and cannot import upwards." },
+          { from: "utils", disallow: ["components", "hooks", "api", "features", "routes", "services", "adapters"], message: "Utils must remain pure and cannot import feature or framework logic." },
+          { from: "services", disallow: ["routes"], message: "Services cannot import routes (downward flow only)." }
+        ]
+      }]
     },
   },
   {
