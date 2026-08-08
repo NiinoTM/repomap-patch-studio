@@ -1,6 +1,5 @@
-import React, { useState } from "react";
-import { patchApi } from "../../../api/patchApi";
-import { repoApi } from "../../../api/repoApi";
+import React from "react";
+import { useHeaderActions } from "../hooks/useHeaderActions";
 
 interface HeaderProps {
   onUndoSuccess?: () => void;
@@ -20,47 +19,13 @@ export function Header({
   onChangeRepo,
   tokenStats,
 }: HeaderProps) {
-  const [isUndoing, setIsUndoing] = useState(false);
-
-  const handleUndo = async () => {
-    if (
-      !confirm(
-        "Are you sure you want to hard reset to the previous Git commit? Uncommitted changes will be lost.",
-      )
-    ) {
-      return;
-    }
-
-    setIsUndoing(true);
-    try {
-      const data = await patchApi.undo();
-      if (data.success) {
-        alert("🔄 Git reset successful!");
-        if (onUndoSuccess) onUndoSuccess();
-      } else {
-        alert("❌ Error resetting: " + (data.error || "Unknown error"));
-      }
-    } catch (err) {
-      console.error("Undo failed:", err);
-      alert("❌ Failed to reach backend server. Make sure server is running.");
-    } finally {
-      setIsUndoing(false);
-    }
-  };
-
-  const handleChangeRepo = async () => {
-    try {
-      const data = await repoApi.openFolderDialog();
-      if (data.success && data.path) {
-        onChangeRepo(data.path);
-      }
-    } catch (err) {
-      console.error("Failed to open folder dialog:", err);
-      alert("Failed to open native folder dialog. Ensure backend is running.");
-    }
-  };
+  const { isUndoing, handleUndo, handleChangeRepo } = useHeaderActions({
+    onUndoSuccess,
+    onChangeRepo,
+  });
 
   const TARGET_BUDGET = 30000;
+  
   const budgetPercentage = Math.min(
     100,
     Math.round(((tokenStats?.total || 0) / TARGET_BUDGET) * 100),
