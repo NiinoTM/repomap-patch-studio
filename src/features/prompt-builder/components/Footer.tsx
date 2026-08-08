@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Check, GitCommit, History } from "lucide-react";
-import { DiffBlock, HistoryLog } from "../../../types";
-import { api } from "../../../api/client";
+import { DiffBlock, HistoryLog } from "../../../types/patch";
+import { patchApi } from "../../../api/patchApi";
 
 interface FooterProps {
   logs: HistoryLog[];
@@ -9,7 +9,7 @@ interface FooterProps {
   diffBlocks?: DiffBlock[];
   onApplySuccess?: () => void;
 }
- 
+
 export function Footer({
   logs,
   hasChanges,
@@ -38,7 +38,7 @@ export function Footer({
 
     setIsApplying(true);
     try {
-      const data = await api.apply({
+      const data = await patchApi.apply({
         blocks: diffBlocks,
         commitMessage: shouldCommit ? finalCommitMessage : "",
         skipCommit: !shouldCommit,
@@ -61,9 +61,7 @@ export function Footer({
         alert(errorDetails);
       }
     } catch {
-      alert(
-        "❌ Failed to connect to local server. Ensure server is running!",
-      );
+      alert("❌ Failed to connect to local server. Ensure server is running!");
     } finally {
       setIsApplying(false);
     }
@@ -77,7 +75,7 @@ export function Footer({
 
     setIsValidating(true);
     try {
-      const data = await api.apply({ blocks: diffBlocks, dryRun: true });
+      const data = await patchApi.apply({ blocks: diffBlocks, dryRun: true });
 
       if (data.success) {
         setModalCommitMessage(commitMessage);
@@ -91,9 +89,7 @@ export function Footer({
         alert(errorDetails);
       }
     } catch {
-      alert(
-        "❌ Failed to connect to local server. Ensure server is running!",
-      );
+      alert("❌ Failed to connect to local server. Ensure server is running!");
     } finally {
       setIsValidating(false);
     }

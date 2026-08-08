@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import { repoApi, historyApi } from "../../../api/client";
-import { HistoryLog } from "../../../types";
+import { repoApi } from "../../../api/repoApi";
+import { historyApi } from "../../../api/historyApi";
+import { HistoryLog } from "../../../types/patch";
 
 export function useRepoContext() {
   const [repoPath, setRepoPath] = useState<string>("Loading...");
@@ -70,6 +71,7 @@ export function useRepoContext() {
         return false;
       }
     } catch (err) {
+      console.error("Failed to change repo:", err);
       alert("Failed to update repository path. Ensure backend is running.");
       return false;
     }

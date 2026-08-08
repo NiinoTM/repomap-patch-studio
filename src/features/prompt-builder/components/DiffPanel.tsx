@@ -3,17 +3,14 @@ import {
   ClipboardPaste,
   AlertTriangle,
   Bug,
-  ChevronDown,
-  ChevronRight,
   CheckCircle2,
   XCircle,
   FoldVertical,
   UnfoldVertical,
-  Copy,
-  Edit2,
-  Save,
 } from "lucide-react";
-import { DiffBlock } from "../types";
+import { DiffBlock } from "../../../types/patch";
+import { ClipboardDebugger } from "./diff/ClipboardDebugger";
+import { DiffBlockCard } from "./diff/DiffBlockCard";
 
 interface DiffPanelProps {
   parsedBlocks: DiffBlock[];
@@ -21,16 +18,25 @@ interface DiffPanelProps {
   onClear: () => void;
   pastedContent: string;
   onBlockEdit?: (id: string, search: string, replace: string) => void;
+  ignoredBlocks?: Set<string>;
+  onToggleBlock?: (id: string) => void;
 }
 
 export function DiffPanel({
-  parsedBlocks,
+  parsedBlocks = [],
   onPaste,
   onClear,
-  pastedContent,
+  pastedContent = "",
   onBlockEdit,
+  ignoredBlocks,
+  onToggleBlock,
 }: DiffPanelProps) {
-  const [ignoredBlocks, setIgnoredBlocks] = useState<Set<string>>(new Set());
+  const [internalIgnoredBlocks, setInternalIgnoredBlocks] = useState<
+    Set<string>
+  >(new Set());
+  const effectiveIgnoredBlocks =
+    ignoredBlocks ?? internalIgnoredBlocks ?? new Set<string>();
+
   const [showDebug, setShowDebug] = useState(false);
   const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(
     new Set(),
@@ -50,8 +56,8 @@ export function DiffPanel({
 
   const startEditing = (block: DiffBlock) => {
     setEditingBlockId(block.id);
-    setEditSearch(block.search);
-    setEditReplace(block.replace);
+    setEditSearch(block.search || "");
+    setEditReplace(block.replace || "");
     if (collapsedBlocks.has(block.id)) {
       toggleCollapse(block.id);
     }
@@ -69,7 +75,7 @@ export function DiffPanel({
       setCollapsedBlocks(new Set(parsedBlocks.map((b) => b.id)));
     } else if (parsedBlocks.length === 1) {
       const totalLines = (
-        parsedBlocks[0].search + parsedBlocks[0].replace
+        (parsedBlocks[0].search || "") + (parsedBlocks[0].replace || "")
       ).split("\n").length;
       if (totalLines > 25) {
         setCollapsedBlocks(new Set([parsedBlocks[0].id]));
@@ -82,13 +88,19 @@ export function DiffPanel({
   }, [parsedBlocks]);
 
   const toggleBlock = (id: string) => {
-    const newIgnored = new Set(ignoredBlocks);
-    if (newIgnored.has(id)) {
-      newIgnored.delete(id);
+    if (onToggleBlock) {
+      onToggleBlock(id);
     } else {
-      newIgnored.add(id);
+      setInternalIgnoredBlocks((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+        return next;
+      });
     }
-    setIgnoredBlocks(newIgnored);
   };
 
   const toggleCollapse = (id: string) => {
@@ -111,9 +123,15 @@ export function DiffPanel({
     }
   };
 
-  const matchCount = parsedBlocks.filter((b) => b.status === "match").length;
-  const noMatchCount = parsedBlocks.filter(
+  const activeBlocks = parsedBlocks.filter(
+    (b) => !effectiveIgnoredBlocks?.has?.(b.id),
+  );
+  const matchCount = activeBlocks.filter((b) => b.status === "match").length;
+  const noMatchCount = activeBlocks.filter(
     (b) => b.status === "no-match",
+  ).length;
+  const ignoredCount = parsedBlocks.filter((b) =>
+    effectiveIgnoredBlocks?.has?.(b.id),
   ).length;
   const allCollapsed =
     parsedBlocks.length > 0 && collapsedBlocks.size === parsedBlocks.length;
@@ -145,6 +163,11 @@ export function DiffPanel({
                 />
                 <span>{noMatchCount} NOT FOUND</span>
               </div>
+              {ignoredCount > 0 && (
+                <div className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[10px] font-bold">
+                  {ignoredCount} IGNORED
+                </div>
+              )}
             </>
           )}
           <span className="text-xs text-zinc-400">
@@ -233,331 +256,30 @@ export function DiffPanel({
               </button>
             </div>
 
-            {showDebug && (
-              <div className="w-full text-left bg-zinc-950 p-4 rounded-lg border border-zinc-800 mt-4 overflow-x-auto font-mono text-[11px] text-zinc-300 shadow-inner">
-                <p className="text-[10px] text-zinc-500 uppercase font-bold mb-3 flex items-center justify-between">
-                  <span>Advanced Line-by-Line Debugger</span>
-                  <span>{pastedContent.split(/\r?\n/).length} lines</span>
-                </p>
-                <div className="space-y-1 bg-zinc-900 p-3 rounded border border-zinc-800/50">
-                  {pastedContent.split(/\r?\n/).map((line, i) => {
-                    const trimmed = line.trim();
-                    let rowColor = "text-zinc-400";
-                    let badge = null;
-
-                    if (trimmed.startsWith("<<<<<<< SEARCH")) {
-                      rowColor = "text-cyan-400 font-bold bg-cyan-950/30";
-                      badge = (
-                        <span className="ml-2 text-[9px] bg-cyan-500/20 text-cyan-300 px-1 rounded uppercase">
-                          Search Start
-                        </span>
-                      );
-                    } else if (trimmed.startsWith("=======")) {
-                      rowColor = "text-amber-400 font-bold bg-amber-950/30";
-                      badge = (
-                        <span className="ml-2 text-[9px] bg-amber-500/20 text-amber-300 px-1 rounded uppercase">
-                          Divider
-                        </span>
-                      );
-                    } else if (trimmed.startsWith(">>>>>>> REPLACE")) {
-                      rowColor = "text-emerald-400 font-bold bg-emerald-950/30";
-                      badge = (
-                        <span className="ml-2 text-[9px] bg-emerald-500/20 text-emerald-300 px-1 rounded uppercase">
-                          Replace End
-                        </span>
-                      );
-                    }
-
-                    return (
-                      <div
-                        key={i}
-                        className={`flex items-start px-1 -mx-1 rounded ${rowColor}`}
-                      >
-                        <span className="w-6 shrink-0 text-zinc-600 select-none text-right mr-3 border-r border-zinc-800 pr-2">
-                          {i + 1}
-                        </span>
-                        <span className="whitespace-pre-wrap break-all flex-1">
-                          {line === "" ? (
-                            <span className="text-zinc-600 italic">
-                              ↵ (empty line)
-                            </span>
-                          ) : (
-                            line
-                          )}
-                          {badge}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+            {showDebug && <ClipboardDebugger pastedContent={pastedContent} />}
           </div>
         ) : (
           <>
             <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4">
-              {parsedBlocks.map((block) => {
-                const isIgnored = ignoredBlocks.has(block.id);
-                const isCollapsed = collapsedBlocks.has(block.id);
-                const searchLines = block.search.trim()
-                  ? block.search.trim().split("\n")
-                  : [];
-                const replaceLines = block.replace.trim()
-                  ? block.replace.trim().split("\n")
-                  : [];
-
-                if (block.type === "move") {
-                  return (
-                    <div
-                      key={block.id}
-                      className={`bg-zinc-900/30 border border-zinc-800 rounded-xl flex items-center justify-between px-4 py-3 transition-all ${
-                        isIgnored ? "opacity-50 grayscale" : ""
-                      }`}
-                    >
-                      <div className="flex items-center space-x-3 min-w-0">
-                        <span className="bg-violet-500/20 text-violet-400 text-[10px] px-1.5 py-0.5 rounded border border-violet-500/20 font-bold uppercase shrink-0">
-                          Move
-                        </span>
-                        <span className="text-xs font-mono text-zinc-400 truncate">
-                          {block.file}
-                        </span>
-                        <span className="text-zinc-600 shrink-0">→</span>
-                        <span className="text-xs font-mono text-zinc-100 font-medium truncate">
-                          {block.moveTo}
-                        </span>
-                        {block.status === "match" ? (
-                          <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase shrink-0">
-                            Source Found
-                          </span>
-                        ) : (
-                          <span className="bg-rose-500/20 text-rose-400 text-[10px] px-1.5 py-0.5 rounded border border-rose-500/20 font-bold uppercase shrink-0">
-                            Source Missing
-                          </span>
-                        )}
-                      </div>
-                      <label
-                        className="flex items-center space-x-2 cursor-pointer shrink-0"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <span
-                          className={`text-[10px] font-bold uppercase ${
-                            !isIgnored ? "text-cyan-500" : "text-zinc-500"
-                          }`}
-                        >
-                          {isIgnored ? "Ignored" : "Accepted"}
-                        </span>
-                        <div
-                          className={`w-8 h-4 rounded-full flex items-center transition-colors p-0.5 ${
-                            !isIgnored ? "bg-cyan-500" : "bg-zinc-700"
-                          }`}
-                        >
-                          <div
-                            className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${
-                              !isIgnored ? "translate-x-4" : "translate-x-0"
-                            }`}
-                          />
-                        </div>
-                        <input
-                          type="checkbox"
-                          className="hidden"
-                          checked={!isIgnored}
-                          onChange={() => toggleBlock(block.id)}
-                        />
-                      </label>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div
-                    key={block.id}
-                    className={`bg-zinc-900/30 border border-zinc-800 rounded-xl flex flex-col overflow-hidden transition-all ${
-                      isIgnored ? "opacity-50 grayscale" : ""
-                    }`}
-                  >
-                    <div
-                      onClick={() => toggleCollapse(block.id)}
-                      className="px-4 py-2 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between cursor-pointer hover:bg-zinc-850 transition-colors select-none group"
-                    >
-                      <div className="flex items-center space-x-2 min-w-0 pr-2">
-                        <button
-                          type="button"
-                          className="text-zinc-500 group-hover:text-zinc-300 transition-colors p-0.5 rounded hover:bg-zinc-800"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleCollapse(block.id);
-                          }}
-                          title={isCollapsed ? "Expand block" : "Retract block"}
-                        >
-                          {isCollapsed ? (
-                            <ChevronRight className="w-4 h-4" />
-                          ) : (
-                            <ChevronDown className="w-4 h-4" />
-                          )}
-                        </button>
-                        <span className="text-xs font-mono text-zinc-200 font-medium truncate">
-                          {block.file}
-                        </span>
-                        {block.status === "match" ? (
-                          <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase shrink-0">
-                            Match Found
-                          </span>
-                        ) : (
-                          <span className="bg-rose-500/20 text-rose-400 text-[10px] px-1.5 py-0.5 rounded border border-rose-500/20 font-bold uppercase shrink-0">
-                            Not Found
-                          </span>
-                        )}
-                        {isCollapsed && (
-                          <span className="text-[10px] text-zinc-500 font-mono hidden sm:inline truncate">
-                            ({searchLines.length} search / {replaceLines.length}{" "}
-                            replace lines)
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center shrink-0">
-                        <div className="flex items-center space-x-1 shrink-0 pr-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleCopyBlock(block);
-                            }}
-                            className="text-zinc-500 hover:text-cyan-400 p-1.5 rounded hover:bg-zinc-800 transition-colors"
-                            title="Copy block"
-                          >
-                            {copiedId === block.id ? (
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-
-                          {editingBlockId === block.id ? (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                saveEdit();
-                              }}
-                              className="text-emerald-500 hover:text-emerald-400 p-1.5 rounded hover:bg-emerald-500/10 transition-colors"
-                              title="Save changes"
-                            >
-                              <Save className="w-3.5 h-3.5" />
-                            </button>
-                          ) : (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                startEditing(block);
-                              }}
-                              className="text-zinc-500 hover:text-cyan-400 p-1.5 rounded hover:bg-zinc-800 transition-colors"
-                              title="Edit block"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-
-                          <div className="w-px h-4 bg-zinc-800 mx-1"></div>
-                        </div>
-
-                        <label
-                          className="flex items-center space-x-2 cursor-pointer shrink-0"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <span
-                            className={`text-[10px] font-bold uppercase ${
-                              !isIgnored ? "text-cyan-500" : "text-zinc-500"
-                            }`}
-                          >
-                            {isIgnored ? "Ignored" : "Accepted"}
-                          </span>
-                          <div
-                            className={`w-8 h-4 rounded-full flex items-center transition-colors p-0.5 ${
-                              !isIgnored ? "bg-cyan-500" : "bg-zinc-700"
-                            }`}
-                          >
-                            <div
-                              className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${
-                                !isIgnored ? "translate-x-4" : "translate-x-0"
-                              }`}
-                            />
-                          </div>
-                          <input
-                            type="checkbox"
-                            className="hidden"
-                            checked={!isIgnored}
-                            onChange={() => toggleBlock(block.id)}
-                          />
-                        </label>
-                      </div>
-                    </div>
-
-                    {isCollapsed ? (
-                      <div
-                        onClick={() => toggleCollapse(block.id)}
-                        className="px-4 py-2 bg-zinc-950/40 text-[11px] font-mono text-zinc-500 flex items-center justify-between cursor-pointer hover:bg-zinc-900/40 transition-colors border-t border-zinc-800/30 select-none"
-                      >
-                        <span className="truncate italic text-zinc-400/80">
-                          {searchLines[0]
-                            ? searchLines[0]
-                            : replaceLines[0]
-                              ? replaceLines[0]
-                              : "Empty block content"}
-                        </span>
-                        <span className="text-[10px] text-cyan-500/80 font-sans hover:underline ml-2 shrink-0">
-                          Click to expand
-                        </span>
-                      </div>
-                    ) : editingBlockId === block.id ? (
-                      <div className="p-4 bg-zinc-950/50 flex flex-col space-y-4 border-t border-zinc-800/50">
-                        <div className="flex flex-col space-y-1.5">
-                          <label className="text-[10px] text-rose-400/80 uppercase font-bold tracking-wider flex items-center">
-                            <span className="text-rose-500/50 mr-2">
-                              {"<<<<<<< SEARCH"}
-                            </span>
-                          </label>
-                          <textarea
-                            value={editSearch}
-                            onChange={(e) => setEditSearch(e.target.value)}
-                            className="w-full bg-zinc-900/80 border border-zinc-800 rounded p-3 text-[11px] font-mono text-zinc-400 h-32 custom-scrollbar focus:border-rose-500/50 focus:outline-none resize-y"
-                            spellCheck={false}
-                          />
-                        </div>
-                        <div className="flex flex-col space-y-1.5">
-                          <label className="text-[10px] text-emerald-400/80 uppercase font-bold tracking-wider flex items-center">
-                            <span className="text-emerald-500/50 mr-2">
-                              {"======="} (REPLACE)
-                            </span>
-                          </label>
-                          <textarea
-                            value={editReplace}
-                            onChange={(e) => setEditReplace(e.target.value)}
-                            className="w-full bg-zinc-900/80 border border-zinc-800 rounded p-3 text-[11px] font-mono text-zinc-200 h-40 custom-scrollbar focus:border-emerald-500/50 focus:outline-none resize-y"
-                            spellCheck={false}
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="p-4 font-mono text-[11px] overflow-x-auto custom-scrollbar leading-relaxed min-w-0 w-full bg-zinc-950/50">
-                        <div className="text-rose-500 opacity-50 select-none font-semibold">
-                          {"<<<<<<< SEARCH"}
-                        </div>
-                        <div className="pl-4 text-zinc-500 whitespace-pre">
-                          {block.search}
-                        </div>
-                        <div className="text-emerald-500 opacity-50 select-none font-semibold">
-                          {"======="}
-                        </div>
-                        <div className="pl-4 text-zinc-200 whitespace-pre">
-                          {block.replace}
-                        </div>
-                        <div className="text-emerald-500 opacity-50 select-none font-semibold">
-                          {">>>>>>> REPLACE"}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {parsedBlocks.map((block) => (
+                <DiffBlockCard
+                  key={block.id}
+                  block={block}
+                  isIgnored={Boolean(effectiveIgnoredBlocks?.has?.(block.id))}
+                  isCollapsed={Boolean(collapsedBlocks?.has?.(block.id))}
+                  isEditing={editingBlockId === block.id}
+                  editSearch={editSearch}
+                  editReplace={editReplace}
+                  copiedId={copiedId}
+                  onToggleBlock={toggleBlock}
+                  onToggleCollapse={toggleCollapse}
+                  onCopyBlock={handleCopyBlock}
+                  onStartEditing={startEditing}
+                  onSaveEdit={saveEdit}
+                  onEditSearchChange={setEditSearch}
+                  onEditReplaceChange={setEditReplace}
+                />
+              ))}
             </div>
 
             <div

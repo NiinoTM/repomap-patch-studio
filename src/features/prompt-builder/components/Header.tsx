@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { api } from "../../../api/client";
+import { patchApi } from "../../../api/patchApi";
+import { repoApi } from "../../../api/repoApi";
 
 interface HeaderProps {
   onUndoSuccess?: () => void;
@@ -32,7 +33,7 @@ export function Header({
 
     setIsUndoing(true);
     try {
-      const data = await api.undo();
+      const data = await patchApi.undo();
       if (data.success) {
         alert("🔄 Git reset successful!");
         if (onUndoSuccess) onUndoSuccess();
@@ -40,9 +41,8 @@ export function Header({
         alert("❌ Error resetting: " + (data.error || "Unknown error"));
       }
     } catch (err) {
-      alert(
-        "❌ Failed to reach backend server. Make sure server is running.",
-      );
+      console.error("Undo failed:", err);
+      alert("❌ Failed to reach backend server. Make sure server is running.");
     } finally {
       setIsUndoing(false);
     }
@@ -50,11 +50,12 @@ export function Header({
 
   const handleChangeRepo = async () => {
     try {
-      const data = await api.openFolderDialog();
+      const data = await repoApi.openFolderDialog();
       if (data.success && data.path) {
         onChangeRepo(data.path);
       }
     } catch (err) {
+      console.error("Failed to open folder dialog:", err);
       alert("Failed to open native folder dialog. Ensure backend is running.");
     }
   };

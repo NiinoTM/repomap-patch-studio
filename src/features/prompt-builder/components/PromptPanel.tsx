@@ -1,16 +1,13 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState } from "react";
 import { Copy, Map, Eye, X, FileText, AtSign } from "lucide-react";
-import {
-  formatActiveFilesContext,
-  buildFullContextPrompt,
-  buildFilesAndPromptOnly,
-} from "../utils/promptTemplates";
 import { MentionDropdown } from "./prompt/MentionDropdown";
 import { SuggestedContextBar } from "./prompt/SuggestedContextBar";
 import { FileTree } from "./prompt/FileTree";
-import { filesApi } from "../../../api/client";
 import { useMentionPopup } from "../hooks/useMentionPopup";
 import { useSuggestedContext } from "../hooks/useSuggestedContext";
+import { useFileSelection } from "../hooks/useFileSelection";
+import { useTokenEstimate } from "../hooks/useTokenEstimate";
+import { useCopyPrompt } from "../hooks/useCopyPrompt";
 
 interface PromptPanelProps {
   onCopy: (promptText: string) => void;
@@ -42,23 +39,20 @@ export function PromptPanel({
   onTokenStatsChange,
 }: PromptPanelProps) {
   const [request, setRequest] = useState("");
-  const [seedFiles, setSeedFiles] = useState<Set<string>>(new Set());
-  const [acceptedSuggestions, setAcceptedSuggestions] = useState<Set<string>>(new Set());
-
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
-  const [isCopying, setIsCopying] = useState(false);
-  const [isCopyingFiles, setIsCopyingFiles] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const selectedFiles = useMemo(() => {
-    const combined = new Set<string>(seedFiles);
-    acceptedSuggestions.forEach((f) => combined.add(f));
-    return combined;
-  }, [seedFiles, acceptedSuggestions]);
-
-  const handleAddSeedFile = (filePath: string) => {
-    setSeedFiles((prev) => new Set(prev).add(filePath));
-  };
+  const {
+    seedFiles,
+    selectedFiles,
+    addSeedFile,
+    toggleFile,
+    toggleFolder,
+    selectAll,
+    deselectAll,
+    toggleSuggestion,
+    acceptAllSuggestions,
+  } = useFileSelection({ request, files });
 
   const {
     textareaRef,
@@ -75,7 +69,7 @@ export function PromptPanel({
     request,
     files,
     setRequest,
-    onAddSeedFile: handleAddSeedFile,
+    onAddSeedFile: addSeedFile,
   });
 
   const suggestedFiles = useSuggestedContext({
@@ -84,138 +78,16 @@ export function PromptPanel({
     dependencyMap,
   });
 
-  useEffect(() => {
-    const matches = Array.from(request.matchAll(/@([a-zA-Z0-9_\-./]+)/g));
-    const currentMentions = new Set<string>();
-
-    for (const match of matches) {
-      const path = match[1];
-      if (files.includes(path)) {
-        currentMentions.add(path);
-      }
-    }
-
-    setSeedFiles((prev) => {
-      const next = new Set(prev);
-      currentMentions.forEach((f) => next.add(f));
-      return next;
-    });
-  }, [request, files]);
-
-  useEffect(() => {
-    setSeedFiles(new Set());
-    setAcceptedSuggestions(new Set());
-  }, [files]);
-
-  const handleAddAllSuggestions = () => {
-    setAcceptedSuggestions((prev) => {
-      const next = new Set(prev);
-      suggestedFiles.forEach((item) => next.add(item.filePath));
-      return next;
-    });
-  };
-
-  const handleToggleSuggestion = (filePath: string) => {
-    if (selectedFiles.has(filePath)) {
-      setAcceptedSuggestions((prev) => {
-        const next = new Set(prev);
-        next.delete(filePath);
-        return next;
-      });
-      setSeedFiles((prev) => {
-        const next = new Set(prev);
-        next.delete(filePath);
-        return next;
-      });
-    } else {
-      setAcceptedSuggestions((prev) => new Set(prev).add(filePath));
-    }
-  };
-
-  const repoMapTokens = useMemo(
-    () => Math.ceil((repoMap?.length || 0) / 3.8),
-    [repoMap],
-  );
-
-  const selectedFilesTokens = useMemo(() => {
-    let total = 0;
-    selectedFiles.forEach((file) => {
-      total += fileStats?.[file]?.tokens || 0;
-    });
-    return total;
-  }, [selectedFiles, fileStats]);
-
-  const promptOverheadTokens = useMemo(
-    () => Math.ceil((request.length + 800) / 3.8),
-    [request],
-  );
-  const totalEstimatedTokens =
-    repoMapTokens + selectedFilesTokens + promptOverheadTokens;
-
-  useEffect(() => {
-    if (onTokenStatsChange) {
-      onTokenStatsChange({
-        total: totalEstimatedTokens,
-        map: repoMapTokens,
-        files: selectedFilesTokens,
-        selectedCount: selectedFiles.size,
-      });
-    }
-  }, [
-    totalEstimatedTokens,
-    repoMapTokens,
-    selectedFilesTokens,
-    selectedFiles.size,
+  const { repoMapTokens } = useTokenEstimate({
+    repoMap,
+    request,
+    selectedFiles,
+    fileStats,
     onTokenStatsChange,
-  ]);
+  });
 
-  const handleSelectAll = () => {
-    setSeedFiles(new Set(files));
-    setAcceptedSuggestions(new Set());
-  };
-
-  const handleDeselectAll = () => {
-    setSeedFiles(new Set());
-    setAcceptedSuggestions(new Set());
-  };
-
-  const toggleFile = (filePath: string) => {
-    if (selectedFiles.has(filePath)) {
-      setSeedFiles((prev) => {
-        const next = new Set(prev);
-        next.delete(filePath);
-        return next;
-      });
-      setAcceptedSuggestions((prev) => {
-        const next = new Set(prev);
-        next.delete(filePath);
-        return next;
-      });
-    } else {
-      setSeedFiles((prev) => new Set(prev).add(filePath));
-    }
-  };
-
-  const toggleFolder = (folderFiles: string[], shouldSelect: boolean) => {
-    if (!shouldSelect) {
-      setSeedFiles((prev) => {
-        const next = new Set(prev);
-        folderFiles.forEach((f) => next.delete(f));
-        return next;
-      });
-      setAcceptedSuggestions((prev) => {
-        const next = new Set(prev);
-        folderFiles.forEach((f) => next.delete(f));
-        return next;
-      });
-    } else {
-      setSeedFiles((prev) => {
-        const next = new Set(prev);
-        folderFiles.forEach((f) => next.add(f));
-        return next;
-      });
-    }
-  };
+  const { isCopying, isCopyingFiles, copyFullContext, copyFilesAndPrompt } =
+    useCopyPrompt({ selectedFiles, repoMap, request, onCopy });
 
   return (
     <div className="border-r border-zinc-800 flex flex-col h-full p-4 space-y-4 bg-zinc-950/50">
@@ -276,8 +148,10 @@ export function PromptPanel({
 
       <SuggestedContextBar
         suggestedFiles={suggestedFiles}
-        onAddAllSuggestions={handleAddAllSuggestions}
-        onToggleSuggestion={handleToggleSuggestion}
+        onAddAllSuggestions={() =>
+          acceptAllSuggestions(suggestedFiles.map((s) => s.filePath))
+        }
+        onToggleSuggestion={toggleSuggestion}
       />
 
       <FileTree
@@ -285,8 +159,8 @@ export function PromptPanel({
         selectedFiles={selectedFiles}
         searchQuery={searchQuery}
         onSearchQueryChange={setSearchQuery}
-        onSelectAll={handleSelectAll}
-        onDeselectAll={handleDeselectAll}
+        onSelectAll={selectAll}
+        onDeselectAll={deselectAll}
         onToggleFile={toggleFile}
         onToggleFolder={toggleFolder}
       />
@@ -300,26 +174,7 @@ export function PromptPanel({
 
       <div className="flex space-x-2 shrink-0">
         <button
-          onClick={async () => {
-            setIsCopying(true);
-            try {
-              const data = await filesApi.fetchFiles(Array.from(selectedFiles));
-
-              const activeFilesText = formatActiveFilesContext(
-                selectedFiles,
-                data.contents || {},
-              );
-              const finalPrompt = buildFullContextPrompt({
-                repoMap,
-                activeFilesText,
-                userRequest: request,
-              });
-
-              onCopy(finalPrompt);
-            } finally {
-              setIsCopying(false);
-            }
-          }}
+          onClick={copyFullContext}
           disabled={isCopying || isCopyingFiles}
           className="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold py-2.5 rounded-lg shadow-lg shadow-cyan-500/10 flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer text-[11px]"
         >
@@ -332,25 +187,7 @@ export function PromptPanel({
         </button>
 
         <button
-          onClick={async () => {
-            setIsCopyingFiles(true);
-            try {
-              const data = await filesApi.fetchFiles(Array.from(selectedFiles));
-
-              const activeFilesText = formatActiveFilesContext(
-                selectedFiles,
-                data.contents || {},
-              );
-              const finalPrompt = buildFilesAndPromptOnly({
-                activeFilesText,
-                userRequest: request,
-              });
-
-              onCopy(finalPrompt);
-            } finally {
-              setIsCopyingFiles(false);
-            }
-          }}
+          onClick={copyFilesAndPrompt}
           disabled={isCopying || isCopyingFiles || selectedFiles.size === 0}
           className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold py-2.5 rounded-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer border border-zinc-700 text-[11px]"
         >

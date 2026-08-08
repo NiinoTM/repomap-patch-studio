@@ -4,15 +4,18 @@ import { PromptPanel } from "./features/prompt-builder/components/PromptPanel";
 import { DiffPanel } from "./features/prompt-builder/components/DiffPanel";
 import { Footer } from "./features/prompt-builder/components/Footer";
 import { Toast } from "./features/prompt-builder/components/Toast";
-import { DiffBlock } from "./types";
+import { DiffBlock } from "./types/patch";
 import { parseDiffBlocks } from "./features/prompt-builder/utils/diffParser";
-import { filesApi } from "./api/client";
+import { filesApi } from "./api/repoApi";
 import { useRepoContext } from "./features/prompt-builder/hooks/useRepoContext";
 
 export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [pastedContent, setPastedContent] = useState("");
   const [diffBlocks, setDiffBlocks] = useState<DiffBlock[]>([]);
+  const [ignoredBlockIds, setIgnoredBlockIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [tokenStats, setTokenStats] = useState({
     total: 0,
     map: 0,
@@ -48,9 +51,22 @@ export default function App() {
     setToastMessage("Raw Repo Map copied to clipboard!");
   };
 
-  const handleClear = () => {
+ const handleClear = () => {
     setPastedContent("");
     setDiffBlocks([]);
+    setIgnoredBlockIds(new Set());
+  };
+
+  const handleToggleBlockIgnore = (id: string) => {
+    setIgnoredBlockIds((prev) => {
+      const next = new Set(prev ?? []);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   };
 
   const handleApplySuccess = () => {
@@ -68,6 +84,9 @@ export default function App() {
           ? pastedContent + "\n\n" + clipboardText
           : clipboardText;
       setPastedContent(newContent);
+      if (!append) {
+        setIgnoredBlockIds(new Set());
+      }
       const parsed = parseDiffBlocks(newContent);
 
       if (parsed.length === 0) {
@@ -153,6 +172,10 @@ export default function App() {
     }
   };
 
+    const activeDiffBlocks = (diffBlocks || []).filter(
+    (b) => !ignoredBlockIds?.has?.(b.id),
+  );
+
   return (
     <div className="flex flex-col h-screen w-full bg-zinc-950 overflow-hidden font-sans text-zinc-300 selection:bg-cyan-500/30 antialiased">
       <Header
@@ -179,6 +202,8 @@ export default function App() {
           <DiffPanel
             pastedContent={pastedContent}
             parsedBlocks={diffBlocks}
+            ignoredBlocks={ignoredBlockIds}
+            onToggleBlock={handleToggleBlockIgnore}
             onPaste={handlePaste}
             onClear={handleClear}
             onBlockEdit={(id, search, replace) => {
@@ -192,8 +217,8 @@ export default function App() {
 
       <Footer
         logs={logs}
-        hasChanges={diffBlocks.length > 0}
-        diffBlocks={diffBlocks}
+        hasChanges={activeDiffBlocks.length > 0}
+        diffBlocks={activeDiffBlocks}
         onApplySuccess={handleApplySuccess}
       />
 

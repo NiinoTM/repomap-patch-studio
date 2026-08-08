@@ -1,4 +1,4 @@
-import { DiffBlock } from "../../../types";
+import { DiffBlock } from "../../../types/patch";
 
 export function parseDiffBlocks(rawText: string): DiffBlock[] {
   console.log("[Parser] Starting parse. Input length:", rawText?.length);
