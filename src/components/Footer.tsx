@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
-import { Check, GitCommit, History, RotateCcw } from "lucide-react";
+import { Check, GitCommit, History } from "lucide-react";
 import { DiffBlock, HistoryLog } from "../types";
+import { api } from "../api/client";
 
 interface FooterProps {
   logs: HistoryLog[];
@@ -24,7 +25,6 @@ export function Footer({
   );
   const commitDialogRef = useRef<HTMLDialogElement>(null);
 
-  // 1. The Apply Changes Handler (calls /api/apply on your Express backend)
   const handleApplyChanges = async (
     shouldCommit = true,
     messageOverride?: string,
@@ -38,18 +38,13 @@ export function Footer({
 
     setIsApplying(true);
     try {
-      const response = await fetch("/api/apply", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          blocks: diffBlocks,
-          commitMessage: shouldCommit ? finalCommitMessage : "",
-          skipCommit: !shouldCommit,
-          commit: shouldCommit,
-        }),
+      const data = await api.apply({
+        blocks: diffBlocks,
+        commitMessage: shouldCommit ? finalCommitMessage : "",
+        skipCommit: !shouldCommit,
+        commit: shouldCommit,
       });
 
-      const data = await response.json();
       if (data.success) {
         alert(
           shouldCommit
@@ -67,17 +62,13 @@ export function Footer({
       }
     } catch (err) {
       alert(
-        "❌ Failed to connect to local server. Ensure server.js is running!",
+        "❌ Failed to connect to local server. Ensure server is running!",
       );
     } finally {
       setIsApplying(false);
     }
   };
 
-  // 2. "Apply & Commit" is gated behind a dry-run: we validate every block
-  // (search-match + syntax check) against the real files first. Only once
-  // that passes do we surface the native <dialog> so the user can edit the
-  // commit message — right before the real write + commit happens.
   const handleCommitButtonClick = async () => {
     if (diffBlocks.length === 0) {
       alert("No diff blocks detected to apply!");
@@ -86,13 +77,8 @@ export function Footer({
 
     setIsValidating(true);
     try {
-      const response = await fetch("/api/apply", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ blocks: diffBlocks, dryRun: true }),
-      });
+      const data = await api.apply({ blocks: diffBlocks, dryRun: true });
 
-      const data = await response.json();
       if (data.success) {
         setModalCommitMessage(commitMessage);
         commitDialogRef.current?.showModal();
@@ -106,7 +92,7 @@ export function Footer({
       }
     } catch (err) {
       alert(
-        "❌ Failed to connect to local server. Ensure server.js is running!",
+        "❌ Failed to connect to local server. Ensure server is running!",
       );
     } finally {
       setIsValidating(false);
@@ -122,7 +108,6 @@ export function Footer({
 
   return (
     <footer className="relative shrink-0 flex flex-col z-10">
-      {/* History Drawer */}
       {drawerOpen && (
         <div className="absolute bottom-full left-0 right-0 h-64 bg-zinc-950 border-t border-zinc-800 overflow-y-auto z-0 custom-scrollbar">
           <div className="p-4 space-y-3">
@@ -154,7 +139,6 @@ export function Footer({
         </div>
       )}
 
-      {/* Main Footer Bar */}
       <div className="h-20 border-t border-zinc-800 bg-zinc-950 flex items-center px-6 space-x-6 shrink-0 z-10">
         <div className="flex-1 flex flex-col space-y-1">
           <label className="text-[10px] text-zinc-500 uppercase font-bold">
@@ -189,7 +173,6 @@ export function Footer({
             <Check className="w-4 h-4" />
           </button>
 
-          {/* 3. Validates first (dry-run), then opens the native commit-message dialog */}
           <button
             onClick={handleCommitButtonClick}
             disabled={!hasChanges || isApplying || isValidating}
@@ -207,8 +190,6 @@ export function Footer({
         </div>
       </div>
 
-      {/* Native <dialog> for the commit message — opened only after pre-flight
-          validation succeeds, and before the real write/commit is fired. */}
       <dialog
         ref={commitDialogRef}
         className="bg-zinc-900 border border-zinc-800 rounded-lg p-0 backdrop:bg-black/60 m-auto"

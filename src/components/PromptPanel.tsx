@@ -1,26 +1,16 @@
-import { useState, useEffect, useMemo, useRef } from "react";
-import { createPortal } from "react-dom";
+import { useState, useEffect, useMemo } from "react";
+import { Copy, Map, Eye, X, FileText, AtSign } from "lucide-react";
 import {
-  Copy,
-  Map,
-  Eye,
-  X,
-  Folder,
-  FolderOpen,
-  FileText,
-  ChevronRight,
-  ChevronDown,
-  CheckSquare,
-  Square,
-  MinusSquare,
-  Search,
-  AtSign,
-  Sparkles,
-  ArrowUp,
-  ArrowDown,
-  ArrowUpDown,
-  Globe,
-} from "lucide-react";
+  formatActiveFilesContext,
+  buildFullContextPrompt,
+  buildFilesAndPromptOnly,
+} from "../utils/promptTemplates";
+import { MentionDropdown } from "./prompt/MentionDropdown";
+import { SuggestedContextBar } from "./prompt/SuggestedContextBar";
+import { FileTree } from "./prompt/FileTree";
+import { filesApi } from "../api/client";
+import { useMentionPopup } from "../hooks/useMentionPopup";
+import { useSuggestedContext } from "../hooks/useSuggestedContext";
 
 interface PromptPanelProps {
   onCopy: (promptText: string) => void;
@@ -42,96 +32,6 @@ interface PromptPanelProps {
   }) => void;
 }
 
-interface TreeNode {
-  name: string;
-  path: string;
-  isFolder: boolean;
-  children: TreeNode[];
-  allFiles: string[];
-}
-
-interface FuzzyResult {
-  filePath: string;
-  fileName: string;
-  dirPath: string;
-  score: number;
-  matchedIndices: Set<number>;
-}
-
-interface SuggestedFile {
-  filePath: string;
-  type: "parent" | "child" | "hub" | "api";
-  importedActiveFiles: string[];
-  importingActiveFiles: string[];
-  tooltip: string;
-}
-
-function fuzzySearchFiles(files: string[], query: string): FuzzyResult[] {
-  if (!query) {
-    return files.slice(0, 8).map((f) => {
-      const parts = f.split("/");
-      const fileName = parts.pop() || f;
-      return {
-        filePath: f,
-        fileName,
-        dirPath: parts.join("/"),
-        score: 0,
-        matchedIndices: new Set(),
-      };
-    });
-  }
-
-  const q = query.toLowerCase();
-  const results: FuzzyResult[] = [];
-
-  for (const file of files) {
-    const lowerFile = file.toLowerCase();
-    let qIdx = 0;
-    let score = 0;
-    let consecutive = 0;
-    const matchedIndices = new Set<number>();
-
-    const parts = file.split("/");
-    const fileName = parts.pop() || file;
-    const dirPath = parts.join("/");
-    const fileNameStartIdx = file.lastIndexOf("/") + 1;
-
-    for (let i = 0; i < file.length; i++) {
-      if (qIdx < q.length && lowerFile[i] === q[qIdx]) {
-        matchedIndices.add(i);
-        qIdx++;
-        score += 10;
-        consecutive += 1;
-        score += consecutive * 5;
-
-        if (i >= fileNameStartIdx) score += 15;
-
-        if (
-          i === 0 ||
-          i === fileNameStartIdx ||
-          " /._-".includes(file[i - 1])
-        ) {
-          score += 20;
-        }
-      } else {
-        consecutive = 0;
-      }
-    }
-
-    if (qIdx === q.length) {
-      results.push({
-        filePath: file,
-        fileName,
-        dirPath,
-        score,
-        matchedIndices,
-      });
-    }
-  }
-
-  return results.sort((a, b) => b.score - a.score).slice(0, 8);
-}
-
 export function PromptPanel({
   onCopy,
   onCopyMap,
@@ -142,49 +42,48 @@ export function PromptPanel({
   onTokenStatsChange,
 }: PromptPanelProps) {
   const [request, setRequest] = useState("");
-  // Primary Seed Files: Explicitly @mentioned or manually toggled in tree
   const [seedFiles, setSeedFiles] = useState<Set<string>>(new Set());
-  // Accepted Suggestions: Added by clicking suggestion chips or "+ Add All"
-  const [acceptedSuggestions, setAcceptedSuggestions] = useState<Set<string>>(
-    new Set(),
-  );
+  const [acceptedSuggestions, setAcceptedSuggestions] = useState<Set<string>>(new Set());
 
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [isCopying, setIsCopying] = useState(false);
   const [isCopyingFiles, setIsCopyingFiles] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-    new Set(["root"]),
-  );
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const mentionPopupRef = useRef<HTMLDivElement>(null);
-  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
-  const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1);
-  const [activeMentionIndex, setActiveMentionIndex] = useState<number>(0);
-  const [mentionPos, setMentionPos] = useState<{
-    top: number;
-    left: number;
-    width: number;
-    maxHeight: number;
-    direction: "up" | "down";
-  } | null>(null);
-
-  // Combined active context for prompts & stats: Seed Files + Accepted Suggestions
   const selectedFiles = useMemo(() => {
     const combined = new Set<string>(seedFiles);
     acceptedSuggestions.forEach((f) => combined.add(f));
     return combined;
   }, [seedFiles, acceptedSuggestions]);
 
-  const mentionMatches = useMemo(() => {
-    if (mentionQuery === null) return [];
-    return fuzzySearchFiles(files, mentionQuery);
-  }, [files, mentionQuery]);
+  const handleAddSeedFile = (filePath: string) => {
+    setSeedFiles((prev) => new Set(prev).add(filePath));
+  };
 
-  const prevMentionsRef = useRef<Set<string>>(new Set());
+  const {
+    textareaRef,
+    mentionPopupRef,
+    mentionQuery,
+    mentionMatches,
+    mentionPos,
+    activeMentionIndex,
+    setActiveMentionIndex,
+    handleTextareaChange,
+    handleTextareaKeyDown,
+    insertMention,
+  } = useMentionPopup({
+    request,
+    files,
+    setRequest,
+    onAddSeedFile: handleAddSeedFile,
+  });
 
-  // Sync @mentions in user text into Seed Files
+  const suggestedFiles = useSuggestedContext({
+    seedFiles,
+    selectedFiles,
+    dependencyMap,
+  });
+
   useEffect(() => {
     const matches = Array.from(request.matchAll(/@([a-zA-Z0-9_\-./]+)/g));
     const currentMentions = new Set<string>();
@@ -196,261 +95,17 @@ export function PromptPanel({
       }
     }
 
-    const prevMentions = prevMentionsRef.current;
-    const removedMentions = Array.from(prevMentions).filter(
-      (f) => !currentMentions.has(f),
-    );
-    const addedMentions = Array.from(currentMentions).filter(
-      (f) => !prevMentions.has(f),
-    );
-
-    if (removedMentions.length > 0 || addedMentions.length > 0) {
-      setSeedFiles((prev) => {
-        const next = new Set(prev);
-        removedMentions.forEach((f) => next.delete(f));
-        addedMentions.forEach((f) => next.add(f));
-        return next;
-      });
-      if (removedMentions.length > 0) {
-        setAcceptedSuggestions((prev) => {
-          const next = new Set(prev);
-          removedMentions.forEach((f) => next.delete(f));
-          return next;
-        });
-      }
-    }
-
-    prevMentionsRef.current = currentMentions;
+    setSeedFiles((prev) => {
+      const next = new Set(prev);
+      currentMentions.forEach((f) => next.add(f));
+      return next;
+    });
   }, [request, files]);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        mentionPopupRef.current &&
-        !mentionPopupRef.current.contains(e.target as Node) &&
-        textareaRef.current &&
-        !textareaRef.current.contains(e.target as Node)
-      ) {
-        setMentionQuery(null);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  // Positions the mention dropdown via a fixed-position portal so it can
-  // never be clipped by the sidebar's own bounding box, and flips to open
-  // downward when there isn't enough room above the textarea.
-  useEffect(() => {
-    if (mentionQuery === null || !textareaRef.current) {
-      setMentionPos(null);
-      return;
-    }
-
-    const MARGIN = 8;
-    const MAX_PANEL_HEIGHT = 260;
-    const MIN_PANEL_HEIGHT = 120;
-
-    const updatePosition = () => {
-      const rect = textareaRef.current?.getBoundingClientRect();
-      if (!rect) return;
-
-      const spaceAbove = rect.top - MARGIN;
-      const spaceBelow = window.innerHeight - rect.bottom - MARGIN;
-      const openUp = spaceAbove >= 160 || spaceAbove >= spaceBelow;
-
-      const maxHeight = Math.min(
-        MAX_PANEL_HEIGHT,
-        Math.max(MIN_PANEL_HEIGHT, (openUp ? spaceAbove : spaceBelow) - MARGIN),
-      );
-
-      setMentionPos({
-        top: openUp ? rect.top - MARGIN : rect.bottom + MARGIN,
-        left: rect.left,
-        width: rect.width,
-        maxHeight,
-        direction: openUp ? "up" : "down",
-      });
-    };
-
-    updatePosition();
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
-    return () => {
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
-    };
-  }, [mentionQuery, mentionMatches.length]);
 
   useEffect(() => {
     setSeedFiles(new Set());
     setAcceptedSuggestions(new Set());
   }, [files]);
-
-  const treeData = useMemo(() => {
-    const root: TreeNode = {
-      name: "root",
-      path: "",
-      isFolder: true,
-      children: [],
-      allFiles: [],
-    };
-    const filteredFiles = files.filter((f) =>
-      f.toLowerCase().includes(searchQuery.toLowerCase()),
-    );
-
-    filteredFiles.forEach((filePath) => {
-      const parts = filePath.split("/");
-      let current = root;
-      current.allFiles.push(filePath);
-
-      let currentPath = "";
-      parts.forEach((part, index) => {
-        const isLast = index === parts.length - 1;
-        currentPath = currentPath ? `${currentPath}/${part}` : part;
-
-        let child = current.children.find((c) => c.name === part);
-        if (!child) {
-          child = {
-            name: part,
-            path: currentPath,
-            isFolder: !isLast,
-            children: [],
-            allFiles: [],
-          };
-          current.children.push(child);
-        }
-
-        if (!isLast) {
-          child.allFiles.push(filePath);
-        }
-
-        current = child;
-      });
-    });
-
-    const sortNodes = (node: TreeNode) => {
-      node.children.sort((a, b) => {
-        if (a.isFolder === b.isFolder) return a.name.localeCompare(b.name);
-        return a.isFolder ? -1 : 1;
-      });
-      node.children.forEach(sortNodes);
-    };
-    sortNodes(root);
-
-    return root;
-  }, [files, searchQuery]);
-
-  // 1-Hop Seed Rule: Suggestions strictly calculated from SEED FILES ONLY
-  const suggestedFiles = useMemo(() => {
-    if (
-      !dependencyMap ||
-      (!dependencyMap.outbound &&
-        !dependencyMap.inbound &&
-        !dependencyMap.apiOutbound &&
-        !dependencyMap.apiInbound) ||
-      seedFiles.size === 0
-    ) {
-      return [];
-    }
-
-    const outboundMap = dependencyMap.outbound || {};
-    const inboundMap = dependencyMap.inbound || {};
-    const apiOutboundMap = dependencyMap.apiOutbound || {};
-    const apiInboundMap = dependencyMap.apiInbound || {};
-
-    const candidates = new Set<string>();
-
-    // Scan dependencies ONLY for seed files
-    seedFiles.forEach((file) => {
-      const children = outboundMap[file] || [];
-      children.forEach((child) => {
-        if (!selectedFiles.has(child)) candidates.add(child);
-      });
-
-      const parents = inboundMap[file] || [];
-      parents.forEach((parent) => {
-        if (!selectedFiles.has(parent)) candidates.add(parent);
-      });
-
-      const apiTargets = apiOutboundMap[file] || [];
-      apiTargets.forEach((apiTarget) => {
-        if (!selectedFiles.has(apiTarget)) candidates.add(apiTarget);
-      });
-
-      const apiCallers = apiInboundMap[file] || [];
-      apiCallers.forEach((apiCaller) => {
-        if (!selectedFiles.has(apiCaller)) candidates.add(apiCaller);
-      });
-    });
-
-    const results: SuggestedFile[] = [];
-
-    candidates.forEach((candPath) => {
-      const candOutbound = outboundMap[candPath] || [];
-      const candInbound = inboundMap[candPath] || [];
-      const candApiOutbound = apiOutboundMap[candPath] || [];
-      const candApiInbound = apiInboundMap[candPath] || [];
-
-      // Check API route relationships first
-      const isApiHandler = candApiInbound.some((f) => seedFiles.has(f));
-      const isApiClient = candApiOutbound.some((f) => seedFiles.has(f));
-
-      if (isApiHandler || isApiClient) {
-        const seedNames =
-          seedFiles.size > 0
-            ? Array.from(seedFiles)
-                .map((f) => f.split("/").pop() || f)
-                .join(", ")
-            : "";
-        results.push({
-          filePath: candPath,
-          type: "api",
-          importedActiveFiles: [],
-          importingActiveFiles: [],
-          tooltip: `API Endpoint Link: Handles network calls for ${seedNames}`,
-        });
-        return;
-      }
-
-      // Standard ES Module import relationships
-      const importedSeed = candOutbound.filter((f) => seedFiles.has(f));
-      const importingSeed = candInbound.filter((f) => seedFiles.has(f));
-
-      const isParent = importedSeed.length > 0;
-      const isChild = importingSeed.length > 0;
-
-      let type: "parent" | "child" | "hub" = "child";
-      let tooltip = "";
-
-      if (isParent && isChild) {
-        type = "hub";
-        tooltip = "Hub: Both a parent and child across active context";
-      } else if (isParent) {
-        type = "parent";
-        const fileNames = importedSeed
-          .map((f) => f.split("/").pop() || f)
-          .join(", ");
-        tooltip = `Parent: Imports ${fileNames}`;
-      } else {
-        type = "child";
-        const fileNames = importingSeed
-          .map((f) => f.split("/").pop() || f)
-          .join(", ");
-        tooltip = `Child: Imported by ${fileNames}`;
-      }
-
-      results.push({
-        filePath: candPath,
-        type,
-        importedActiveFiles: importedSeed,
-        importingActiveFiles: importingSeed,
-        tooltip,
-      });
-    });
-
-    return results;
-  }, [seedFiles, selectedFiles, dependencyMap]);
 
   const handleAddAllSuggestions = () => {
     setAcceptedSuggestions((prev) => {
@@ -514,67 +169,6 @@ export function PromptPanel({
     onTokenStatsChange,
   ]);
 
-  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = e.target.value;
-    const cursorPos = e.target.selectionStart;
-    setRequest(value);
-
-    const textBeforeCursor = value.slice(0, cursorPos);
-    const match = textBeforeCursor.match(/@([a-zA-Z0-9_\-./]*)$/);
-
-    if (match) {
-      setMentionQuery(match[1]);
-      setMentionStartIndex(cursorPos - match[0].length);
-      setActiveMentionIndex(0);
-    } else {
-      setMentionQuery(null);
-    }
-  };
-
-  const insertMention = (filePath: string) => {
-    if (mentionStartIndex < 0 || !textareaRef.current) return;
-
-    const cursorPos = textareaRef.current.selectionStart;
-    const before = request.slice(0, mentionStartIndex);
-    const after = request.slice(cursorPos);
-
-    const newText = `${before}@${filePath} ${after}`;
-    setRequest(newText);
-
-    // @mentioned files are primary Seed Files
-    setSeedFiles((prev) => new Set(prev).add(filePath));
-    setMentionQuery(null);
-
-    setTimeout(() => {
-      if (textareaRef.current) {
-        const newCursorPos = mentionStartIndex + filePath.length + 2;
-        textareaRef.current.focus();
-        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
-      }
-    }, 0);
-  };
-
-  const handleTextareaKeyDown = (
-    e: React.KeyboardEvent<HTMLTextAreaElement>,
-  ) => {
-    if (mentionQuery !== null && mentionMatches.length > 0) {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setActiveMentionIndex((prev) => (prev + 1) % mentionMatches.length);
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setActiveMentionIndex(
-          (prev) => (prev - 1 + mentionMatches.length) % mentionMatches.length,
-        );
-      } else if (e.key === "Enter" || e.key === "Tab") {
-        e.preventDefault();
-        insertMention(mentionMatches[activeMentionIndex].filePath);
-      } else if (e.key === "Escape") {
-        setMentionQuery(null);
-      }
-    }
-  };
-
   const handleSelectAll = () => {
     setSeedFiles(new Set(files));
     setAcceptedSuggestions(new Set());
@@ -583,13 +177,6 @@ export function PromptPanel({
   const handleDeselectAll = () => {
     setSeedFiles(new Set());
     setAcceptedSuggestions(new Set());
-  };
-
-  const toggleFolderExpand = (folderPath: string) => {
-    const newExpanded = new Set(expandedFolders);
-    if (newExpanded.has(folderPath)) newExpanded.delete(folderPath);
-    else newExpanded.add(folderPath);
-    setExpandedFolders(newExpanded);
   };
 
   const toggleFile = (filePath: string) => {
@@ -605,16 +192,12 @@ export function PromptPanel({
         return next;
       });
     } else {
-      // Manual selection in tree defines a Seed File
       setSeedFiles((prev) => new Set(prev).add(filePath));
     }
   };
 
-  const toggleFolderSelection = (node: TreeNode) => {
-    const folderFiles = node.allFiles;
-    const allSelected = folderFiles.every((f) => selectedFiles.has(f));
-
-    if (allSelected) {
+  const toggleFolder = (folderFiles: string[], shouldSelect: boolean) => {
+    if (!shouldSelect) {
       setSeedFiles((prev) => {
         const next = new Set(prev);
         folderFiles.forEach((f) => next.delete(f));
@@ -632,142 +215,6 @@ export function PromptPanel({
         return next;
       });
     }
-  };
-
-  const renderTreeNode = (node: TreeNode, depth = 0) => {
-    if (node.isFolder) {
-      const isExpanded =
-        expandedFolders.has(node.path) || searchQuery.trim().length > 0;
-      const folderFiles = node.allFiles;
-      const selectedCount = folderFiles.filter((f) =>
-        selectedFiles.has(f),
-      ).length;
-      const allSelected =
-        folderFiles.length > 0 && selectedCount === folderFiles.length;
-      const someSelected =
-        selectedCount > 0 && selectedCount < folderFiles.length;
-
-      return (
-        <div key={node.path || node.name} className="select-none">
-          <div
-            className="flex items-center py-1 px-1 rounded hover:bg-zinc-800/60 cursor-pointer text-xs text-zinc-300"
-            style={{ paddingLeft: `${depth * 12 + 4}px` }}
-          >
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleFolderSelection(node);
-              }}
-              className="mr-1.5 text-zinc-400 hover:text-cyan-400 transition-colors"
-            >
-              {allSelected ? (
-                <CheckSquare className="w-3.5 h-3.5 text-cyan-500 fill-cyan-500/20" />
-              ) : someSelected ? (
-                <MinusSquare className="w-3.5 h-3.5 text-cyan-500" />
-              ) : (
-                <Square className="w-3.5 h-3.5" />
-              )}
-            </button>
-
-            <div
-              onClick={() => toggleFolderExpand(node.path)}
-              className="flex items-center flex-1 min-w-0"
-            >
-              {isExpanded ? (
-                <ChevronDown className="w-3.5 h-3.5 text-zinc-500 mr-1 shrink-0" />
-              ) : (
-                <ChevronRight className="w-3.5 h-3.5 text-zinc-500 mr-1 shrink-0" />
-              )}
-              {isExpanded ? (
-                <FolderOpen className="w-3.5 h-3.5 text-cyan-500/80 mr-1.5 shrink-0" />
-              ) : (
-                <Folder className="w-3.5 h-3.5 text-zinc-400 mr-1.5 shrink-0" />
-              )}
-              <span className="font-medium text-zinc-200 truncate">
-                {node.name}
-              </span>
-              <span className="ml-auto text-[10px] text-zinc-600 pl-2">
-                {selectedCount}/{folderFiles.length}
-              </span>
-            </div>
-          </div>
-
-          {isExpanded && (
-            <div>
-              {node.children.map((child) => renderTreeNode(child, depth + 1))}
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    const isSelected = selectedFiles.has(node.path);
-    return (
-      <div
-        key={node.path}
-        onClick={() => toggleFile(node.path)}
-        className={`flex items-center py-1 px-1 rounded text-xs cursor-pointer select-none transition-colors ${
-          isSelected
-            ? "bg-zinc-800/70 text-zinc-100"
-            : "text-zinc-400 hover:bg-zinc-900/80 hover:text-zinc-200"
-        }`}
-        style={{ paddingLeft: `${depth * 12 + 20}px` }}
-      >
-        <button className="mr-1.5 text-zinc-400 hover:text-cyan-400">
-          {isSelected ? (
-            <CheckSquare className="w-3.5 h-3.5 text-cyan-500 fill-cyan-500/20" />
-          ) : (
-            <Square className="w-3.5 h-3.5" />
-          )}
-        </button>
-        <FileText className="w-3.5 h-3.5 text-zinc-500 mr-1.5 shrink-0" />
-        <span className="truncate">{node.name}</span>
-      </div>
-    );
-  };
-
-  // Renders the matched path with the DIRECTORY truncated (ellipsis on the
-  // left) and the FILENAME always shown in full. Truncating the whole path
-  // hides the part users actually need to read to tell matches apart.
-  const renderFuzzyPath = (result: FuzzyResult) => {
-    const dirLen = result.dirPath ? result.dirPath.length + 1 : 0; // +1 for "/"
-    const dirChars = result.filePath.slice(0, dirLen).split("");
-    const fileChars = result.filePath.slice(dirLen).split("");
-
-    const renderChars = (chars: string[], offset: number) =>
-      chars.map((char, i) => {
-        const idx = offset + i;
-        const isMatched = result.matchedIndices.has(idx);
-        return (
-          <span
-            key={idx}
-            className={
-              isMatched
-                ? "text-cyan-400 font-bold bg-cyan-950/60 rounded-[1px]"
-                : "text-zinc-400"
-            }
-          >
-            {char}
-          </span>
-        );
-      });
-
-    return (
-      <span className="font-mono text-xs flex items-center min-w-0">
-        {dirChars.length > 0 && (
-          <span
-            className="overflow-hidden whitespace-nowrap text-ellipsis shrink"
-            style={{ direction: "rtl", textAlign: "left" }}
-            title={result.dirPath}
-          >
-            {renderChars(dirChars, 0)}
-          </span>
-        )}
-        <span className="whitespace-nowrap shrink-0">
-          {renderChars(fileChars, dirLen)}
-        </span>
-      </span>
-    );
   };
 
   return (
@@ -806,58 +253,16 @@ export function PromptPanel({
           </label>
         </div>
 
-        {mentionQuery !== null &&
-          mentionMatches.length > 0 &&
-          mentionPos &&
-          createPortal(
-            <div
-              ref={mentionPopupRef}
-              className="fixed bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-[100] flex flex-col"
-              style={{
-                left: mentionPos.left,
-                width: mentionPos.width,
-                maxHeight: mentionPos.maxHeight,
-                top:
-                  mentionPos.direction === "down" ? mentionPos.top : undefined,
-                bottom:
-                  mentionPos.direction === "up"
-                    ? window.innerHeight - mentionPos.top
-                    : undefined,
-              }}
-            >
-              <div className="p-1.5 bg-zinc-950 border-b border-zinc-800 text-[10px] text-zinc-400 font-medium flex justify-between shrink-0">
-                <span>Fuzzy Matches for "@{mentionQuery}"</span>
-                <span className="text-zinc-600">
-                  ↑↓ to navigate, Enter to select
-                </span>
-              </div>
-              <div className="overflow-y-auto custom-scrollbar">
-                {mentionMatches.map((res, idx) => (
-                  <div
-                    key={res.filePath}
-                    onClick={() => insertMention(res.filePath)}
-                    onMouseEnter={() => setActiveMentionIndex(idx)}
-                    className={`px-3 py-1.5 text-xs flex items-center justify-between cursor-pointer transition-colors gap-2 ${
-                      idx === activeMentionIndex
-                        ? "bg-cyan-600/30 text-cyan-200 border-l-2 border-cyan-500"
-                        : "text-zinc-300 hover:bg-zinc-800/50"
-                    }`}
-                  >
-                    <div className="flex items-center min-w-0 flex-1">
-                      <FileText className="w-3.5 h-3.5 mr-2 text-zinc-400 shrink-0" />
-                      {renderFuzzyPath(res)}
-                    </div>
-                    {selectedFiles.has(res.filePath) && (
-                      <span className="text-[9px] bg-cyan-500/20 text-cyan-400 font-mono px-1 py-0.5 rounded border border-cyan-500/30 shrink-0">
-                        Added
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>,
-            document.body,
-          )}
+        <MentionDropdown
+          mentionQuery={mentionQuery}
+          mentionMatches={mentionMatches}
+          mentionPos={mentionPos}
+          activeMentionIndex={activeMentionIndex}
+          selectedFiles={selectedFiles}
+          mentionPopupRef={mentionPopupRef}
+          onInsertMention={insertMention}
+          onHoverMention={setActiveMentionIndex}
+        />
 
         <textarea
           ref={textareaRef}
@@ -869,144 +274,22 @@ export function PromptPanel({
         />
       </div>
 
-      {/* SMART IMPORT DEPENDENCY SUGGESTIONS BANNER (1-Hop Seed Rule) */}
-      {suggestedFiles.length > 0 && (
-        <div className="bg-zinc-900/90 border border-zinc-800 rounded-lg p-2.5 space-y-2 animate-fadeIn shrink-0">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-zinc-200 font-semibold flex items-center">
-              <Sparkles className="w-3.5 h-3.5 mr-1.5 text-indigo-400" />
-              Suggested Context ({suggestedFiles.length})
-            </span>
-            <button
-              onClick={handleAddAllSuggestions}
-              className="text-[10px] bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-2 py-0.5 rounded transition-colors cursor-pointer"
-            >
-              + Add All
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto custom-scrollbar">
-            {suggestedFiles.map((item) => {
-              const fileName = item.filePath.split("/").pop() || item.filePath;
+      <SuggestedContextBar
+        suggestedFiles={suggestedFiles}
+        onAddAllSuggestions={handleAddAllSuggestions}
+        onToggleSuggestion={handleToggleSuggestion}
+      />
 
-              if (item.type === "api") {
-                return (
-                  <button
-                    key={item.filePath}
-                    onClick={() => handleToggleSuggestion(item.filePath)}
-                    title={item.tooltip}
-                    className="text-[10px] bg-emerald-950/50 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/70 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors shadow-sm"
-                  >
-                    <Globe className="w-3 h-3 text-emerald-400 shrink-0" />
-                    <span className="font-mono truncate max-w-[130px]">
-                      {fileName}
-                    </span>
-                  </button>
-                );
-              }
-
-              if (item.type === "parent") {
-                return (
-                  <button
-                    key={item.filePath}
-                    onClick={() => handleToggleSuggestion(item.filePath)}
-                    title={item.tooltip}
-                    className="text-[10px] bg-purple-950/40 border border-purple-500/40 text-purple-300 hover:bg-purple-900/60 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
-                  >
-                    <ArrowUp className="w-3 h-3 text-purple-400 shrink-0" />
-                    <span className="font-mono truncate max-w-[130px]">
-                      {fileName}
-                    </span>
-                  </button>
-                );
-              }
-
-              if (item.type === "child") {
-                return (
-                  <button
-                    key={item.filePath}
-                    onClick={() => handleToggleSuggestion(item.filePath)}
-                    title={item.tooltip}
-                    className="text-[10px] bg-cyan-950/40 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-900/60 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
-                  >
-                    <ArrowDown className="w-3 h-3 text-cyan-400 shrink-0" />
-                    <span className="font-mono truncate max-w-[130px]">
-                      {fileName}
-                    </span>
-                  </button>
-                );
-              }
-
-              return (
-                <button
-                  key={item.filePath}
-                  onClick={() => handleToggleSuggestion(item.filePath)}
-                  title={item.tooltip}
-                  className="text-[10px] bg-gradient-to-r from-purple-950/50 to-cyan-950/50 border border-indigo-500/50 text-indigo-200 hover:from-purple-900/70 hover:to-cyan-900/70 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
-                >
-                  <ArrowUpDown className="w-3 h-3 text-indigo-300 shrink-0" />
-                  <span className="font-mono truncate max-w-[130px]">
-                    {fileName}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      <div className="flex-1 flex flex-col space-y-2 min-h-0">
-        <div className="flex items-center justify-between">
-          <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold">
-            Context Selection ({selectedFiles.size}/{files.length})
-          </label>
-          <div className="flex items-center space-x-2 text-[10px]">
-            <button
-              onClick={handleSelectAll}
-              className="text-cyan-500 hover:text-cyan-400 font-medium hover:underline cursor-pointer"
-            >
-              Select All
-            </button>
-            <span className="text-zinc-700">|</span>
-            <button
-              onClick={handleDeselectAll}
-              className="text-zinc-500 hover:text-zinc-400 font-medium hover:underline cursor-pointer"
-            >
-              Clear
-            </button>
-          </div>
-        </div>
-
-        <div className="relative flex items-center">
-          <Search className="w-3.5 h-3.5 absolute left-2.5 text-zinc-500 pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Filter files or folders..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-zinc-900/80 border border-zinc-800 rounded-md pl-8 pr-3 py-1 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-cyan-500/50"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery("")}
-              className="absolute right-2 text-zinc-500 hover:text-zinc-300"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          )}
-        </div>
-
-        <div className="flex-1 bg-zinc-900/50 border border-zinc-800 rounded-md overflow-hidden flex flex-col">
-          <div className="p-2 space-y-0.5 overflow-y-auto custom-scrollbar flex-1">
-            {treeData.children.length > 0 ? (
-              treeData.children.map((child) => renderTreeNode(child))
-            ) : (
-              <div className="text-center py-6 text-xs text-zinc-600">
-                No files found
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      <FileTree
+        files={files}
+        selectedFiles={selectedFiles}
+        searchQuery={searchQuery}
+        onSearchQueryChange={setSearchQuery}
+        onSelectAll={handleSelectAll}
+        onDeselectAll={handleDeselectAll}
+        onToggleFile={toggleFile}
+        onToggleFolder={toggleFolder}
+      />
 
       <div className="space-y-2 text-xs text-zinc-300">
         <label className="flex items-center space-x-2 cursor-pointer">
@@ -1020,85 +303,17 @@ export function PromptPanel({
           onClick={async () => {
             setIsCopying(true);
             try {
-              const res = await fetch("/api/files", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ files: Array.from(selectedFiles) }),
+              const data = await filesApi.fetchFiles(Array.from(selectedFiles));
+
+              const activeFilesText = formatActiveFilesContext(
+                selectedFiles,
+                data.contents || {},
+              );
+              const finalPrompt = buildFullContextPrompt({
+                repoMap,
+                activeFilesText,
+                userRequest: request,
               });
-              const data = await res.json();
-
-              let activeFilesText = "";
-              if (selectedFiles.size > 0) {
-                for (const f of selectedFiles) {
-                  activeFilesText += `--- START OF FILE ${f} ---\n${data.contents[f] || ""}\n--- END OF FILE ${f} ---\n\n`;
-                }
-              } else {
-                activeFilesText = "No specific files selected.";
-              }
-
-              const SEARCH_MARKER = "<".repeat(7) + " SEARCH";
-              const EQUALS_MARKER = "=".repeat(7);
-              const REPLACE_MARKER = ">".repeat(7) + " REPLACE";
-
-              const finalPrompt = `ROLE: Senior Software Architect & Elite Developer
-You write clean, production-grade, type-safe, and secure code, keeping system architecture and long-term maintainability in mind.
-
-ADVISORY PROTOCOL:
-If the user requests a code change that is unoptimized or violates best practices:
-1. Fully comply with and implement the exact requested change.
-2. At the end of your response, briefly suggest the industry-standard alternative and why it is better, without being preachy or refusing the request.
-
-FILE SIZE ADVISORY:
-- As a rough guideline, a single-responsibility file should rarely exceed ~300-400 lines. Treat this as a heuristic, not a hard rule — a dense logic file and a long-but-simple types/config file don't carry the same weight.
-- If a file you are editing (in ACTIVE FILES CONTEXT) is already at or beyond that size after your change, do NOT split it automatically. Implement the requested change first, then add a brief closing note that the file is a good candidate for splitting, with a one-line suggestion of how (e.g. which functions/components would move where).
-- Only actually emit MOVE/CREATE blocks to perform a split when the user's request explicitly asks for restructuring — see the INTELLIGENT MODULARITY RULE below.
-
-OUTPUT FORMAT & GUARDRAILS:
-You must output code modifications using exact SEARCH/REPLACE blocks.
-
-1. FORMAT RULE: Every modification MUST specify the file path and use this exact delimiter:
-   FILE: path/to/file.ext
-   ${SEARCH_MARKER}
-   [exact existing code to replace]
-   ${EQUALS_MARKER}
-   [new code]
-   ${REPLACE_MARKER}
-
-2. THE 80% OVERWRITE RULE (Token Optimization):
-   - For partial edits (<80% of file changing): Use targeted SEARCH/REPLACE blocks.
-   - For NEW files OR total file rewrites (>80% of file changing): Leave the SEARCH block EMPTY (${SEARCH_MARKER}\n${EQUALS_MARKER}\n[new code]\n${REPLACE_MARKER}) so you do not waste output tokens repeating old code.
-
-3. FILE OPERATIONS RULE (Create & Move/Rename):
-   - CREATE a new file using the FILE: format above with an EMPTY SEARCH block (see Rule 2) — this is the ONLY syntax for new files.
-   - MOVE or RENAME an existing file with its own standalone line — no SEARCH/REPLACE markers, no code body:
-     MOVE: 'old/path/File.ext' -> 'new/path/File.ext'
-     RENAME: 'src/components/Header.tsx' -> 'src/components/AppHeader.tsx'
-   - If a MOVE changes a file's import path, you MUST also emit SEARCH/REPLACE blocks updating every import/require statement in any OTHER file shown in ACTIVE FILES CONTEXT that references the old path, in the SAME response. Never move a file without fixing its known importers.
-
-4. INTELLIGENT MODULARITY RULE (Structure for future token cost):
-   - Default to several small, single-responsibility files over one large one. Every file you fully rewrite becomes a future context cost — smaller, well-named files let later requests pull in only what's relevant instead of a monolith.
-   - Only propose splitting or moving EXISTING code when it's a clear, self-contained win (a file has grown unrelated responsibilities, or the user explicitly asked for restructuring). Do not reorganize files as an unsolicited side effect of an unrelated edit.
-   - When you do split a file, keep each new piece focused: use Rule 2's empty-SEARCH syntax for the new files and MOVE for anything relocated verbatim, rather than rewriting everything as one giant diff.
-
-5. ANCHOR RULE (Keep SEARCH blocks small):
-   - Copy only 2-3 unique lines at the top/bottom of the edit area ("anchors") to keep blocks minimal.
-
-6. EXACT WHITESPACE RULE:
-   - Code inside SEARCH MUST match the original file's indentation, spaces, and tabs 100% exactly.
-
-7. SINGLE CODE BLOCK RULE:
-   - You MUST wrap your ENTIRE response, including all FILE paths and SEARCH/REPLACE blocks, inside a single markdown code block (using \`\`\`markdown and \`\`\`) to ensure easy copy-pasting.
-   
-==================================================
-REPO MAP (Project Blueprint):
-${repoMap || "No map generated."}
-
-==================================================
-ACTIVE FILES CONTEXT:
-${activeFilesText}
-==================================================
-USER REQUEST:
-${request}`;
 
               onCopy(finalPrompt);
             } finally {
@@ -1120,23 +335,16 @@ ${request}`;
           onClick={async () => {
             setIsCopyingFiles(true);
             try {
-              const res = await fetch("/api/files", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ files: Array.from(selectedFiles) }),
+              const data = await filesApi.fetchFiles(Array.from(selectedFiles));
+
+              const activeFilesText = formatActiveFilesContext(
+                selectedFiles,
+                data.contents || {},
+              );
+              const finalPrompt = buildFilesAndPromptOnly({
+                activeFilesText,
+                userRequest: request,
               });
-              const data = await res.json();
-
-              let activeFilesText = "";
-              if (selectedFiles.size > 0) {
-                for (const f of selectedFiles) {
-                  activeFilesText += `--- START OF FILE ${f} ---\n${data.contents[f] || ""}\n--- END OF FILE ${f} ---\n\n`;
-                }
-              } else {
-                activeFilesText = "No specific files selected.";
-              }
-
-              const finalPrompt = `==================================================\nACTIVE FILES CONTEXT:\n${activeFilesText}==================================================\nUSER REQUEST:\n${request}`;
 
               onCopy(finalPrompt);
             } finally {

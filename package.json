@@ -4,11 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"vite --port=3060\" \"node server.js\"",
-    "server": "tsx server.js",
+    "dev": "concurrently \"vite --port=3060\" \"tsx server/index.ts\"",
+    "server": "tsx server/index.ts",
     "build": "vite build",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
+    "clean": "rm -rf dist server.js server.ts",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

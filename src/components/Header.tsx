@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { api } from "../api/client";
 
 interface HeaderProps {
   onUndoSuccess?: () => void;
@@ -31,9 +32,7 @@ export function Header({
 
     setIsUndoing(true);
     try {
-      const response = await fetch("/api/undo", { method: "POST" });
-      const data = await response.json();
-
+      const data = await api.undo();
       if (data.success) {
         alert("🔄 Git reset successful!");
         if (onUndoSuccess) onUndoSuccess();
@@ -42,7 +41,7 @@ export function Header({
       }
     } catch (err) {
       alert(
-        "❌ Failed to reach backend server. Make sure node server.js is running.",
+        "❌ Failed to reach backend server. Make sure server is running.",
       );
     } finally {
       setIsUndoing(false);
@@ -51,8 +50,7 @@ export function Header({
 
   const handleChangeRepo = async () => {
     try {
-      const res = await fetch("/api/native-folder-dialog", { method: "POST" });
-      const data = await res.json();
+      const data = await api.openFolderDialog();
       if (data.success && data.path) {
         onChangeRepo(data.path);
       }
@@ -114,7 +112,6 @@ export function Header({
         </div>
       </div>
 
-      {/* LIVE TOKEN BUDGET BAR (Centered) */}
       {tokenStats && (
         <div className="absolute left-1/2 -translate-x-1/2 flex flex-col justify-center space-y-1 bg-zinc-900/90 border border-zinc-800 rounded-lg px-3 py-1 w-[360px] shadow-sm">
           <div className="flex items-center justify-between w-full">

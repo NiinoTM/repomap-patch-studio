@@ -1,91 +1,40 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Header } from "./components/Header";
 import { PromptPanel } from "./components/PromptPanel";
 import { DiffPanel } from "./components/DiffPanel";
 import { Footer } from "./components/Footer";
 import { Toast } from "./components/Toast";
-import { DiffBlock, HistoryLog } from "./types";
+import { DiffBlock } from "./types";
 import { parseDiffBlocks } from "./utils/diffParser";
+import { filesApi } from "./api/client";
+import { useRepoContext } from "./hooks/useRepoContext";
 
 export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [pastedContent, setPastedContent] = useState("");
   const [diffBlocks, setDiffBlocks] = useState<DiffBlock[]>([]);
-  const [repoPath, setRepoPath] = useState<string>("Loading...");
-  const [repoFiles, setRepoFiles] = useState<string[]>([]);
-  const [repoMap, setRepoMap] = useState<string>("");
-  const [fileStats, setFileStats] = useState<
-    Record<string, { size: number; tokens: number }>
-  >({});
-  const [dependencyMap, setDependencyMap] = useState<{
-    outbound: Record<string, string[]>;
-    inbound: Record<string, string[]>;
-  }>({ outbound: {}, inbound: {} });
   const [tokenStats, setTokenStats] = useState({
     total: 0,
     map: 0,
     files: 0,
     selectedCount: 0,
   });
-  const [logs, setLogs] = useState<HistoryLog[]>([]);
 
-  // Pulls real commit history from the backend (`git log`) for the
-  // "Recent AI Edits" drawer. Re-run after every successful apply/commit
-  // and after a git-reset undo, so the drawer never goes stale.
-  const fetchHistory = async () => {
-    try {
-      const res = await fetch("/api/history");
-      const data = await res.json();
-      if (data.success) {
-        setLogs(data.logs);
-      }
-    } catch (err) {
-      console.error("Failed to fetch git history:", err);
-    }
-  };
-
-  useEffect(() => {
-    fetch("/api/repo")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          setRepoPath(data.path);
-          setRepoFiles(data.files);
-          setRepoMap(data.repoMap);
-          setFileStats(data.fileStats || {});
-          setDependencyMap(data.dependencyMap || { outbound: {}, inbound: {} });
-        }
-      })
-      .catch((err) => console.error("Failed to fetch repo context:", err));
-  }, []);
-
-  useEffect(() => {
-    fetchHistory();
-  }, []);
+  const {
+    repoPath,
+    repoFiles,
+    repoMap,
+    fileStats,
+    dependencyMap,
+    logs,
+    changeRepo,
+    refreshHistory,
+  } = useRepoContext();
 
   const handleChangeRepo = async (newPath: string) => {
-    if (!newPath || newPath === repoPath) return;
-
-    try {
-      const res = await fetch("/api/repo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ newPath }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setRepoPath(data.path);
-        setRepoFiles(data.files);
-        setRepoMap(data.repoMap);
-        setFileStats(data.fileStats || {});
-        setDependencyMap(data.dependencyMap || { outbound: {}, inbound: {} });
-        setToastMessage("Repository context updated successfully!");
-        fetchHistory();
-      } else {
-        alert("Error: " + data.error);
-      }
-    } catch (err) {
-      alert("Failed to update repository path. Ensure backend is running.");
+    const success = await changeRepo(newPath);
+    if (success) {
+      setToastMessage("Repository context updated successfully!");
     }
   };
 
@@ -106,7 +55,7 @@ export default function App() {
 
   const handleApplySuccess = () => {
     handleClear();
-    fetchHistory();
+    refreshHistory();
   };
 
   const handlePaste = async (append = false) => {
@@ -133,12 +82,7 @@ export default function App() {
       let data = { success: false, contents: {} as Record<string, string> };
 
       if (uniqueFiles.length > 0) {
-        const res = await fetch("/api/files", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ files: uniqueFiles }),
-        });
-        data = await res.json();
+        data = await filesApi.fetchFiles(uniqueFiles);
       } else {
         data.success = true;
       }
@@ -214,7 +158,7 @@ export default function App() {
       <Header
         repoPath={repoPath}
         onChangeRepo={handleChangeRepo}
-        onUndoSuccess={fetchHistory}
+        onUndoSuccess={refreshHistory}
         tokenStats={tokenStats}
       />
 

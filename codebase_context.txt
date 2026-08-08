@@ -1,19 +1,5 @@
 # CODEBASE CONTEXT
-# Generated from: C:\Users\Niino\Desktop\repomap-patch-studio
-
-==================================================
-FILE PATH: .env.example
-==================================================
-# GEMINI_API_KEY: Required for Gemini AI API calls.
-# AI Studio automatically injects this at runtime from user secrets.
-# Users configure this via the Secrets panel in the AI Studio UI.
-GEMINI_API_KEY="MY_GEMINI_API_KEY"
-
-# APP_URL: The URL where this applet is hosted.
-# AI Studio automatically injects this at runtime with the Cloud Run service URL.
-# Used for self-referential links, OAuth callbacks, and API endpoints.
-APP_URL="MY_APP_URL"
-
+# Generated from: C:\Users\Niino\Desktop\REFACOTRING repomap-patch-studio
 
 ==================================================
 FILE PATH: .gitignore
@@ -65,11 +51,11 @@ FILE PATH: package.json
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"vite --port=3000\" \"node server.js\"",
-    "server": "tsx server.js",
+    "dev": "concurrently \"vite --port=3060\" \"tsx server/index.ts\"",
+    "server": "tsx server/index.ts",
     "build": "vite build",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
+    "clean": "rm -rf dist server.js server.ts",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
@@ -124,422 +110,6 @@ View your app in AI Studio: https://ai.studio/apps/7f9c9154-e175-4b62-88d4-e6012
 
 
 ==================================================
-FILE PATH: server.js
-==================================================
-// server.js
-import express from "express";
-import fs from "fs";
-import path from "path";
-import { execSync } from "child_process";
-
-const app = express();
-app.use(express.json());
-
-let targetRepoPath = process.cwd();
-
-// Helper to recursively get files
-const getAllFiles = (dir, basePath = dir, fileList = []) => {
-  if (!fs.existsSync(dir)) return fileList;
-  const files = fs.readdirSync(dir);
-  for (const file of files) {
-    const filePath = path.join(dir, file);
-    const stat = fs.statSync(filePath);
-    if (stat.isDirectory()) {
-      if (
-        ![
-          "node_modules",
-          ".git",
-          "dist",
-          "build",
-          "coverage",
-          ".vscode",
-          ".idea",
-        ].includes(file)
-      ) {
-        getAllFiles(filePath, basePath, fileList);
-      }
-    } else {
-      fileList.push(path.relative(basePath, filePath).replace(/\\/g, "/"));
-    }
-  }
-  return fileList;
-};
-
-// AST-Lite Heuristic Parser (Strips implementation details, extracts signatures like Aider)
-const generateRepoMap = (basePath, filesList) => {
-  let mapOutput = "";
-  for (const file of filesList) {
-    const fullPath = path.join(basePath, file);
-    const ext = path.extname(file).toLowerCase();
-    let content;
-    try {
-      content = fs.readFileSync(fullPath, "utf-8");
-    } catch (e) {
-      continue;
-    }
-
-    let symbols = [];
-    const lines = content.split("\n");
-
-    for (let line of lines) {
-      const trimmed = line.trim();
-      if ([".js", ".jsx", ".ts", ".tsx"].includes(ext)) {
-        // Extract Classes, Functions, Interfaces, Types
-        let match = trimmed.match(
-          /^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function|class|interface|type)\s+([A-Za-z0-9_]+)/,
-        );
-        if (match) {
-          symbols.push(trimmed.replace(/\s*\{.*$/, ""));
-          continue;
-        }
-        // Extract Arrow Functions assigned to variables
-        match = trimmed.match(
-          /^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_]+)\s*=>/,
-        );
-        if (match) {
-          symbols.push(trimmed.replace(/\s*=>.*$/, "=> { ... }"));
-          continue;
-        }
-      } else if ([".py"].includes(ext)) {
-        if (/^(?:async\s+)?(?:def|class)\s+[A-Za-z0-9_]+/.test(trimmed)) {
-          symbols.push(trimmed.replace(/:.*$/, ""));
-        }
-      } else if ([".go"].includes(ext)) {
-        if (
-          /^func\s+[A-Za-z0-9_]+/.test(trimmed) ||
-          /^type\s+[A-Za-z0-9_]+\s+(?:struct|interface)/.test(trimmed)
-        ) {
-          symbols.push(trimmed.replace(/\{.*$/, ""));
-        }
-      }
-    }
-
-    if (symbols.length > 0) {
-      mapOutput += file + ":\n";
-      symbols.forEach((s) => (mapOutput += "│ " + s + "\n"));
-    } else {
-      mapOutput += file + "\n";
-    }
-  }
-  return mapOutput.trim();
-};
-
-// Helper to calculate file sizes & estimated tokens (~3.8 chars per token for code)
-const getFileStats = (basePath, filesList) => {
-  const stats = {};
-  for (const file of filesList) {
-    try {
-      const fullPath = path.join(basePath, file);
-      const size = fs.statSync(fullPath).size;
-      stats[file] = { size, tokens: Math.ceil(size / 3.8) };
-    } catch (e) {
-      stats[file] = { size: 0, tokens: 0 };
-    }
-  }
-  return stats;
-};
-
-// Helper to build a Bidirectional Dependency Map (outbound & inbound imports)
-const getDependencyMap = (basePath, filesList) => {
-  const outbound = {};
-  const inboundMap = {};
-  const fileSet = new Set(filesList);
-
-  for (const file of filesList) {
-    const ext = path.extname(file).toLowerCase();
-    if (![".js", ".jsx", ".ts", ".tsx"].includes(ext)) continue;
-
-    try {
-      const fullPath = path.join(basePath, file);
-      const content = fs.readFileSync(fullPath, "utf-8");
-      const imports = new Set();
-
-      // Matches import/export statements: import ... from '...' or require('...')
-      const importRegex =
-        /(?:import|export)\s+[\s\S]*?\s+from\s+['"]([^'"]+)['"]|require\(['"]([^'"]+)['"]\)/g;
-      let match;
-
-      while ((match = importRegex.exec(content)) !== null) {
-        let importPath = match[1] || match[2];
-        if (!importPath) continue;
-
-        // Resolve path aliases like `@/`
-        if (importPath.startsWith("@/")) {
-          importPath = "./" + importPath.slice(2);
-        }
-
-        // Only resolve local relative imports (starting with . or /)
-        if (importPath.startsWith(".")) {
-          const fileDir = path.dirname(file);
-          const rawResolved = path
-            .normalize(path.join(fileDir, importPath))
-            .replace(/\\/g, "/");
-
-          // Candidate file extensions to test
-          const candidates = [
-            rawResolved,
-            `${rawResolved}.tsx`,
-            `${rawResolved}.ts`,
-            `${rawResolved}.jsx`,
-            `${rawResolved}.js`,
-            `${rawResolved}/index.tsx`,
-            `${rawResolved}/index.ts`,
-            `${rawResolved}/index.jsx`,
-            `${rawResolved}/index.js`,
-          ];
-
-          for (const cand of candidates) {
-            if (fileSet.has(cand) && cand !== file) {
-              imports.add(cand);
-              break;
-            }
-          }
-        }
-      }
-
-      if (imports.size > 0) {
-        outbound[file] = Array.from(imports);
-        for (const imp of imports) {
-          if (!inboundMap[imp]) inboundMap[imp] = new Set();
-          inboundMap[imp].add(file);
-        }
-      }
-    } catch (e) {
-      /* ignore read errors */
-    }
-  }
-
-  const inbound = {};
-  for (const key in inboundMap) {
-    inbound[key] = Array.from(inboundMap[key]);
-  }
-
-  return { outbound, inbound };
-};
-
-// API: Get Current Repo Path, Files, Repo Map, Stats & Dependency Map
-app.get("/api/repo", (req, res) => {
-  try {
-    const files = getAllFiles(targetRepoPath);
-    const repoMap = generateRepoMap(targetRepoPath, files);
-    const fileStats = getFileStats(targetRepoPath, files);
-    const dependencyMap = getDependencyMap(targetRepoPath, files);
-    res.json({
-      success: true,
-      path: targetRepoPath,
-      files,
-      repoMap,
-      fileStats,
-      dependencyMap,
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// API: Change Repo Path
-app.post("/api/repo", (req, res) => {
-  const { newPath } = req.body;
-  if (fs.existsSync(newPath) && fs.statSync(newPath).isDirectory()) {
-    targetRepoPath = path.resolve(newPath);
-    const files = getAllFiles(targetRepoPath);
-    const repoMap = generateRepoMap(targetRepoPath, files);
-    const fileStats = getFileStats(targetRepoPath, files);
-    const dependencyMap = getDependencyMap(targetRepoPath, files);
-    res.json({
-      success: true,
-      path: targetRepoPath,
-      files,
-      repoMap,
-      fileStats,
-      dependencyMap,
-    });
-  } else {
-    res
-      .status(400)
-      .json({ success: false, error: "Invalid or missing directory path." });
-  }
-});
-
-// API: Fetch File Contents for Prompt Assembly
-app.post("/api/files", (req, res) => {
-  const { files } = req.body;
-  const contents = {};
-  files.forEach((f) => {
-    try {
-      contents[f] = fs.readFileSync(path.join(targetRepoPath, f), "utf-8");
-    } catch (e) {}
-  });
-  res.json({ success: true, contents });
-});
-
-// Helper to find exact character ranges ignoring comments, newlines, whitespace, JSX {" "}, commas, quotes, parens, and semicolons
-function findCondensedRange(content, search) {
-  const preCleanContent = content.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '').replace(/\{\s*["']\s*["']\s*\}/g, '');
-  const cleanSearch = search
-    .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '')
-    .replace(/\{\s*["']\s*["']\s*\}/g, '')
-    .replace(/[\s,'"`();]+/g, '');
-
-  if (!cleanSearch) return null;
-
-  let cIdx = 0;
-  let sIdx = 0;
-  let startMatchPos = -1;
-
-  while (cIdx < preCleanContent.length && sIdx < cleanSearch.length) {
-    if (/[\s,'"`();]/.test(preCleanContent[cIdx])) {
-      cIdx++;
-      continue;
-    }
-
-    if (preCleanContent[cIdx] === cleanSearch[sIdx]) {
-      if (sIdx === 0) startMatchPos = cIdx;
-      sIdx++;
-      cIdx++;
-    } else {
-      if (startMatchPos !== -1) {
-        cIdx = startMatchPos + 1;
-        startMatchPos = -1;
-        sIdx = 0;
-      } else {
-        cIdx++;
-      }
-    }
-  }
-
-  if (sIdx === cleanSearch.length && startMatchPos !== -1) {
-    return { start: startMatchPos, end: cIdx };
-  }
-
-  return null;
-}
-
-// 1. API: Apply Changes & Commit to Git (with Multi-line & Indentation Recovery)
-app.post('/api/apply', (req, res) => {
-  const { blocks, commitMessage } = req.body;
-
-  try {
-    try {
-      execSync('git add . && git commit -m "pre-ai-edit"', {
-        cwd: targetRepoPath,
-        stdio: "ignore",
-      });
-    } catch (e) {
-      /* ignore */
-    }
-
-    for (const block of blocks) {
-      const fullPath = path.resolve(targetRepoPath, block.file);
-      if (!fs.existsSync(fullPath)) {
-        fs.writeFileSync(fullPath, block.replace, "utf-8");
-        continue;
-      }
-
-      let content = fs.readFileSync(fullPath, "utf-8");
-
-      if (!block.search.trim() || block.file === "Active File") {
-        fs.writeFileSync(fullPath, block.replace, "utf-8");
-        continue;
-      }
-
-      const normContent = content.replace(/\r\n/g, "\n");
-      const normSearch = block.search.replace(/\r\n/g, "\n");
-      const normReplace = block.replace.replace(/\r\n/g, "\n");
-
-      if (normContent.includes(normSearch)) {
-        // Exact match
-        const updated = normContent.replace(normSearch, normReplace);
-        fs.writeFileSync(fullPath, updated, "utf-8");
-      } else {
-        // Smart Fuzzy Indentation Replacement
-        const searchLines = normSearch
-          .split("\n")
-          .map((l) => l.trim())
-          .filter(Boolean);
-        const contentLines = normContent.split("\n");
-
-        let matchIndex = -1;
-        for (let i = 0; i <= contentLines.length - searchLines.length; i++) {
-          let isCandidate = true;
-          for (let j = 0; j < searchLines.length; j++) {
-            if (contentLines[i + j].trim() !== searchLines[j]) {
-              isCandidate = false;
-              break;
-            }
-          }
-          if (isCandidate) {
-            matchIndex = i;
-            break;
-          }
-        }
-
-        if (matchIndex !== -1) {
-          // Detect original indentation of the target line
-          const indentMatch = contentLines[matchIndex].match(/^[ \t]*/);
-          const indent = indentMatch ? indentMatch[0] : '';
-
-          const replaceLines = normReplace.split('\n').map(line => {
-            return line.trim() ? indent + line.replace(/^[ \t]*/, '') : '';
-          });
-
-          contentLines.splice(matchIndex, searchLines.length, ...replaceLines);
-          fs.writeFileSync(fullPath, contentLines.join('\n'), 'utf-8');
-        } else {
-          // 3. Condensed Token Stream Replacement
-          const cleanNormContent = normContent.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, '').replace(/\{\s*["']\s*["']\s*\}/g, '');
-          const range = findCondensedRange(normContent, normSearch);
-          if (range) {
-            const updated = cleanNormContent.slice(0, range.start) + normReplace + cleanNormContent.slice(range.end);
-            fs.writeFileSync(fullPath, updated, 'utf-8');
-          } else {
-            console.warn(`[Apply Warning] Could not find SEARCH block for ${block.file}. File left untouched to prevent corruption.`);
-          }
-        }
-      }
-    }
-
-    // AUTO-FORMAT MODIFIED FILES WITH PRETTIER
-    for (const block of blocks) {
-      if (block.file && block.file !== 'Active File') {
-        try {
-          execSync(`npx prettier --write "${block.file}"`, { cwd: targetRepoPath, stdio: 'ignore' });
-        } catch (e) {
-          // Gracefully ignore if prettier fails or is unsupported for this file
-        }
-      }
-    }
-
-    execSync(`git add . && git commit -m "${commitMessage || 'ai-edit: updated files'}"`, { cwd: targetRepoPath, stdio: 'ignore' });
-    res.json({ success: true, message: 'Changes applied, auto-formatted & committed to Git!' });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// 2. API: Git Reset / Undo Last Edit
-app.post("/api/undo", (req, res) => {
-  try {
-    execSync("git reset --hard HEAD~1", {
-      cwd: targetRepoPath,
-      stdio: "ignore",
-    });
-    res.json({
-      success: true,
-      message: "Hard reset to previous commit successful!",
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-const PORT = process.env.PORT || 3061;
-app.listen(PORT, () =>
-  console.log(`🚀 Local Patch Backend running on http://localhost:${PORT}`),
-);
-
-
-==================================================
 FILE PATH: tsconfig.json
 ==================================================
 {
@@ -581,8 +151,9 @@ export default defineConfig(() => {
       },
     },
     server: {
+      port: 3060,
       proxy: {
-        "/api": "http://localhost:3001",
+        "/api": "http://localhost:3061",
       },
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
@@ -595,37 +166,965 @@ export default defineConfig(() => {
 
 
 ==================================================
-FILE PATH: assets\.aistudio\.gitignore
+FILE PATH: server\index.ts
 ==================================================
-*
+import express from "express";
+import { repoRouter } from "./routes/repoRoutes";
+import { patchRouter } from "./routes/patchRoutes";
+import { historyRouter } from "./routes/historyRoutes";
 
+const app = express();
+app.use(express.json());
+
+// Mount API routes
+app.use("/api", repoRouter);
+app.use("/api", patchRouter);
+app.use("/api", historyRouter);
+
+const PORT = process.env.PORT || 3061;
+app.listen(PORT, () =>
+  console.log(`🚀 Local Patch Backend running on http://localhost:${PORT}`),
+);
+
+==================================================
+FILE PATH: server\routes\historyRoutes.ts
+==================================================
+import { Router, Request, Response } from "express";
+import { repoState, getGitHistory } from "../services/gitService";
+
+export const historyRouter = Router();
+
+historyRouter.get("/history", (_req: Request, res: Response) => {
+  try {
+    const targetRepoPath = repoState.getRepoPath();
+    const logs = getGitHistory(targetRepoPath);
+    res.json({ success: true, logs });
+  } catch (err: any) {
+    res.json({ success: true, logs: [] });
+  }
+});
+
+==================================================
+FILE PATH: server\routes\patchRoutes.ts
+==================================================
+import { Router, Request, Response } from "express";
+import fs from "fs";
+import path from "path";
+import {
+  repoState,
+  gitSnapshotPreEdit,
+  gitMoveFile,
+  formatFile,
+  gitCommit,
+  gitUndo,
+} from "../services/gitService";
+import {
+  applyBlockToContent,
+  validateSyntax,
+  DiffBlockInput,
+} from "../services/patchEngine";
+
+export const patchRouter = Router();
+
+interface ApplyRequestBody {
+  blocks: DiffBlockInput[];
+  commitMessage?: string;
+  skipCommit?: boolean;
+  commit?: boolean;
+  dryRun?: boolean;
+}
+
+patchRouter.post("/apply", (req: Request, res: Response) => {
+  const { blocks, commitMessage, skipCommit, commit, dryRun }: ApplyRequestBody = req.body;
+  const shouldCommit = commit === true || (commit !== false && !skipCommit);
+  const isDryRun = dryRun === true;
+  const targetRepoPath = repoState.getRepoPath();
+
+  if (!blocks || !Array.isArray(blocks) || blocks.length === 0) {
+    return res
+      .status(400)
+      .json({ success: false, error: "No diff blocks provided." });
+  }
+
+  const moveBlocks = blocks.filter((b) => b.type === "move");
+  const editBlocks = blocks.filter((b) => b.type !== "move");
+
+  try {
+    if (!isDryRun) {
+      gitSnapshotPreEdit(targetRepoPath);
+    }
+
+    const pendingWrites = new Map<string, string>();
+    const validationErrors: string[] = [];
+
+    for (const block of editBlocks) {
+      if (!block.file || block.file === "Active File") continue;
+      const fullPath = path.resolve(targetRepoPath, block.file);
+
+      let currentContent = pendingWrites.get(block.file);
+      const fileExists = fs.existsSync(fullPath);
+
+      if (currentContent === undefined) {
+        currentContent = fileExists ? fs.readFileSync(fullPath, "utf-8") : "";
+      }
+
+      const result = applyBlockToContent(currentContent, block);
+      if (result.success && result.newContent !== undefined) {
+        const syntaxError = validateSyntax(result.newContent, block.file);
+        if (syntaxError) {
+          validationErrors.push(syntaxError);
+        } else {
+          pendingWrites.set(block.file, result.newContent);
+        }
+      } else {
+        if (result.error) {
+          validationErrors.push(result.error);
+        }
+      }
+    }
+
+    for (const block of moveBlocks) {
+      if (!block.file || !block.moveTo) {
+        validationErrors.push(
+          "Invalid MOVE block: missing source or destination path.",
+        );
+        continue;
+      }
+      const sourcePath = path.resolve(targetRepoPath, block.file);
+      const destPath = path.resolve(targetRepoPath, block.moveTo);
+
+      if (!fs.existsSync(sourcePath)) {
+        validationErrors.push(
+          `MOVE failed: source file not found: ${block.file}`,
+        );
+      } else if (fs.existsSync(destPath) && sourcePath !== destPath) {
+        validationErrors.push(
+          `MOVE failed: destination already exists: ${block.moveTo}`,
+        );
+      }
+    }
+
+    if (validationErrors.length > 0) {
+      const detailedMsg =
+        `Transaction aborted. ${validationErrors.length} validation/syntax error(s) detected:\n` +
+        validationErrors.map((err) => `• ${err}`).join("\n") +
+        "\n\n0 files were modified on disk.";
+
+      return res.status(422).json({
+        success: false,
+        error: detailedMsg,
+        details: validationErrors,
+      });
+    }
+
+    if (isDryRun) {
+      return res.json({
+        success: true,
+        dryRun: true,
+        message: "✅ Pre-flight validation passed. No files were modified.",
+        validatedFiles: Array.from(pendingWrites.keys()),
+        validatedMoves: moveBlocks.map((b) => `${b.file} -> ${b.moveTo}`),
+      });
+    }
+
+    const CRITICAL_FILES = [
+      "server/index.ts",
+      "server.ts",
+      "server.js",
+      "package.json",
+      "vite.config.ts",
+      "tsconfig.json",
+    ];
+    const filesToCommit = Array.from(pendingWrites.keys()).sort((a, b) => {
+      const isACritical = CRITICAL_FILES.some((f) => a.endsWith(f));
+      const isBCritical = CRITICAL_FILES.some((f) => b.endsWith(f));
+      if (isACritical && !isBCritical) return 1;
+      if (!isACritical && isBCritical) return -1;
+      return 0;
+    });
+
+    for (const file of filesToCommit) {
+      const fullPath = path.resolve(targetRepoPath, file);
+      const dirPath = path.dirname(fullPath);
+      if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+      }
+      const contentToWrite = pendingWrites.get(file);
+      if (contentToWrite !== undefined) {
+        fs.writeFileSync(fullPath, contentToWrite, "utf-8");
+      }
+    }
+
+    const movedFiles: string[] = [];
+    for (const block of moveBlocks) {
+      if (!block.moveTo) continue;
+      gitMoveFile(targetRepoPath, block.file, block.moveTo);
+      movedFiles.push(block.moveTo);
+    }
+
+    const allChangedFiles = [...filesToCommit, ...movedFiles];
+
+    for (const file of allChangedFiles) {
+      formatFile(targetRepoPath, file);
+    }
+
+    if (shouldCommit) {
+      const msg =
+        commitMessage && commitMessage.trim()
+          ? commitMessage.trim()
+          : "ai-edit: updated files";
+      gitCommit(targetRepoPath, msg);
+    }
+
+    res.json({
+      success: true,
+      message: shouldCommit
+        ? "✅ Transaction complete: Edits applied, formatted & committed to Git!"
+        : "✅ Transaction complete: Edits applied to disk!",
+      appliedFiles: allChangedFiles,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+patchRouter.post("/undo", (_req: Request, res: Response) => {
+  try {
+    const targetRepoPath = repoState.getRepoPath();
+    gitUndo(targetRepoPath);
+    res.json({
+      success: true,
+      message: "Hard reset to previous commit successful!",
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+==================================================
+FILE PATH: server\routes\repoRoutes.ts
+==================================================
+import { Router, Request, Response } from "express";
+import fs from "fs";
+import path from "path";
+import {
+  repoState,
+  getAllFiles,
+  getFileStats,
+} from "../services/gitService";
+import { generateRepoMap } from "../services/repoMapService";
+import { getDependencyMap } from "../services/dependencyService";
+import { openNativeFolderDialog } from "../services/osService";
+
+export const repoRouter = Router();
+
+repoRouter.get("/repo", (_req: Request, res: Response) => {
+  try {
+    const targetRepoPath = repoState.getRepoPath();
+    const files = getAllFiles(targetRepoPath);
+    const repoMap = generateRepoMap(targetRepoPath, files);
+    const fileStats = getFileStats(targetRepoPath, files);
+    const dependencyMap = getDependencyMap(targetRepoPath, files);
+    res.json({
+      success: true,
+      path: targetRepoPath,
+      files,
+      repoMap,
+      fileStats,
+      dependencyMap,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+repoRouter.post("/repo", (req: Request, res: Response) => {
+  const { newPath } = req.body;
+  if (
+    typeof newPath === "string" &&
+    fs.existsSync(newPath) &&
+    fs.statSync(newPath).isDirectory()
+  ) {
+    repoState.setRepoPath(newPath);
+    const targetRepoPath = repoState.getRepoPath();
+    const files = getAllFiles(targetRepoPath);
+    const repoMap = generateRepoMap(targetRepoPath, files);
+    const fileStats = getFileStats(targetRepoPath, files);
+    const dependencyMap = getDependencyMap(targetRepoPath, files);
+    res.json({
+      success: true,
+      path: targetRepoPath,
+      files,
+      repoMap,
+      fileStats,
+      dependencyMap,
+    });
+  } else {
+    res
+      .status(400)
+      .json({ success: false, error: "Invalid or missing directory path." });
+  }
+});
+
+repoRouter.post("/files", (req: Request, res: Response) => {
+  const { files } = req.body;
+  const targetRepoPath = repoState.getRepoPath();
+  const contents: Record<string, string> = {};
+  if (Array.isArray(files)) {
+    files.forEach((f: string) => {
+      try {
+        contents[f] = fs.readFileSync(path.join(targetRepoPath, f), "utf-8");
+      } catch (e) {}
+    });
+  }
+  res.json({ success: true, contents });
+});
+
+repoRouter.post("/native-folder-dialog", (_req: Request, res: Response) => {
+  try {
+    const selectedPath = openNativeFolderDialog();
+    res.json({ success: true, path: selectedPath });
+  } catch (err) {
+    res.json({ success: true, path: "" });
+  }
+});
+
+==================================================
+FILE PATH: server\services\dependencyService.ts
+==================================================
+import fs from "fs";
+import path from "path";
+
+export interface DependencyMap {
+  outbound: Record<string, string[]>;
+  inbound: Record<string, string[]>;
+  apiOutbound: Record<string, string[]>;
+  apiInbound: Record<string, string[]>;
+}
+
+/**
+ * Generates inbound, outbound, and API dependency maps for repository files.
+ */
+export function getDependencyMap(basePath: string, filesList: string[]): DependencyMap {
+  const outbound: Record<string, string[]> = {};
+  const inboundMap: Record<string, Set<string>> = {};
+  const apiOutbound: Record<string, string[]> = {};
+  const apiInboundMap: Record<string, Set<string>> = {};
+  const fileSet = new Set(filesList);
+
+  for (const file of filesList) {
+    const ext = path.extname(file).toLowerCase();
+    if (![".js", ".jsx", ".ts", ".tsx"].includes(ext)) continue;
+
+    try {
+      const fullPath = path.join(basePath, file);
+      const content = fs.readFileSync(fullPath, "utf-8");
+      const imports = new Set<string>();
+
+      const importRegex =
+        /(?:import|export)\s+[\s\S]*?\s+from\s+['"]([^'"]+)['"]|require\(['"]([^'"]+)['"]\)/g;
+      let match: RegExpExecArray | null;
+
+      while ((match = importRegex.exec(content)) !== null) {
+        let importPath = match[1] || match[2];
+        if (!importPath) continue;
+
+        if (importPath.startsWith("@/")) {
+          importPath = "./" + importPath.slice(2);
+        }
+
+        if (importPath.startsWith(".")) {
+          const fileDir = path.dirname(file);
+          const rawResolved = path
+            .normalize(path.join(fileDir, importPath))
+            .replace(/\\/g, "/");
+
+          const candidates = [
+            rawResolved,
+            `${rawResolved}.tsx`,
+            `${rawResolved}.ts`,
+            `${rawResolved}.jsx`,
+            `${rawResolved}.js`,
+            `${rawResolved}/index.tsx`,
+            `${rawResolved}/index.ts`,
+            `${rawResolved}/index.jsx`,
+            `${rawResolved}/index.js`,
+          ];
+
+          for (const cand of candidates) {
+            if (fileSet.has(cand) && cand !== file) {
+              imports.add(cand);
+              break;
+            }
+          }
+        }
+      }
+
+      if (imports.size > 0) {
+        outbound[file] = Array.from(imports);
+        for (const imp of imports) {
+          if (!inboundMap[imp]) inboundMap[imp] = new Set();
+          inboundMap[imp].add(file);
+        }
+      }
+    } catch (e) {}
+  }
+
+  const routeHandlers: Record<string, Set<string>> = {};
+
+  const apiRouteHandlerRegex =
+    /(?:app|router|server)\s*\.\s*(?:get|post|put|delete|patch|all|use)\s*\(\s*[`'"]([^`'"]+)[`'"]/gi;
+
+  for (const file of filesList) {
+    const ext = path.extname(file).toLowerCase();
+    if (![".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs"].includes(ext)) continue;
+
+    try {
+      const fullPath = path.join(basePath, file);
+      const content = fs.readFileSync(fullPath, "utf-8");
+      let match: RegExpExecArray | null;
+      while ((match = apiRouteHandlerRegex.exec(content)) !== null) {
+        const route = match[1];
+        if (route.startsWith("/api") || route.startsWith("/")) {
+          if (!routeHandlers[route]) routeHandlers[route] = new Set();
+          routeHandlers[route].add(file);
+        }
+      }
+    } catch (e) {}
+  }
+
+  const apiClientRegex =
+    /(?:fetch|axios\.(?:get|post|put|delete|patch)|apiCall)\s*\(\s*[`'"]([^`'"${}\n]+)[`'"]/gi;
+
+  for (const file of filesList) {
+    const ext = path.extname(file).toLowerCase();
+    if (![".js", ".jsx", ".ts", ".tsx"].includes(ext)) continue;
+
+    try {
+      const fullPath = path.join(basePath, file);
+      const content = fs.readFileSync(fullPath, "utf-8");
+      let match: RegExpExecArray | null;
+      while ((match = apiClientRegex.exec(content)) !== null) {
+        const rawRoute = match[1];
+        const cleanRoute = rawRoute.split("?")[0].split("#")[0];
+
+        if (routeHandlers[cleanRoute]) {
+          for (const backendFile of routeHandlers[cleanRoute]) {
+            if (backendFile !== file) {
+              if (!apiOutbound[file]) apiOutbound[file] = [];
+              if (!apiOutbound[file].includes(backendFile)) {
+                apiOutbound[file].push(backendFile);
+              }
+
+              if (!apiInboundMap[backendFile])
+                apiInboundMap[backendFile] = new Set();
+              apiInboundMap[backendFile].add(file);
+            }
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  const inbound: Record<string, string[]> = {};
+  for (const key in inboundMap) {
+    inbound[key] = Array.from(inboundMap[key]);
+  }
+
+  const apiInbound: Record<string, string[]> = {};
+  for (const key in apiInboundMap) {
+    apiInbound[key] = Array.from(apiInboundMap[key]);
+  }
+
+  return { outbound, inbound, apiOutbound, apiInbound };
+}
+
+==================================================
+FILE PATH: server\services\gitService.ts
+==================================================
+import fs from "fs";
+import path from "path";
+import { execSync } from "child_process";
+
+let targetRepoPath: string = process.cwd();
+
+export const repoState = {
+  getRepoPath: (): string => targetRepoPath,
+  setRepoPath: (newPath: string): void => {
+    targetRepoPath = path.resolve(newPath);
+  },
+};
+
+export const isSecretFile = (fileName: string): boolean => /^\.env(\..+)?$/.test(fileName);
+
+const HEAVY_DIR_SEGMENTS = new Set([
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  "coverage",
+  ".vscode",
+  ".idea",
+  "backups",
+]);
+
+const HEAVY_FILE_EXTENSIONS = new Set([".sqlite", ".sqlite3", ".db", ".log"]);
+
+export const isHeavyOrJunkPath = (filePath: string): boolean => {
+  const segments = filePath.split("/");
+  if (segments.some((seg) => HEAVY_DIR_SEGMENTS.has(seg))) return true;
+  const ext = path.extname(filePath).toLowerCase();
+  return HEAVY_FILE_EXTENSIONS.has(ext);
+};
+
+export const getAllFilesFallback = (
+  dir: string,
+  basePath: string = dir,
+  fileList: string[] = []
+): string[] => {
+  if (!fs.existsSync(dir)) return fileList;
+  const files = fs.readdirSync(dir);
+  for (const file of files) {
+    const filePath = path.join(dir, file);
+    const stat = fs.statSync(filePath);
+    if (stat.isDirectory()) {
+      if (
+        ![
+          "node_modules",
+          ".git",
+          "dist",
+          "build",
+          "coverage",
+          ".vscode",
+          ".idea",
+        ].includes(file)
+      ) {
+        getAllFilesFallback(filePath, basePath, fileList);
+      }
+    } else if (!isSecretFile(file)) {
+      fileList.push(path.relative(basePath, filePath).replace(/\\/g, "/"));
+    }
+  }
+  return fileList;
+};
+
+export const getAllFiles = (dir: string = targetRepoPath, basePath: string = dir): string[] => {
+  try {
+    const raw = execSync("git ls-files --cached --others --exclude-standard", {
+      cwd: basePath,
+      encoding: "utf-8",
+    });
+    return raw
+      .split(/\r?\n/)
+      .map((f) => f.trim())
+      .filter(Boolean)
+      .filter((f) => !isSecretFile(path.basename(f)))
+      .filter((f) => !isHeavyOrJunkPath(f));
+  } catch (e) {
+    return getAllFilesFallback(dir, basePath);
+  }
+};
+
+export interface FileStat {
+  size: number;
+  tokens: number;
+}
+
+export const getFileStats = (
+  basePath: string = targetRepoPath,
+  filesList: string[]
+): Record<string, FileStat> => {
+  const stats: Record<string, FileStat> = {};
+  for (const file of filesList) {
+    try {
+      const fullPath = path.join(basePath, file);
+      const size = fs.statSync(fullPath).size;
+      stats[file] = { size, tokens: Math.ceil(size / 3.8) };
+    } catch (e) {
+      stats[file] = { size: 0, tokens: 0 };
+    }
+  }
+  return stats;
+};
+
+export interface HistoryLogItem {
+  id: string;
+  timestamp: string;
+  message: string;
+  files: string[];
+}
+
+export const getGitHistory = (basePath: string = targetRepoPath): HistoryLogItem[] => {
+  try {
+    const raw = execSync(
+      `git log -n 30 --no-merges --pretty=format:%H%x09%ar%x09%s --name-only`,
+      { cwd: basePath, encoding: "utf-8" },
+    );
+
+    return raw
+      .split(/\r?\n\r?\n/)
+      .map((block) => block.trim())
+      .filter(Boolean)
+      .map((block) => {
+        const lines = block.split(/\r?\n/);
+        const [hash, timestamp, message] = lines[0].split("\t");
+        const files = lines.slice(1).filter(Boolean);
+        return {
+          id: hash ? hash.slice(0, 7) : "unknown",
+          timestamp: timestamp || "",
+          message: message || "",
+          files,
+        };
+      })
+      .filter((log) => log.message !== "pre-ai-edit");
+  } catch (err) {
+    return [];
+  }
+};
+
+export const gitUndo = (basePath: string = targetRepoPath): void => {
+  execSync("git reset --hard HEAD~1", {
+    cwd: basePath,
+    stdio: "ignore",
+  });
+};
+
+export const gitSnapshotPreEdit = (basePath: string = targetRepoPath): void => {
+  try {
+    execSync('git add . && git commit -m "pre-ai-edit"', {
+      cwd: basePath,
+      stdio: "ignore",
+    });
+  } catch (e) {}
+};
+
+export const gitMoveFile = (
+  basePath: string,
+  sourceRel: string,
+  destRel: string
+): void => {
+  const destFullPath = path.resolve(basePath, destRel);
+  const destDir = path.dirname(destFullPath);
+  if (!fs.existsSync(destDir)) {
+    fs.mkdirSync(destDir, { recursive: true });
+  }
+
+  try {
+    execSync(`git mv -f "${sourceRel}" "${destRel}"`, {
+      cwd: basePath,
+      stdio: "ignore",
+    });
+  } catch (e) {
+    fs.renameSync(path.resolve(basePath, sourceRel), destFullPath);
+  }
+};
+
+export const formatFile = (basePath: string, fileRel: string): void => {
+  try {
+    execSync(`npx prettier --write "${fileRel}"`, {
+      cwd: basePath,
+      stdio: "ignore",
+    });
+  } catch (e) {}
+};
+
+export const gitCommit = (
+  basePath: string,
+  message: string = "ai-edit: updated files"
+): void => {
+  execSync(`git add . && git commit -m "${message}"`, {
+    cwd: basePath,
+    stdio: "ignore",
+  });
+};
+
+==================================================
+FILE PATH: server\services\osService.ts
+==================================================
+import { execSync } from "child_process";
+
+/**
+ * Opens platform-native folder selection dialog and returns the selected directory path.
+ */
+export function openNativeFolderDialog(): string {
+  let cmd = "";
+  if (process.platform === "win32") {
+    cmd = `powershell -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.ValidateNames = $false; $f.CheckFileExists = $false; $f.CheckPathExists = $true; $f.FileName = 'Select This Folder'; $f.Title = 'Select Repository Folder'; if($f.ShowDialog() -eq 'OK') { [System.IO.Path]::GetDirectoryName($f.FileName) }"`;
+  } else if (process.platform === "darwin") {
+    cmd = `osascript -e 'POSIX path of (choose folder)'`;
+  } else {
+    cmd = `zenity --file-selection --directory 2>/dev/null || kdialog --getexistingdirectory 2>/dev/null`;
+  }
+
+  try {
+    return execSync(cmd, { encoding: "utf-8" }).trim();
+  } catch (err) {
+    return "";
+  }
+}
+
+==================================================
+FILE PATH: server\services\patchEngine.ts
+==================================================
+import { validateSyntax } from "./syntaxService";
+
+export interface DiffBlockInput {
+  file: string;
+  search: string;
+  replace: string;
+  type?: "edit" | "move";
+  moveTo?: string;
+}
+
+export interface ApplyBlockResult {
+  success: boolean;
+  newContent?: string;
+  error?: string;
+}
+
+export interface CondensedRange {
+  start: number;
+  end: number;
+}
+
+/**
+ * Finds a condensed range match in content for search text.
+ */
+export function findCondensedRange(content: string, search: string): CondensedRange | null {
+  const preCleanContent = content
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
+    .replace(/\{\s*["']\s*["']\s*\}/g, "");
+  const cleanSearch = search
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
+    .replace(/\{\s*["']\s*["']\s*\}/g, "")
+    .replace(/[\s,'"`();]+/g, "");
+
+  if (!cleanSearch) return null;
+
+  let cIdx = 0;
+  let sIdx = 0;
+  let startMatchPos = -1;
+
+  while (cIdx < preCleanContent.length && sIdx < cleanSearch.length) {
+    if (/[\s,'"`();]/.test(preCleanContent[cIdx])) {
+      cIdx++;
+      continue;
+    }
+
+    if (preCleanContent[cIdx] === cleanSearch[sIdx]) {
+      if (sIdx === 0) startMatchPos = cIdx;
+      sIdx++;
+      cIdx++;
+    } else {
+      if (startMatchPos !== -1) {
+        cIdx = startMatchPos + 1;
+        startMatchPos = -1;
+        sIdx = 0;
+      } else {
+        cIdx++;
+      }
+    }
+  }
+
+  if (sIdx === cleanSearch.length && startMatchPos !== -1) {
+    return { start: startMatchPos, end: cIdx };
+  }
+
+  return null;
+}
+
+/**
+ * Pure In-Memory Block Application Engine (Exact, Fuzzy Indentation & Condensed Token Stream).
+ */
+export function applyBlockToContent(content: string, block: DiffBlockInput): ApplyBlockResult {
+  if (!block.search || !block.search.trim() || block.file === "Active File") {
+    return { success: true, newContent: block.replace };
+  }
+
+  const normContent = content.replace(/\r\n/g, "\n");
+  const normSearch = block.search.replace(/\r\n/g, "\n");
+  const normReplace = block.replace.replace(/\r\n/g, "\n");
+
+  // 1. Exact Match
+  if (normContent.includes(normSearch)) {
+    return {
+      success: true,
+      newContent: normContent.replace(normSearch, normReplace),
+    };
+  }
+
+  // 2. Smart Fuzzy Indentation Match
+  const searchLines = normSearch
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const contentLines = normContent.split("\n");
+
+  let matchIndex = -1;
+  for (let i = 0; i <= contentLines.length - searchLines.length; i++) {
+    let isCandidate = true;
+    for (let j = 0; j < searchLines.length; j++) {
+      if (contentLines[i + j].trim() !== searchLines[j]) {
+        isCandidate = false;
+        break;
+      }
+    }
+    if (isCandidate) {
+      matchIndex = i;
+      break;
+    }
+  }
+
+  if (matchIndex !== -1) {
+    const indentMatch = contentLines[matchIndex].match(/^[ \t]*/);
+    const indent = indentMatch ? indentMatch[0] : "";
+    const replaceLines = normReplace.split("\n").map((line) => {
+      return line.trim() ? indent + line.replace(/^[ \t]*/, "") : "";
+    });
+
+    contentLines.splice(matchIndex, searchLines.length, ...replaceLines);
+    return { success: true, newContent: contentLines.join("\n") };
+  }
+
+  // 3. Condensed Token Stream Replacement
+  const range = findCondensedRange(normContent, normSearch);
+  if (range) {
+    const cleanNormContent = normContent
+      .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
+      .replace(/\{\s*["']\s*["']\s*\}/g, "");
+    const newContent =
+      cleanNormContent.slice(0, range.start) +
+      normReplace +
+      cleanNormContent.slice(range.end);
+    return { success: true, newContent };
+  }
+
+  return {
+    success: false,
+    error: `SEARCH block match failed for file: ${block.file}`,
+  };
+}
+
+export { validateSyntax };
+
+==================================================
+FILE PATH: server\services\repoMapService.ts
+==================================================
+import fs from "fs";
+import path from "path";
+
+/**
+ * Generates a symbol map of the repository files.
+ */
+export function generateRepoMap(basePath: string, filesList: string[]): string {
+  let mapOutput = "";
+  for (const file of filesList) {
+    const fullPath = path.join(basePath, file);
+    const ext = path.extname(file).toLowerCase();
+    let content: string;
+    try {
+      content = fs.readFileSync(fullPath, "utf-8");
+    } catch (e) {
+      continue;
+    }
+
+    let symbols: string[] = [];
+    const lines = content.split("\n");
+
+    for (let line of lines) {
+      const trimmed = line.trim();
+      if ([".js", ".jsx", ".ts", ".tsx"].includes(ext)) {
+        let match = trimmed.match(
+          /^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function|class|interface|type)\s+([A-Za-z0-9_]+)/,
+        );
+        if (match) {
+          symbols.push(trimmed.replace(/\s*\{.*$/, ""));
+          continue;
+        }
+
+        match = trimmed.match(
+          /^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_]+)\s*=>/,
+        );
+        if (match) {
+          symbols.push(trimmed.replace(/\s*=>.*$/, "=> { ... }"));
+          continue;
+        }
+      } else if ([".py"].includes(ext)) {
+        if (/^(?:async\s+)?(?:def|class)\s+[A-Za-z0-9_]+/.test(trimmed)) {
+          symbols.push(trimmed.replace(/:.*$/, ""));
+        }
+      } else if ([".go"].includes(ext)) {
+        if (
+          /^func\s+[A-Za-z0-9_]+/.test(trimmed) ||
+          /^type\s+[A-Za-z0-9_]+\s+(?:struct|interface)/.test(trimmed)
+        ) {
+          symbols.push(trimmed.replace(/\{.*$/, ""));
+        }
+      }
+    }
+
+    if (symbols.length > 0) {
+      mapOutput += file + ":\n";
+      symbols.forEach((s) => (mapOutput += "│ " + s + "\n"));
+    } else {
+      mapOutput += file + "\n";
+    }
+  }
+  return mapOutput.trim();
+}
+
+==================================================
+FILE PATH: server\services\syntaxService.ts
+==================================================
+import path from "path";
+import { transformSync } from "esbuild";
+
+/**
+ * Validates JS/TS/JSX/TSX syntax in memory before writing to disk.
+ */
+export function validateSyntax(content: string, filePath: string): string | null {
+  const ext = path.extname(filePath).toLowerCase();
+  if (![".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"].includes(ext)) {
+    return null; // Skip non-code files (JSON, CSS, Markdown, etc.)
+  }
+
+  try {
+    let loader = ext.slice(1);
+    if (!["js", "jsx", "ts", "tsx"].includes(loader)) loader = "js";
+
+    transformSync(content, {
+      loader: loader as "js" | "jsx" | "ts" | "tsx",
+      jsx: "transform",
+      format: "esm",
+    });
+    return null; // Valid syntax!
+  } catch (err: any) {
+    const errorMsg =
+      err.errors && err.errors[0]
+        ? `${err.errors[0].text} (line ${err.errors[0].location?.line || "?"})`
+        : err.message;
+    return `Pre-flight SyntaxError in ${filePath}: ${errorMsg}`;
+  }
+}
 
 ==================================================
 FILE PATH: src\App.tsx
 ==================================================
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Header } from "./components/Header";
 import { PromptPanel } from "./components/PromptPanel";
 import { DiffPanel } from "./components/DiffPanel";
 import { Footer } from "./components/Footer";
 import { Toast } from "./components/Toast";
-import { DiffBlock, HistoryLog } from "./types";
+import { DiffBlock } from "./types";
 import { parseDiffBlocks } from "./utils/diffParser";
+import { filesApi } from "./api/client";
+import { useRepoContext } from "./hooks/useRepoContext";
 
 export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [pastedContent, setPastedContent] = useState("");
   const [diffBlocks, setDiffBlocks] = useState<DiffBlock[]>([]);
-  const [repoPath, setRepoPath] = useState<string>("Loading...");
-  const [repoFiles, setRepoFiles] = useState<string[]>([]);
-  const [repoMap, setRepoMap] = useState<string>("");
-  const [fileStats, setFileStats] = useState<
-    Record<string, { size: number; tokens: number }>
-  >({});
-  const [dependencyMap, setDependencyMap] = useState<{
-    outbound: Record<string, string[]>;
-    inbound: Record<string, string[]>;
-  }>({ outbound: {}, inbound: {} });
   const [tokenStats, setTokenStats] = useState({
     total: 0,
     map: 0,
@@ -633,77 +1132,23 @@ export default function App() {
     selectedCount: 0,
   });
 
-  useEffect(() => {
-    fetch("/api/repo")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          setRepoPath(data.path);
-          setRepoFiles(data.files);
-          setRepoMap(data.repoMap);
-          setFileStats(data.fileStats || {});
-          setDependencyMap(
-            data.dependencyMap || { outbound: {}, inbound: {} },
-          );
-        }
-      })
-      .catch((err) => console.error("Failed to fetch repo context:", err));
-  }, []);
+  const {
+    repoPath,
+    repoFiles,
+    repoMap,
+    fileStats,
+    dependencyMap,
+    logs,
+    changeRepo,
+    refreshHistory,
+  } = useRepoContext();
 
-  const handleChangeRepo = async () => {
-    const newPath = prompt("Enter absolute path to your repository:", repoPath);
-    if (!newPath || newPath === repoPath) return;
-
-    try {
-      const res = await fetch("/api/repo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ newPath }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setRepoPath(data.path);
-        setRepoFiles(data.files);
-        setRepoMap(data.repoMap);
-        setFileStats(data.fileStats || {});
-        setDependencyMap(
-          data.dependencyMap || { outbound: {}, inbound: {} },
-        );
-        setToastMessage("Repository context updated successfully!");
-      } else {
-        alert("Error: " + data.error);
-      }
-    } catch (err) {
-      alert("Failed to update repository path. Ensure backend is running.");
+  const handleChangeRepo = async (newPath: string) => {
+    const success = await changeRepo(newPath);
+    if (success) {
+      setToastMessage("Repository context updated successfully!");
     }
   };
-
-  const mockLogs: HistoryLog[] = [
-    {
-      id: "c4f2a91",
-      timestamp: "10 mins ago",
-      files: ["src/App.tsx"],
-      message: "ai-edit: Add routing to App.tsx",
-    },
-    {
-      id: "8a1b3c4",
-      timestamp: "1 hour ago",
-      files: ["src/components/Button.tsx"],
-      message: "ai-edit: fix button padding",
-    },
-    {
-      id: "f2d4e56",
-      timestamp: "2 hours ago",
-      files: ["tailwind.config.js"],
-      message: "ai-edit: add custom colors",
-    },
-    {
-      id: "1e2f3a4",
-      timestamp: "Yesterday",
-      files: ["package.json"],
-      message: "ai-edit: install lucide-react",
-    },
-  ];
 
   const handleCopy = async (promptText: string) => {
     await navigator.clipboard.writeText(promptText);
@@ -720,13 +1165,22 @@ export default function App() {
     setDiffBlocks([]);
   };
 
-  const handlePaste = async () => {
+  const handleApplySuccess = () => {
+    handleClear();
+    refreshHistory();
+  };
+
+  const handlePaste = async (append = false) => {
     try {
       const clipboardText = await navigator.clipboard.readText();
       if (!clipboardText) return;
 
-      setPastedContent(clipboardText);
-      const parsed = parseDiffBlocks(clipboardText);
+      const newContent =
+        append && pastedContent
+          ? pastedContent + "\n\n" + clipboardText
+          : clipboardText;
+      setPastedContent(newContent);
+      const parsed = parseDiffBlocks(newContent);
 
       if (parsed.length === 0) {
         setDiffBlocks([]);
@@ -740,18 +1194,21 @@ export default function App() {
       let data = { success: false, contents: {} as Record<string, string> };
 
       if (uniqueFiles.length > 0) {
-        const res = await fetch("/api/files", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ files: uniqueFiles }),
-        });
-        data = await res.json();
+        data = await filesApi.fetchFiles(uniqueFiles);
       } else {
         data.success = true;
       }
 
       if (data.success) {
         const validatedBlocks = parsed.map((block) => {
+          if (block.type === "move") {
+            const sourceExists = !!data.contents[block.file];
+            return {
+              ...block,
+              status: sourceExists ? ("match" as const) : ("no-match" as const),
+            };
+          }
+
           if (!block.search.trim() || block.file === "Active File") {
             return { ...block, status: "match" as const };
           }
@@ -813,6 +1270,7 @@ export default function App() {
       <Header
         repoPath={repoPath}
         onChangeRepo={handleChangeRepo}
+        onUndoSuccess={refreshHistory}
         tokenStats={tokenStats}
       />
 
@@ -835,22 +1293,26 @@ export default function App() {
             parsedBlocks={diffBlocks}
             onPaste={handlePaste}
             onClear={handleClear}
+            onBlockEdit={(id, search, replace) => {
+              setDiffBlocks((prev) =>
+                prev.map((b) => (b.id === id ? { ...b, search, replace } : b)),
+              );
+            }}
           />
         </section>
       </main>
 
       <Footer
-        logs={mockLogs}
+        logs={logs}
         hasChanges={diffBlocks.length > 0}
         diffBlocks={diffBlocks}
-        onApplySuccess={handleClear}
+        onApplySuccess={handleApplySuccess}
       />
 
       <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
     </div>
   );
 }
-
 
 ==================================================
 FILE PATH: src\index.css
@@ -898,6 +1360,11 @@ export interface DiffBlock {
   status: "match" | "no-match";
   search: string;
   replace: string;
+  // "edit" (default, omitted) is a normal SEARCH/REPLACE block.
+  // "move" represents a MOVE/RENAME directive: `file` is the source path,
+  // `moveTo` is the destination — search/replace are unused and left "".
+  type?: "edit" | "move";
+  moveTo?: string;
 }
 
 export interface HistoryLog {
@@ -907,6 +1374,132 @@ export interface HistoryLog {
   message: string;
 }
 
+
+==================================================
+FILE PATH: src\api\client.ts
+==================================================
+import { DiffBlock, HistoryLog } from "../types";
+
+export interface RepoContextResponse {
+  success: boolean;
+  path: string;
+  files: string[];
+  repoMap: string;
+  fileStats: Record<string, { size: number; tokens: number }>;
+  dependencyMap: {
+    outbound: Record<string, string[]>;
+    inbound: Record<string, string[]>;
+    apiOutbound?: Record<string, string[]>;
+    apiInbound?: Record<string, string[]>;
+  };
+  error?: string;
+}
+
+export interface FilesResponse {
+  success: boolean;
+  contents: Record<string, string>;
+  error?: string;
+}
+
+export interface HistoryResponse {
+  success: boolean;
+  logs: HistoryLog[];
+  error?: string;
+}
+
+export interface FolderDialogResponse {
+  success: boolean;
+  path: string;
+  error?: string;
+}
+
+export interface UndoResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
+export interface ApplyPayload {
+  blocks: DiffBlock[];
+  commitMessage?: string;
+  skipCommit?: boolean;
+  commit?: boolean;
+  dryRun?: boolean;
+}
+
+export interface ApplyResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
+  details?: string[];
+  dryRun?: boolean;
+  validatedFiles?: string[];
+  validatedMoves?: string[];
+  appliedFiles?: string[];
+}
+
+async function handleResponse<T>(res: Response): Promise<T> {
+  const data = await res.json();
+  if (!res.ok && !data.error) {
+    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+  }
+  return data as T;
+}
+
+export const repoApi = {
+  fetchRepo: (): Promise<RepoContextResponse> =>
+    fetch("/api/repo").then(handleResponse<RepoContextResponse>),
+
+  changeRepo: (newPath: string): Promise<RepoContextResponse> =>
+    fetch("/api/repo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ newPath }),
+    }).then(handleResponse<RepoContextResponse>),
+
+  openFolderDialog: (): Promise<FolderDialogResponse> =>
+    fetch("/api/native-folder-dialog", {
+      method: "POST",
+    }).then(handleResponse<FolderDialogResponse>),
+};
+
+export const filesApi = {
+  fetchFiles: (files: string[]): Promise<FilesResponse> =>
+    fetch("/api/files", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ files }),
+    }).then(handleResponse<FilesResponse>),
+};
+
+export const historyApi = {
+  fetchHistory: (): Promise<HistoryResponse> =>
+    fetch("/api/history").then(handleResponse<HistoryResponse>),
+};
+
+export const patchApi = {
+  apply: (payload: ApplyPayload): Promise<ApplyResponse> =>
+    fetch("/api/apply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(handleResponse<ApplyResponse>),
+
+  undo: (): Promise<UndoResponse> =>
+    fetch("/api/undo", {
+      method: "POST",
+    }).then(handleResponse<UndoResponse>),
+};
+
+export const api = {
+  getRepo: repoApi.fetchRepo,
+  changeRepo: repoApi.changeRepo,
+  getFiles: filesApi.fetchFiles,
+  getHistory: historyApi.fetchHistory,
+  openFolderDialog: repoApi.openFolderDialog,
+  undo: patchApi.undo,
+  apply: patchApi.apply,
+};
 
 ==================================================
 FILE PATH: src\components\DiffPanel.tsx
@@ -922,14 +1515,18 @@ import {
   XCircle,
   FoldVertical,
   UnfoldVertical,
+  Copy,
+  Edit2,
+  Save,
 } from "lucide-react";
 import { DiffBlock } from "../types";
 
 interface DiffPanelProps {
   parsedBlocks: DiffBlock[];
-  onPaste: () => void;
+  onPaste: (append?: boolean) => void;
   onClear: () => void;
   pastedContent: string;
+  onBlockEdit?: (id: string, search: string, replace: string) => void;
 }
 
 export function DiffPanel({
@@ -937,6 +1534,7 @@ export function DiffPanel({
   onPaste,
   onClear,
   pastedContent,
+  onBlockEdit,
 }: DiffPanelProps) {
   const [ignoredBlocks, setIgnoredBlocks] = useState<Set<string>>(new Set());
   const [showDebug, setShowDebug] = useState(false);
@@ -944,7 +1542,34 @@ export function DiffPanel({
     new Set(),
   );
 
-  // Auto-retract blocks if multiple blocks or large diff sizes are detected on load
+  const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
+  const [editSearch, setEditSearch] = useState("");
+  const [editReplace, setEditReplace] = useState("");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleCopyBlock = (block: DiffBlock) => {
+    const text = `FILE: ${block.file}\n<<<<<<< SEARCH\n${block.search}\n=======\n${block.replace}\n>>>>>>> REPLACE`;
+    navigator.clipboard.writeText(text);
+    setCopiedId(block.id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const startEditing = (block: DiffBlock) => {
+    setEditingBlockId(block.id);
+    setEditSearch(block.search);
+    setEditReplace(block.replace);
+    if (collapsedBlocks.has(block.id)) {
+      toggleCollapse(block.id);
+    }
+  };
+
+  const saveEdit = () => {
+    if (editingBlockId && onBlockEdit) {
+      onBlockEdit(editingBlockId, editSearch, editReplace);
+    }
+    setEditingBlockId(null);
+  };
+
   useEffect(() => {
     if (parsedBlocks.length > 1) {
       setCollapsedBlocks(new Set(parsedBlocks.map((b) => b.id)));
@@ -1071,7 +1696,7 @@ export function DiffPanel({
       <div className="flex-1 flex flex-col space-y-4 overflow-hidden">
         {!pastedContent ? (
           <div
-            onClick={onPaste}
+            onClick={() => onPaste()}
             className="flex-1 border-2 border-dashed border-zinc-800 rounded-xl flex items-center justify-center cursor-pointer hover:bg-zinc-900/30 transition-colors group"
           >
             <div className="flex flex-col items-center text-zinc-600 group-hover:text-zinc-500 transition-colors">
@@ -1082,18 +1707,19 @@ export function DiffPanel({
             </div>
           </div>
         ) : parsedBlocks.length === 0 ? (
-          /* FALLBACK WARNING & CLIPBOARD DEBUGGER */
           <div className="flex-1 border border-amber-500/30 bg-amber-950/20 rounded-xl p-6 flex flex-col items-center justify-center text-center space-y-3 overflow-y-auto custom-scrollbar">
             <AlertTriangle className="w-8 h-8 text-amber-400" />
             <p className="text-sm font-semibold text-zinc-200">
               No Diff Blocks Detected
             </p>
             <p className="text-xs text-zinc-400 max-w-md">
-              The pasted clipboard text does not contain valid{" "}
+              The pasted clipboard text does not contain valid
               <code className="text-cyan-400">
                 &lt;&lt;&lt;&lt;&lt;&lt;&lt; SEARCH
-              </code>{" "}
-              or <code className="text-cyan-400">Create 'file'</code> blocks.
+              </code>
+              , <code className="text-cyan-400">Create 'file'</code>, or
+              <code className="text-cyan-400">MOVE 'old' -&gt; 'new'</code>
+              blocks.
             </p>
             <div className="flex items-center space-x-3 pt-2">
               <button
@@ -1186,6 +1812,68 @@ export function DiffPanel({
                   ? block.replace.trim().split("\n")
                   : [];
 
+                if (block.type === "move") {
+                  return (
+                    <div
+                      key={block.id}
+                      className={`bg-zinc-900/30 border border-zinc-800 rounded-xl flex items-center justify-between px-4 py-3 transition-all ${
+                        isIgnored ? "opacity-50 grayscale" : ""
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3 min-w-0">
+                        <span className="bg-violet-500/20 text-violet-400 text-[10px] px-1.5 py-0.5 rounded border border-violet-500/20 font-bold uppercase shrink-0">
+                          Move
+                        </span>
+                        <span className="text-xs font-mono text-zinc-400 truncate">
+                          {block.file}
+                        </span>
+                        <span className="text-zinc-600 shrink-0">→</span>
+                        <span className="text-xs font-mono text-zinc-100 font-medium truncate">
+                          {block.moveTo}
+                        </span>
+                        {block.status === "match" ? (
+                          <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase shrink-0">
+                            Source Found
+                          </span>
+                        ) : (
+                          <span className="bg-rose-500/20 text-rose-400 text-[10px] px-1.5 py-0.5 rounded border border-rose-500/20 font-bold uppercase shrink-0">
+                            Source Missing
+                          </span>
+                        )}
+                      </div>
+                      <label
+                        className="flex items-center space-x-2 cursor-pointer shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <span
+                          className={`text-[10px] font-bold uppercase ${
+                            !isIgnored ? "text-cyan-500" : "text-zinc-500"
+                          }`}
+                        >
+                          {isIgnored ? "Ignored" : "Accepted"}
+                        </span>
+                        <div
+                          className={`w-8 h-4 rounded-full flex items-center transition-colors p-0.5 ${
+                            !isIgnored ? "bg-cyan-500" : "bg-zinc-700"
+                          }`}
+                        >
+                          <div
+                            className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${
+                              !isIgnored ? "translate-x-4" : "translate-x-0"
+                            }`}
+                          />
+                        </div>
+                        <input
+                          type="checkbox"
+                          className="hidden"
+                          checked={!isIgnored}
+                          onChange={() => toggleBlock(block.id)}
+                        />
+                      </label>
+                    </div>
+                  );
+                }
+
                 return (
                   <div
                     key={block.id}
@@ -1232,35 +1920,81 @@ export function DiffPanel({
                           </span>
                         )}
                       </div>
-                      <label
-                        className="flex items-center space-x-2 cursor-pointer shrink-0"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <span
-                          className={`text-[10px] font-bold uppercase ${
-                            !isIgnored ? "text-cyan-500" : "text-zinc-500"
-                          }`}
-                        >
-                          {isIgnored ? "Ignored" : "Accepted"}
-                        </span>
-                        <div
-                          className={`w-8 h-4 rounded-full flex items-center transition-colors p-0.5 ${
-                            !isIgnored ? "bg-cyan-500" : "bg-zinc-700"
-                          }`}
-                        >
-                          <div
-                            className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${
-                              !isIgnored ? "translate-x-4" : "translate-x-0"
-                            }`}
-                          />
+
+                      <div className="flex items-center shrink-0">
+                        <div className="flex items-center space-x-1 shrink-0 pr-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCopyBlock(block);
+                            }}
+                            className="text-zinc-500 hover:text-cyan-400 p-1.5 rounded hover:bg-zinc-800 transition-colors"
+                            title="Copy block"
+                          >
+                            {copiedId === block.id ? (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+
+                          {editingBlockId === block.id ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                saveEdit();
+                              }}
+                              className="text-emerald-500 hover:text-emerald-400 p-1.5 rounded hover:bg-emerald-500/10 transition-colors"
+                              title="Save changes"
+                            >
+                              <Save className="w-3.5 h-3.5" />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                startEditing(block);
+                              }}
+                              className="text-zinc-500 hover:text-cyan-400 p-1.5 rounded hover:bg-zinc-800 transition-colors"
+                              title="Edit block"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          <div className="w-px h-4 bg-zinc-800 mx-1"></div>
                         </div>
-                        <input
-                          type="checkbox"
-                          className="hidden"
-                          checked={!isIgnored}
-                          onChange={() => toggleBlock(block.id)}
-                        />
-                      </label>
+
+                        <label
+                          className="flex items-center space-x-2 cursor-pointer shrink-0"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <span
+                            className={`text-[10px] font-bold uppercase ${
+                              !isIgnored ? "text-cyan-500" : "text-zinc-500"
+                            }`}
+                          >
+                            {isIgnored ? "Ignored" : "Accepted"}
+                          </span>
+                          <div
+                            className={`w-8 h-4 rounded-full flex items-center transition-colors p-0.5 ${
+                              !isIgnored ? "bg-cyan-500" : "bg-zinc-700"
+                            }`}
+                          >
+                            <div
+                              className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${
+                                !isIgnored ? "translate-x-4" : "translate-x-0"
+                              }`}
+                            />
+                          </div>
+                          <input
+                            type="checkbox"
+                            className="hidden"
+                            checked={!isIgnored}
+                            onChange={() => toggleBlock(block.id)}
+                          />
+                        </label>
+                      </div>
                     </div>
 
                     {isCollapsed ? (
@@ -1278,6 +2012,35 @@ export function DiffPanel({
                         <span className="text-[10px] text-cyan-500/80 font-sans hover:underline ml-2 shrink-0">
                           Click to expand
                         </span>
+                      </div>
+                    ) : editingBlockId === block.id ? (
+                      <div className="p-4 bg-zinc-950/50 flex flex-col space-y-4 border-t border-zinc-800/50">
+                        <div className="flex flex-col space-y-1.5">
+                          <label className="text-[10px] text-rose-400/80 uppercase font-bold tracking-wider flex items-center">
+                            <span className="text-rose-500/50 mr-2">
+                              {"<<<<<<< SEARCH"}
+                            </span>
+                          </label>
+                          <textarea
+                            value={editSearch}
+                            onChange={(e) => setEditSearch(e.target.value)}
+                            className="w-full bg-zinc-900/80 border border-zinc-800 rounded p-3 text-[11px] font-mono text-zinc-400 h-32 custom-scrollbar focus:border-rose-500/50 focus:outline-none resize-y"
+                            spellCheck={false}
+                          />
+                        </div>
+                        <div className="flex flex-col space-y-1.5">
+                          <label className="text-[10px] text-emerald-400/80 uppercase font-bold tracking-wider flex items-center">
+                            <span className="text-emerald-500/50 mr-2">
+                              {"======="} (REPLACE)
+                            </span>
+                          </label>
+                          <textarea
+                            value={editReplace}
+                            onChange={(e) => setEditReplace(e.target.value)}
+                            className="w-full bg-zinc-900/80 border border-zinc-800 rounded p-3 text-[11px] font-mono text-zinc-200 h-40 custom-scrollbar focus:border-emerald-500/50 focus:outline-none resize-y"
+                            spellCheck={false}
+                          />
+                        </div>
                       </div>
                     ) : (
                       <div className="p-4 font-mono text-[11px] overflow-x-auto custom-scrollbar leading-relaxed min-w-0 w-full bg-zinc-950/50">
@@ -1304,7 +2067,7 @@ export function DiffPanel({
             </div>
 
             <div
-              onClick={onPaste}
+              onClick={() => onPaste(true)}
               className="h-20 shrink-0 border-2 border-dashed border-zinc-800 rounded-xl flex items-center justify-center cursor-pointer hover:bg-zinc-900/30 transition-colors"
             >
               <div className="flex flex-col items-center text-zinc-600">
@@ -1325,9 +2088,10 @@ export function DiffPanel({
 ==================================================
 FILE PATH: src\components\Footer.tsx
 ==================================================
-import { useState } from "react";
-import { Check, GitCommit, History, RotateCcw } from "lucide-react";
+import { useRef, useState } from "react";
+import { Check, GitCommit, History } from "lucide-react";
 import { DiffBlock, HistoryLog } from "../types";
+import { api } from "../api/client";
 
 interface FooterProps {
   logs: HistoryLog[];
@@ -1345,28 +2109,32 @@ export function Footer({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [commitMessage, setCommitMessage] = useState("ai-edit: updated files");
   const [isApplying, setIsApplying] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
+  const [modalCommitMessage, setModalCommitMessage] = useState(
+    "ai-edit: updated files",
+  );
+  const commitDialogRef = useRef<HTMLDialogElement>(null);
 
-  // 1. The Apply Changes Handler (calls /api/apply on your Express backend)
-  const handleApplyChanges = async (shouldCommit = true) => {
+  const handleApplyChanges = async (
+    shouldCommit = true,
+    messageOverride?: string,
+  ) => {
     if (diffBlocks.length === 0) {
       alert("No diff blocks detected to apply!");
       return;
     }
 
+    const finalCommitMessage = messageOverride ?? commitMessage;
+
     setIsApplying(true);
     try {
-      const response = await fetch("/api/apply", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          blocks: diffBlocks,
-          commitMessage: shouldCommit ? commitMessage : "",
-          skipCommit: !shouldCommit,
-          commit: shouldCommit,
-        }),
+      const data = await api.apply({
+        blocks: diffBlocks,
+        commitMessage: shouldCommit ? finalCommitMessage : "",
+        skipCommit: !shouldCommit,
+        commit: shouldCommit,
       });
 
-      const data = await response.json();
       if (data.success) {
         alert(
           shouldCommit
@@ -1375,20 +2143,61 @@ export function Footer({
         );
         if (onApplySuccess) onApplySuccess();
       } else {
-        alert("❌ Error applying edits: " + (data.error || "Unknown error"));
+        const errorDetails =
+          data.details && Array.isArray(data.details) && data.details.length > 0
+            ? `❌ Transaction Aborted (0 files modified on disk):\n\n` +
+              data.details.map((d: string) => `• ${d}`).join("\n")
+            : `❌ Error applying edits:\n${data.error || "Unknown error"}`;
+        alert(errorDetails);
       }
     } catch (err) {
       alert(
-        "❌ Failed to connect to local server. Ensure server.js is running!",
+        "❌ Failed to connect to local server. Ensure server is running!",
       );
     } finally {
       setIsApplying(false);
     }
   };
 
+  const handleCommitButtonClick = async () => {
+    if (diffBlocks.length === 0) {
+      alert("No diff blocks detected to apply!");
+      return;
+    }
+
+    setIsValidating(true);
+    try {
+      const data = await api.apply({ blocks: diffBlocks, dryRun: true });
+
+      if (data.success) {
+        setModalCommitMessage(commitMessage);
+        commitDialogRef.current?.showModal();
+      } else {
+        const errorDetails =
+          data.details && Array.isArray(data.details) && data.details.length > 0
+            ? `❌ Validation failed (0 files modified on disk):\n\n` +
+              data.details.map((d: string) => `• ${d}`).join("\n")
+            : `❌ Error validating edits:\n${data.error || "Unknown error"}`;
+        alert(errorDetails);
+      }
+    } catch (err) {
+      alert(
+        "❌ Failed to connect to local server. Ensure server is running!",
+      );
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  const handleConfirmCommit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    commitDialogRef.current?.close();
+    setCommitMessage(modalCommitMessage);
+    await handleApplyChanges(true, modalCommitMessage);
+  };
+
   return (
     <footer className="relative shrink-0 flex flex-col z-10">
-      {/* History Drawer */}
       {drawerOpen && (
         <div className="absolute bottom-full left-0 right-0 h-64 bg-zinc-950 border-t border-zinc-800 overflow-y-auto z-0 custom-scrollbar">
           <div className="p-4 space-y-3">
@@ -1420,7 +2229,6 @@ export function Footer({
         </div>
       )}
 
-      {/* Main Footer Bar */}
       <div className="h-20 border-t border-zinc-800 bg-zinc-950 flex items-center px-6 space-x-6 shrink-0 z-10">
         <div className="flex-1 flex flex-col space-y-1">
           <label className="text-[10px] text-zinc-500 uppercase font-bold">
@@ -1455,31 +2263,76 @@ export function Footer({
             <Check className="w-4 h-4" />
           </button>
 
-          {/* 2. Connected onClick={handleApplyChanges} to the Green Apply Button */}
           <button
-            onClick={() => handleApplyChanges(true)}
-            disabled={!hasChanges || isApplying}
+            onClick={handleCommitButtonClick}
+            disabled={!hasChanges || isApplying || isValidating}
             className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 h-12 rounded-lg font-bold shadow-lg shadow-emerald-500/10 flex items-center space-x-2 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <span>{isApplying ? "Applying..." : "Apply Changes & Commit"}</span>
+            <span>
+              {isValidating
+                ? "Validating..."
+                : isApplying
+                  ? "Committing..."
+                  : "Apply Changes & Commit"}
+            </span>
             <GitCommit className="w-4 h-4" />
           </button>
         </div>
       </div>
+
+      <dialog
+        ref={commitDialogRef}
+        className="bg-zinc-900 border border-zinc-800 rounded-lg p-0 backdrop:bg-black/60 m-auto"
+        onCancel={() => commitDialogRef.current?.close()}
+      >
+        <form
+          onSubmit={handleConfirmCommit}
+          className="w-full max-w-md p-6 space-y-4"
+        >
+          <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-400">
+            Commit Message
+          </h3>
+          <input
+            type="text"
+            autoFocus
+            value={modalCommitMessage}
+            onChange={(e) => setModalCommitMessage(e.target.value)}
+            className="w-full bg-zinc-950 border border-zinc-700 rounded-md px-3 py-2 text-sm text-zinc-100 font-mono focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            placeholder="Commit message..."
+          />
+          <div className="flex justify-end space-x-3">
+            <button
+              type="button"
+              onClick={() => commitDialogRef.current?.close()}
+              className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!modalCommitMessage.trim() || isApplying}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-md text-sm font-bold flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <GitCommit className="w-4 h-4" />
+              <span>Commit</span>
+            </button>
+          </div>
+        </form>
+      </dialog>
     </footer>
   );
 }
-
 
 ==================================================
 FILE PATH: src\components\Header.tsx
 ==================================================
 import React, { useState } from "react";
+import { api } from "../api/client";
 
 interface HeaderProps {
   onUndoSuccess?: () => void;
   repoPath: string;
-  onChangeRepo: () => void;
+  onChangeRepo: (newPath: string) => void;
   tokenStats?: {
     total: number;
     map: number;
@@ -1507,9 +2360,7 @@ export function Header({
 
     setIsUndoing(true);
     try {
-      const response = await fetch("/api/undo", { method: "POST" });
-      const data = await response.json();
-
+      const data = await api.undo();
       if (data.success) {
         alert("🔄 Git reset successful!");
         if (onUndoSuccess) onUndoSuccess();
@@ -1518,10 +2369,21 @@ export function Header({
       }
     } catch (err) {
       alert(
-        "❌ Failed to reach backend server. Make sure node server.js is running.",
+        "❌ Failed to reach backend server. Make sure server is running.",
       );
     } finally {
       setIsUndoing(false);
+    }
+  };
+
+  const handleChangeRepo = async () => {
+    try {
+      const data = await api.openFolderDialog();
+      if (data.success && data.path) {
+        onChangeRepo(data.path);
+      }
+    } catch (err) {
+      alert("Failed to open native folder dialog. Ensure backend is running.");
     }
   };
 
@@ -1570,7 +2432,7 @@ export function Header({
             {repoPath}
           </span>
           <button
-            onClick={onChangeRepo}
+            onClick={handleChangeRepo}
             className="text-cyan-500 hover:text-cyan-400 font-medium px-1 shrink-0"
           >
             Change
@@ -1578,7 +2440,6 @@ export function Header({
         </div>
       </div>
 
-      {/* LIVE TOKEN BUDGET BAR (Centered) */}
       {tokenStats && (
         <div className="absolute left-1/2 -translate-x-1/2 flex flex-col justify-center space-y-1 bg-zinc-900/90 border border-zinc-800 rounded-lg px-3 py-1 w-[360px] shadow-sm">
           <div className="flex items-center justify-between w-full">
@@ -1626,7 +2487,6 @@ export function Header({
           </span>
         </div>
 
-        {}
         <button
           onClick={handleUndo}
           disabled={isUndoing}
@@ -1643,31 +2503,22 @@ export function Header({
   );
 }
 
-
 ==================================================
 FILE PATH: src\components\PromptPanel.tsx
 ==================================================
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { Copy, Map, Eye, X, FileText, AtSign } from "lucide-react";
 import {
-  Copy,
-  Map,
-  Eye,
-  X,
-  Folder,
-  FolderOpen,
-  FileText,
-  ChevronRight,
-  ChevronDown,
-  CheckSquare,
-  Square,
-  MinusSquare,
-  Search,
-  AtSign,
-  Sparkles,
-  ArrowUp,
-  ArrowDown,
-  ArrowUpDown,
-} from "lucide-react";
+  formatActiveFilesContext,
+  buildFullContextPrompt,
+  buildFilesAndPromptOnly,
+} from "../utils/promptTemplates";
+import { MentionDropdown } from "./prompt/MentionDropdown";
+import { SuggestedContextBar } from "./prompt/SuggestedContextBar";
+import { FileTree } from "./prompt/FileTree";
+import { filesApi } from "../api/client";
+import { useMentionPopup } from "../hooks/useMentionPopup";
+import { useSuggestedContext } from "../hooks/useSuggestedContext";
 
 interface PromptPanelProps {
   onCopy: (promptText: string) => void;
@@ -1678,6 +2529,8 @@ interface PromptPanelProps {
   dependencyMap?: {
     outbound: Record<string, string[]>;
     inbound: Record<string, string[]>;
+    apiOutbound?: Record<string, string[]>;
+    apiInbound?: Record<string, string[]>;
   };
   onTokenStatsChange?: (stats: {
     total: number;
@@ -1685,96 +2538,6 @@ interface PromptPanelProps {
     files: number;
     selectedCount: number;
   }) => void;
-}
-
-interface TreeNode {
-  name: string;
-  path: string;
-  isFolder: boolean;
-  children: TreeNode[];
-  allFiles: string[];
-}
-
-interface FuzzyResult {
-  filePath: string;
-  fileName: string;
-  dirPath: string;
-  score: number;
-  matchedIndices: Set<number>;
-}
-
-interface SuggestedFile {
-  filePath: string;
-  type: "parent" | "child" | "hub";
-  importedActiveFiles: string[];
-  importingActiveFiles: string[];
-  tooltip: string;
-}
-
-function fuzzySearchFiles(files: string[], query: string): FuzzyResult[] {
-  if (!query) {
-    return files.slice(0, 8).map((f) => {
-      const parts = f.split("/");
-      const fileName = parts.pop() || f;
-      return {
-        filePath: f,
-        fileName,
-        dirPath: parts.join("/"),
-        score: 0,
-        matchedIndices: new Set(),
-      };
-    });
-  }
-
-  const q = query.toLowerCase();
-  const results: FuzzyResult[] = [];
-
-  for (const file of files) {
-    const lowerFile = file.toLowerCase();
-    let qIdx = 0;
-    let score = 0;
-    let consecutive = 0;
-    const matchedIndices = new Set<number>();
-
-    const parts = file.split("/");
-    const fileName = parts.pop() || file;
-    const dirPath = parts.join("/");
-    const fileNameStartIdx = file.lastIndexOf("/") + 1;
-
-    for (let i = 0; i < file.length; i++) {
-      if (qIdx < q.length && lowerFile[i] === q[qIdx]) {
-        matchedIndices.add(i);
-        qIdx++;
-        score += 10;
-        consecutive += 1;
-        score += consecutive * 5;
-
-        if (i >= fileNameStartIdx) score += 15;
-
-        if (
-          i === 0 ||
-          i === fileNameStartIdx ||
-          " /._-".includes(file[i - 1])
-        ) {
-          score += 20;
-        }
-      } else {
-        consecutive = 0;
-      }
-    }
-
-    if (qIdx === q.length) {
-      results.push({
-        filePath: file,
-        fileName,
-        dirPath,
-        score,
-        matchedIndices,
-      });
-    }
-  }
-
-  return results.sort((a, b) => b.score - a.score).slice(0, 8);
 }
 
 export function PromptPanel({
@@ -1787,41 +2550,48 @@ export function PromptPanel({
   onTokenStatsChange,
 }: PromptPanelProps) {
   const [request, setRequest] = useState("");
-  // Primary Seed Files: Explicitly @mentioned or manually toggled in tree
   const [seedFiles, setSeedFiles] = useState<Set<string>>(new Set());
-  // Accepted Suggestions: Added by clicking suggestion chips or "+ Add All"
-  const [acceptedSuggestions, setAcceptedSuggestions] = useState<Set<string>>(
-    new Set(),
-  );
+  const [acceptedSuggestions, setAcceptedSuggestions] = useState<Set<string>>(new Set());
 
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [isCopying, setIsCopying] = useState(false);
+  const [isCopyingFiles, setIsCopyingFiles] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-    new Set(["root"]),
-  );
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const mentionPopupRef = useRef<HTMLDivElement>(null);
-  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
-  const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1);
-  const [activeMentionIndex, setActiveMentionIndex] = useState<number>(0);
-
-  // Combined active context for prompts & stats: Seed Files + Accepted Suggestions
   const selectedFiles = useMemo(() => {
     const combined = new Set<string>(seedFiles);
     acceptedSuggestions.forEach((f) => combined.add(f));
     return combined;
   }, [seedFiles, acceptedSuggestions]);
 
-  const mentionMatches = useMemo(() => {
-    if (mentionQuery === null) return [];
-    return fuzzySearchFiles(files, mentionQuery);
-  }, [files, mentionQuery]);
+  const handleAddSeedFile = (filePath: string) => {
+    setSeedFiles((prev) => new Set(prev).add(filePath));
+  };
 
-  const prevMentionsRef = useRef<Set<string>>(new Set());
+  const {
+    textareaRef,
+    mentionPopupRef,
+    mentionQuery,
+    mentionMatches,
+    mentionPos,
+    activeMentionIndex,
+    setActiveMentionIndex,
+    handleTextareaChange,
+    handleTextareaKeyDown,
+    insertMention,
+  } = useMentionPopup({
+    request,
+    files,
+    setRequest,
+    onAddSeedFile: handleAddSeedFile,
+  });
 
-  // Sync @mentions in user text into Seed Files
+  const suggestedFiles = useSuggestedContext({
+    seedFiles,
+    selectedFiles,
+    dependencyMap,
+  });
+
   useEffect(() => {
     const matches = Array.from(request.matchAll(/@([a-zA-Z0-9_\-./]+)/g));
     const currentMentions = new Set<string>();
@@ -1833,183 +2603,17 @@ export function PromptPanel({
       }
     }
 
-    const prevMentions = prevMentionsRef.current;
-    const removedMentions = Array.from(prevMentions).filter(
-      (f) => !currentMentions.has(f),
-    );
-    const addedMentions = Array.from(currentMentions).filter(
-      (f) => !prevMentions.has(f),
-    );
-
-    if (removedMentions.length > 0 || addedMentions.length > 0) {
-      setSeedFiles((prev) => {
-        const next = new Set(prev);
-        removedMentions.forEach((f) => next.delete(f));
-        addedMentions.forEach((f) => next.add(f));
-        return next;
-      });
-      if (removedMentions.length > 0) {
-        setAcceptedSuggestions((prev) => {
-          const next = new Set(prev);
-          removedMentions.forEach((f) => next.delete(f));
-          return next;
-        });
-      }
-    }
-
-    prevMentionsRef.current = currentMentions;
+    setSeedFiles((prev) => {
+      const next = new Set(prev);
+      currentMentions.forEach((f) => next.add(f));
+      return next;
+    });
   }, [request, files]);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        mentionPopupRef.current &&
-        !mentionPopupRef.current.contains(e.target as Node) &&
-        textareaRef.current &&
-        !textareaRef.current.contains(e.target as Node)
-      ) {
-        setMentionQuery(null);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   useEffect(() => {
     setSeedFiles(new Set());
     setAcceptedSuggestions(new Set());
   }, [files]);
-
-  const treeData = useMemo(() => {
-    const root: TreeNode = {
-      name: "root",
-      path: "",
-      isFolder: true,
-      children: [],
-      allFiles: [],
-    };
-    const filteredFiles = files.filter((f) =>
-      f.toLowerCase().includes(searchQuery.toLowerCase()),
-    );
-
-    filteredFiles.forEach((filePath) => {
-      const parts = filePath.split("/");
-      let current = root;
-      current.allFiles.push(filePath);
-
-      let currentPath = "";
-      parts.forEach((part, index) => {
-        const isLast = index === parts.length - 1;
-        currentPath = currentPath ? `${currentPath}/${part}` : part;
-
-        let child = current.children.find((c) => c.name === part);
-        if (!child) {
-          child = {
-            name: part,
-            path: currentPath,
-            isFolder: !isLast,
-            children: [],
-            allFiles: [],
-          };
-          current.children.push(child);
-        }
-
-        if (!isLast) {
-          child.allFiles.push(filePath);
-        }
-
-        current = child;
-      });
-    });
-
-    const sortNodes = (node: TreeNode) => {
-      node.children.sort((a, b) => {
-        if (a.isFolder === b.isFolder) return a.name.localeCompare(b.name);
-        return a.isFolder ? -1 : 1;
-      });
-      node.children.forEach(sortNodes);
-    };
-    sortNodes(root);
-
-    return root;
-  }, [files, searchQuery]);
-
-  // 1-Hop Seed Rule: Suggestions strictly calculated from SEED FILES ONLY
-  const suggestedFiles = useMemo(() => {
-    if (
-      !dependencyMap ||
-      (!dependencyMap.outbound && !dependencyMap.inbound) ||
-      seedFiles.size === 0
-    ) {
-      return [];
-    }
-
-    const outboundMap = dependencyMap.outbound || {};
-    const inboundMap = dependencyMap.inbound || {};
-
-    const candidates = new Set<string>();
-
-    // Scan dependencies ONLY for seed files
-    seedFiles.forEach((file) => {
-      const children = outboundMap[file] || [];
-      children.forEach((child) => {
-        if (!selectedFiles.has(child)) {
-          candidates.add(child);
-        }
-      });
-
-      const parents = inboundMap[file] || [];
-      parents.forEach((parent) => {
-        if (!selectedFiles.has(parent)) {
-          candidates.add(parent);
-        }
-      });
-    });
-
-    const results: SuggestedFile[] = [];
-
-    candidates.forEach((candPath) => {
-      const candOutbound = outboundMap[candPath] || [];
-      const candInbound = inboundMap[candPath] || [];
-
-      // Check relationships against seed files for tooltips & directionality
-      const importedSeed = candOutbound.filter((f) => seedFiles.has(f));
-      const importingSeed = candInbound.filter((f) => seedFiles.has(f));
-
-      const isParent = importedSeed.length > 0;
-      const isChild = importingSeed.length > 0;
-
-      let type: "parent" | "child" | "hub" = "child";
-      let tooltip = "";
-
-      if (isParent && isChild) {
-        type = "hub";
-        tooltip = "Hub: Both a parent and child across active context";
-      } else if (isParent) {
-        type = "parent";
-        const fileNames = importedSeed
-          .map((f) => f.split("/").pop() || f)
-          .join(", ");
-        tooltip = `Parent: Imports ${fileNames}`;
-      } else {
-        type = "child";
-        const fileNames = importingSeed
-          .map((f) => f.split("/").pop() || f)
-          .join(", ");
-        tooltip = `Child: Imported by ${fileNames}`;
-      }
-
-      results.push({
-        filePath: candPath,
-        type,
-        importedActiveFiles: importedSeed,
-        importingActiveFiles: importingSeed,
-        tooltip,
-      });
-    });
-
-    return results;
-  }, [seedFiles, selectedFiles, dependencyMap]);
 
   const handleAddAllSuggestions = () => {
     setAcceptedSuggestions((prev) => {
@@ -2073,67 +2677,6 @@ export function PromptPanel({
     onTokenStatsChange,
   ]);
 
-  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = e.target.value;
-    const cursorPos = e.target.selectionStart;
-    setRequest(value);
-
-    const textBeforeCursor = value.slice(0, cursorPos);
-    const match = textBeforeCursor.match(/@([a-zA-Z0-9_\-./]*)$/);
-
-    if (match) {
-      setMentionQuery(match[1]);
-      setMentionStartIndex(cursorPos - match[0].length);
-      setActiveMentionIndex(0);
-    } else {
-      setMentionQuery(null);
-    }
-  };
-
-  const insertMention = (filePath: string) => {
-    if (mentionStartIndex < 0 || !textareaRef.current) return;
-
-    const cursorPos = textareaRef.current.selectionStart;
-    const before = request.slice(0, mentionStartIndex);
-    const after = request.slice(cursorPos);
-
-    const newText = `${before}@${filePath} ${after}`;
-    setRequest(newText);
-
-    // @mentioned files are primary Seed Files
-    setSeedFiles((prev) => new Set(prev).add(filePath));
-    setMentionQuery(null);
-
-    setTimeout(() => {
-      if (textareaRef.current) {
-        const newCursorPos = mentionStartIndex + filePath.length + 2;
-        textareaRef.current.focus();
-        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
-      }
-    }, 0);
-  };
-
-  const handleTextareaKeyDown = (
-    e: React.KeyboardEvent<HTMLTextAreaElement>,
-  ) => {
-    if (mentionQuery !== null && mentionMatches.length > 0) {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setActiveMentionIndex((prev) => (prev + 1) % mentionMatches.length);
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setActiveMentionIndex(
-          (prev) => (prev - 1 + mentionMatches.length) % mentionMatches.length,
-        );
-      } else if (e.key === "Enter" || e.key === "Tab") {
-        e.preventDefault();
-        insertMention(mentionMatches[activeMentionIndex].filePath);
-      } else if (e.key === "Escape") {
-        setMentionQuery(null);
-      }
-    }
-  };
-
   const handleSelectAll = () => {
     setSeedFiles(new Set(files));
     setAcceptedSuggestions(new Set());
@@ -2142,13 +2685,6 @@ export function PromptPanel({
   const handleDeselectAll = () => {
     setSeedFiles(new Set());
     setAcceptedSuggestions(new Set());
-  };
-
-  const toggleFolderExpand = (folderPath: string) => {
-    const newExpanded = new Set(expandedFolders);
-    if (newExpanded.has(folderPath)) newExpanded.delete(folderPath);
-    else newExpanded.add(folderPath);
-    setExpandedFolders(newExpanded);
   };
 
   const toggleFile = (filePath: string) => {
@@ -2164,16 +2700,12 @@ export function PromptPanel({
         return next;
       });
     } else {
-      // Manual selection in tree defines a Seed File
       setSeedFiles((prev) => new Set(prev).add(filePath));
     }
   };
 
-  const toggleFolderSelection = (node: TreeNode) => {
-    const folderFiles = node.allFiles;
-    const allSelected = folderFiles.every((f) => selectedFiles.has(f));
-
-    if (allSelected) {
+  const toggleFolder = (folderFiles: string[], shouldSelect: boolean) => {
+    if (!shouldSelect) {
       setSeedFiles((prev) => {
         const next = new Set(prev);
         folderFiles.forEach((f) => next.delete(f));
@@ -2193,7 +2725,299 @@ export function PromptPanel({
     }
   };
 
-  const renderTreeNode = (node: TreeNode, depth = 0) => {
+  return (
+    <div className="border-r border-zinc-800 flex flex-col h-full p-4 space-y-4 bg-zinc-950/50">
+      <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-lg flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="p-2 bg-cyan-500/10 rounded">
+            <Map className="w-4 h-4 text-cyan-500" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-zinc-200">
+              Repo Map Ready
+            </p>
+            <p className="text-[10px] text-zinc-500">
+              ~{repoMapTokens.toLocaleString()} map tokens / {files.length}{" "}
+              files
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => setIsMapModalOpen(true)}
+          className="text-zinc-400 hover:text-zinc-200 transition-colors p-1 rounded hover:bg-zinc-800"
+          title="Preview Repo Map"
+        >
+          <Eye className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="space-y-2 relative">
+        <div className="flex items-center justify-between">
+          <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold flex items-center">
+            <span>User Request</span>
+            <span className="ml-2 text-[10px] text-cyan-500/80 normal-case font-normal flex items-center">
+              <AtSign className="w-3 h-3 inline mr-0.5" /> Type @ to link files
+            </span>
+          </label>
+        </div>
+
+        <MentionDropdown
+          mentionQuery={mentionQuery}
+          mentionMatches={mentionMatches}
+          mentionPos={mentionPos}
+          activeMentionIndex={activeMentionIndex}
+          selectedFiles={selectedFiles}
+          mentionPopupRef={mentionPopupRef}
+          onInsertMention={insertMention}
+          onHoverMention={setActiveMentionIndex}
+        />
+
+        <textarea
+          ref={textareaRef}
+          className="w-full h-24 bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-sm text-zinc-300 focus:outline-none focus:border-cyan-500/50 resize-none font-sans"
+          placeholder="Describe the changes needed... (type @ to fuzzy match files)"
+          value={request}
+          onChange={handleTextareaChange}
+          onKeyDown={handleTextareaKeyDown}
+        />
+      </div>
+
+      <SuggestedContextBar
+        suggestedFiles={suggestedFiles}
+        onAddAllSuggestions={handleAddAllSuggestions}
+        onToggleSuggestion={handleToggleSuggestion}
+      />
+
+      <FileTree
+        files={files}
+        selectedFiles={selectedFiles}
+        searchQuery={searchQuery}
+        onSearchQueryChange={setSearchQuery}
+        onSelectAll={handleSelectAll}
+        onDeselectAll={handleDeselectAll}
+        onToggleFile={toggleFile}
+        onToggleFolder={toggleFolder}
+      />
+
+      <div className="space-y-2 text-xs text-zinc-300">
+        <label className="flex items-center space-x-2 cursor-pointer">
+          <input type="checkbox" defaultChecked className="accent-cyan-500" />
+          <span>Enforce SEARCH/REPLACE blocks</span>
+        </label>
+      </div>
+
+      <div className="flex space-x-2 shrink-0">
+        <button
+          onClick={async () => {
+            setIsCopying(true);
+            try {
+              const data = await filesApi.fetchFiles(Array.from(selectedFiles));
+
+              const activeFilesText = formatActiveFilesContext(
+                selectedFiles,
+                data.contents || {},
+              );
+              const finalPrompt = buildFullContextPrompt({
+                repoMap,
+                activeFilesText,
+                userRequest: request,
+              });
+
+              onCopy(finalPrompt);
+            } finally {
+              setIsCopying(false);
+            }
+          }}
+          disabled={isCopying || isCopyingFiles}
+          className="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold py-2.5 rounded-lg shadow-lg shadow-cyan-500/10 flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer text-[11px]"
+        >
+          <Copy className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">
+            {isCopying
+              ? "Assembling..."
+              : `Full Context (${selectedFiles.size})`}
+          </span>
+        </button>
+
+        <button
+          onClick={async () => {
+            setIsCopyingFiles(true);
+            try {
+              const data = await filesApi.fetchFiles(Array.from(selectedFiles));
+
+              const activeFilesText = formatActiveFilesContext(
+                selectedFiles,
+                data.contents || {},
+              );
+              const finalPrompt = buildFilesAndPromptOnly({
+                activeFilesText,
+                userRequest: request,
+              });
+
+              onCopy(finalPrompt);
+            } finally {
+              setIsCopyingFiles(false);
+            }
+          }}
+          disabled={isCopying || isCopyingFiles || selectedFiles.size === 0}
+          className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold py-2.5 rounded-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer border border-zinc-700 text-[11px]"
+        >
+          <FileText className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">
+            {isCopyingFiles
+              ? "Fetching..."
+              : `Files + Prompt (${selectedFiles.size})`}
+          </span>
+        </button>
+      </div>
+
+      {isMapModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-2xl flex flex-col overflow-hidden shadow-2xl">
+            <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900">
+              <h2 className="text-sm font-bold text-zinc-200">
+                Repo Map Context Preview (~{repoMapTokens.toLocaleString()}
+                tokens)
+              </h2>
+              <button
+                onClick={() => setIsMapModalOpen(false)}
+                className="text-zinc-400 hover:text-zinc-200 p-1 rounded-md hover:bg-zinc-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto max-h-[60vh] custom-scrollbar">
+              <pre className="font-mono text-xs text-zinc-300 bg-zinc-900 p-4 rounded-lg border border-zinc-800 whitespace-pre-wrap">
+                {repoMap || "Generating Repo Map..."}
+              </pre>
+            </div>
+
+            <div className="p-4 border-t border-zinc-800 bg-zinc-900 flex justify-end space-x-3">
+              <button
+                onClick={() => setIsMapModalOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors border border-zinc-700 cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  onCopyMap(repoMap);
+                  setIsMapModalOpen(false);
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-500 rounded-lg transition-colors shadow-lg shadow-cyan-900/20 cursor-pointer"
+              >
+                Copy Raw Map
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+==================================================
+FILE PATH: src\components\Toast.tsx
+==================================================
+import { Check } from "lucide-react";
+import { useEffect } from "react";
+import { motion, AnimatePresence } from "motion/react";
+
+interface ToastProps {
+  message: string | null;
+  onClose: () => void;
+}
+
+export function Toast({ message, onClose }: ToastProps) {
+  useEffect(() => {
+    if (message) {
+      const timer = setTimeout(onClose, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [message, onClose]);
+
+  return (
+    <AnimatePresence>
+      {message && (
+        <motion.div
+          initial={{ opacity: 0, y: 50, scale: 0.9 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+          className="fixed bottom-24 right-8 z-50 flex items-center px-4 py-3 bg-zinc-800 border border-zinc-700 text-zinc-100 rounded-lg shadow-2xl"
+        >
+          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 mr-3">
+            <Check className="w-3.5 h-3.5" />
+          </div>
+          <span className="text-sm font-medium">{message}</span>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+
+==================================================
+FILE PATH: src\components\prompt\FileTree.tsx
+==================================================
+import React, { useState, useMemo } from "react";
+import {
+  Folder,
+  FolderOpen,
+  FileText,
+  ChevronRight,
+  ChevronDown,
+  CheckSquare,
+  Square,
+  MinusSquare,
+  Search,
+  X,
+} from "lucide-react";
+import { buildFileTree, TreeNode } from "../../utils/treeBuilder";
+
+interface FileTreeProps {
+  files: string[];
+  selectedFiles: Set<string>;
+  searchQuery: string;
+  onSearchQueryChange: (query: string) => void;
+  onSelectAll: () => void;
+  onDeselectAll: () => void;
+  onToggleFile: (filePath: string) => void;
+  onToggleFolder: (folderFiles: string[], shouldSelect: boolean) => void;
+}
+
+export function FileTree({
+  files,
+  selectedFiles,
+  searchQuery,
+  onSearchQueryChange,
+  onSelectAll,
+  onDeselectAll,
+  onToggleFile,
+  onToggleFolder,
+}: FileTreeProps) {
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
+    new Set(["root"]),
+  );
+
+  const treeData = useMemo(() => buildFileTree(files, searchQuery), [files, searchQuery]);
+
+  const toggleFolderExpand = (folderPath: string) => {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(folderPath)) next.delete(folderPath);
+      else next.add(folderPath);
+      return next;
+    });
+  };
+
+  const toggleFolderSelection = (node: TreeNode) => {
+    const folderFiles = node.allFiles;
+    const allSelected = folderFiles.every((f) => selectedFiles.has(f));
+    onToggleFolder(folderFiles, !allSelected);
+  };
+
+  const renderTreeNode = (node: TreeNode, depth = 0): React.ReactNode => {
     if (node.isFolder) {
       const isExpanded =
         expandedFolders.has(node.path) || searchQuery.trim().length > 0;
@@ -2264,7 +3088,7 @@ export function PromptPanel({
     return (
       <div
         key={node.path}
-        onClick={() => toggleFile(node.path)}
+        onClick={() => onToggleFile(node.path)}
         className={`flex items-center py-1 px-1 rounded text-xs cursor-pointer select-none transition-colors ${
           isSelected
             ? "bg-zinc-800/70 text-zinc-100"
@@ -2285,407 +3109,692 @@ export function PromptPanel({
     );
   };
 
-  const renderFuzzyPath = (result: FuzzyResult) => {
-    const chars = result.filePath.split("");
-    return (
-      <span className="font-mono text-xs truncate">
-        {chars.map((char, idx) => {
-          const isMatched = result.matchedIndices.has(idx);
-          return (
-            <span
-              key={idx}
-              className={
-                isMatched
-                  ? "text-cyan-400 font-bold bg-cyan-950/60 rounded-[1px]"
-                  : "text-zinc-400"
-              }
-            >
-              {char}
-            </span>
-          );
-        })}
-      </span>
-    );
-  };
-
   return (
-    <div className="border-r border-zinc-800 flex flex-col h-full p-4 space-y-4 bg-zinc-950/50">
-      <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-lg flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="p-2 bg-cyan-500/10 rounded">
-            <Map className="w-4 h-4 text-cyan-500" />
-          </div>
-          <div>
-            <p className="text-xs font-semibold text-zinc-200">
-              Repo Map Ready
-            </p>
-            <p className="text-[10px] text-zinc-500">
-              ~{repoMapTokens.toLocaleString()} map tokens / {files.length}{" "}
-              files
-            </p>
-          </div>
+    <div className="flex-1 flex flex-col space-y-2 min-h-0">
+      <div className="flex items-center justify-between">
+        <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold">
+          Context Selection ({selectedFiles.size}/{files.length})
+        </label>
+        <div className="flex items-center space-x-2 text-[10px]">
+          <button
+            onClick={onSelectAll}
+            className="text-cyan-500 hover:text-cyan-400 font-medium hover:underline cursor-pointer"
+          >
+            Select All
+          </button>
+          <span className="text-zinc-700">|</span>
+          <button
+            onClick={onDeselectAll}
+            className="text-zinc-500 hover:text-zinc-400 font-medium hover:underline cursor-pointer"
+          >
+            Clear
+          </button>
         </div>
-        <button
-          onClick={() => setIsMapModalOpen(true)}
-          className="text-zinc-400 hover:text-zinc-200 transition-colors p-1 rounded hover:bg-zinc-800"
-          title="Preview Repo Map"
-        >
-          <Eye className="w-4 h-4" />
-        </button>
       </div>
 
-      {/* SMART IMPORT DEPENDENCY SUGGESTIONS BANNER (1-Hop Seed Rule) */}
-      {suggestedFiles.length > 0 && (
-        <div className="bg-zinc-900/90 border border-zinc-800 rounded-lg p-2.5 space-y-2 animate-fadeIn shrink-0">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-zinc-200 font-semibold flex items-center">
-              <Sparkles className="w-3.5 h-3.5 mr-1.5 text-indigo-400" />
-              Suggested Context ({suggestedFiles.length})
-            </span>
-            <button
-              onClick={handleAddAllSuggestions}
-              className="text-[10px] bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-2 py-0.5 rounded transition-colors cursor-pointer"
-            >
-              + Add All
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto custom-scrollbar">
-            {suggestedFiles.map((item) => {
-              const fileName = item.filePath.split("/").pop() || item.filePath;
+      <div className="relative flex items-center">
+        <Search className="w-3.5 h-3.5 absolute left-2.5 text-zinc-500 pointer-events-none" />
+        <input
+          type="text"
+          placeholder="Filter files or folders..."
+          value={searchQuery}
+          onChange={(e) => onSearchQueryChange(e.target.value)}
+          className="w-full bg-zinc-900/80 border border-zinc-800 rounded-md pl-8 pr-3 py-1 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-cyan-500/50"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => onSearchQueryChange("")}
+            className="absolute right-2 text-zinc-500 hover:text-zinc-300"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        )}
+      </div>
 
-              if (item.type === "parent") {
-                return (
-                  <button
-                    key={item.filePath}
-                    onClick={() => handleToggleSuggestion(item.filePath)}
-                    title={item.tooltip}
-                    className="text-[10px] bg-purple-950/40 border border-purple-500/40 text-purple-300 hover:bg-purple-900/60 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
-                  >
-                    <ArrowUp className="w-3 h-3 text-purple-400 shrink-0" />
-                    <span className="font-mono truncate max-w-[130px]">
-                      {fileName}
-                    </span>
-                  </button>
-                );
-              }
-
-              if (item.type === "child") {
-                return (
-                  <button
-                    key={item.filePath}
-                    onClick={() => handleToggleSuggestion(item.filePath)}
-                    title={item.tooltip}
-                    className="text-[10px] bg-cyan-950/40 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-900/60 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
-                  >
-                    <ArrowDown className="w-3 h-3 text-cyan-400 shrink-0" />
-                    <span className="font-mono truncate max-w-[130px]">
-                      {fileName}
-                    </span>
-                  </button>
-                );
-              }
-
-              return (
-                <button
-                  key={item.filePath}
-                  onClick={() => handleToggleSuggestion(item.filePath)}
-                  title={item.tooltip}
-                  className="text-[10px] bg-gradient-to-r from-purple-950/50 to-cyan-950/50 border border-indigo-500/50 text-indigo-200 hover:from-purple-900/70 hover:to-cyan-900/70 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
-                >
-                  <ArrowUpDown className="w-3 h-3 text-indigo-300 shrink-0" />
-                  <span className="font-mono truncate max-w-[130px]">
-                    {fileName}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      <div className="flex-1 flex flex-col space-y-2 min-h-0">
-        <div className="flex items-center justify-between">
-          <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold">
-            Context Selection ({selectedFiles.size}/{files.length})
-          </label>
-          <div className="flex items-center space-x-2 text-[10px]">
-            <button
-              onClick={handleSelectAll}
-              className="text-cyan-500 hover:text-cyan-400 font-medium hover:underline cursor-pointer"
-            >
-              Select All
-            </button>
-            <span className="text-zinc-700">|</span>
-            <button
-              onClick={handleDeselectAll}
-              className="text-zinc-500 hover:text-zinc-400 font-medium hover:underline cursor-pointer"
-            >
-              Clear
-            </button>
-          </div>
-        </div>
-
-        <div className="relative flex items-center">
-          <Search className="w-3.5 h-3.5 absolute left-2.5 text-zinc-500 pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Filter files or folders..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-zinc-900/80 border border-zinc-800 rounded-md pl-8 pr-3 py-1 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-cyan-500/50"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery("")}
-              className="absolute right-2 text-zinc-500 hover:text-zinc-300"
-            >
-              <X className="w-3 h-3" />
-            </button>
+      <div className="flex-1 bg-zinc-900/50 border border-zinc-800 rounded-md overflow-hidden flex flex-col">
+        <div className="p-2 space-y-0.5 overflow-y-auto custom-scrollbar flex-1">
+          {treeData.children.length > 0 ? (
+            treeData.children.map((child) => renderTreeNode(child))
+          ) : (
+            <div className="text-center py-6 text-xs text-zinc-600">
+              No files found
+            </div>
           )}
         </div>
-
-        <div className="flex-1 bg-zinc-900/50 border border-zinc-800 rounded-md overflow-hidden flex flex-col">
-          <div className="p-2 space-y-0.5 overflow-y-auto custom-scrollbar flex-1">
-            {treeData.children.length > 0 ? (
-              treeData.children.map((child) => renderTreeNode(child))
-            ) : (
-              <div className="text-center py-6 text-xs text-zinc-600">
-                No files found
-              </div>
-            )}
-          </div>
-        </div>
       </div>
-
-      <div className="space-y-2 relative">
-        <div className="flex items-center justify-between">
-          <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold flex items-center">
-            <span>User Request</span>
-            <span className="ml-2 text-[10px] text-cyan-500/80 normal-case font-normal flex items-center">
-              <AtSign className="w-3 h-3 inline mr-0.5" /> Type @ to link files
-            </span>
-          </label>
-        </div>
-
-        {mentionQuery !== null && mentionMatches.length > 0 && (
-          <div
-            ref={mentionPopupRef}
-            className="absolute bottom-full mb-1 left-0 right-0 bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-50 overflow-hidden max-h-52 overflow-y-auto custom-scrollbar"
-          >
-            <div className="p-1.5 bg-zinc-950 border-b border-zinc-800 text-[10px] text-zinc-400 font-medium flex justify-between">
-              <span>Fuzzy Matches for "@{mentionQuery}"</span>
-              <span className="text-zinc-600">
-                ↑↓ to navigate, Enter to select
-              </span>
-            </div>
-            {mentionMatches.map((res, idx) => (
-              <div
-                key={res.filePath}
-                onClick={() => insertMention(res.filePath)}
-                onMouseEnter={() => setActiveMentionIndex(idx)}
-                className={`px-3 py-1.5 text-xs flex items-center justify-between cursor-pointer transition-colors ${
-                  idx === activeMentionIndex
-                    ? "bg-cyan-600/30 text-cyan-200 border-l-2 border-cyan-500"
-                    : "text-zinc-300 hover:bg-zinc-800/50"
-                }`}
-              >
-                <div className="flex items-center min-w-0 mr-2">
-                  <FileText className="w-3.5 h-3.5 mr-2 text-zinc-400 shrink-0" />
-                  {renderFuzzyPath(res)}
-                </div>
-                {selectedFiles.has(res.filePath) && (
-                  <span className="text-[9px] bg-cyan-500/20 text-cyan-400 font-mono px-1 py-0.5 rounded border border-cyan-500/30 shrink-0">
-                    Added
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        <textarea
-          ref={textareaRef}
-          className="w-full h-24 bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-sm text-zinc-300 focus:outline-none focus:border-cyan-500/50 resize-none font-sans"
-          placeholder="Describe the changes needed... (type @ to fuzzy match files)"
-          value={request}
-          onChange={handleTextareaChange}
-          onKeyDown={handleTextareaKeyDown}
-        />
-      </div>
-
-      <div className="space-y-2 text-xs text-zinc-300">
-        <label className="flex items-center space-x-2 cursor-pointer">
-          <input type="checkbox" defaultChecked className="accent-cyan-500" />
-          <span>Enforce SEARCH/REPLACE blocks</span>
-        </label>
-      </div>
-
-      <button
-        onClick={async () => {
-          setIsCopying(true);
-          try {
-            const res = await fetch("/api/files", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ files: Array.from(selectedFiles) }),
-            });
-            const data = await res.json();
-
-            let activeFilesText = "";
-            if (selectedFiles.size > 0) {
-              for (const f of selectedFiles) {
-                activeFilesText += `--- START OF FILE ${f} ---\n${data.contents[f] || ""}\n--- END OF FILE ${f} ---\n\n`;
-              }
-            } else {
-              activeFilesText = "No specific files selected.";
-            }
-
-            const SEARCH_MARKER = "<".repeat(7) + " SEARCH";
-            const EQUALS_MARKER = "=".repeat(7);
-            const REPLACE_MARKER = ">".repeat(7) + " REPLACE";
-
-            const finalPrompt = `ROLE: Senior Software Architect & Elite Developer
-You write clean, production-grade, type-safe, and secure code, keeping system architecture and long-term maintainability in mind.
-
-ADVISORY PROTOCOL:
-If the user requests a code change that is unoptimized or violates best practices:
-1. Fully comply with and implement the exact requested change.
-2. At the end of your response, briefly suggest the industry-standard alternative and why it is better, without being preachy or refusing the request.
-
-OUTPUT FORMAT & GUARDRAILS:
-You must output code modifications using exact SEARCH/REPLACE blocks.
-
-1. FORMAT RULE: Every modification MUST specify the file path and use this exact delimiter:
-   FILE: path/to/file.ext
-   ${SEARCH_MARKER}
-   [exact existing code to replace]
-   ${EQUALS_MARKER}
-   [new code]
-   ${REPLACE_MARKER}
-
-2. THE 80% OVERWRITE RULE (Token Optimization):
-   - For partial edits (<80% of file changing): Use targeted SEARCH/REPLACE blocks.
-   - For NEW files OR total file rewrites (>80% of file changing): Leave the SEARCH block EMPTY (${SEARCH_MARKER}\n${EQUALS_MARKER}\n[new code]\n${REPLACE_MARKER}) so you do not waste output tokens repeating old code.
-
-3. ANCHOR RULE (Keep SEARCH blocks small):
-   - Copy only 2-3 unique lines at the top/bottom of the edit area ("anchors") to keep blocks minimal.
-
-4. EXACT WHITESPACE RULE:
-   - Code inside SEARCH MUST match the original file's indentation, spaces, and tabs 100% exactly.
-
-==================================================
-REPO MAP (Project Blueprint):
-${repoMap || "No map generated."}
-
-==================================================
-ACTIVE FILES CONTEXT:
-${activeFilesText}
-==================================================
-USER REQUEST:
-${request}`;
-
-            onCopy(finalPrompt);
-          } finally {
-            setIsCopying(false);
-          }
-        }}
-        disabled={isCopying}
-        className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold py-3 rounded-lg shadow-lg shadow-cyan-500/10 flex items-center justify-center space-x-2 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer"
-      >
-        <Copy className="w-4 h-4" />
-        <span>
-          {isCopying
-            ? "Assembling..."
-            : `Copy Context (${selectedFiles.size} Files) + Prompt`}
-        </span>
-      </button>
-
-      {isMapModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-2xl flex flex-col overflow-hidden shadow-2xl">
-            <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900">
-              <h2 className="text-sm font-bold text-zinc-200">
-                Repo Map Context Preview (~{repoMapTokens.toLocaleString()}
-                tokens)
-              </h2>
-              <button
-                onClick={() => setIsMapModalOpen(false)}
-                className="text-zinc-400 hover:text-zinc-200 p-1 rounded-md hover:bg-zinc-800 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-4 overflow-y-auto max-h-[60vh] custom-scrollbar">
-              <pre className="font-mono text-xs text-zinc-300 bg-zinc-900 p-4 rounded-lg border border-zinc-800 whitespace-pre-wrap">
-                {repoMap || "Generating Repo Map..."}
-              </pre>
-            </div>
-
-            <div className="p-4 border-t border-zinc-800 bg-zinc-900 flex justify-end space-x-3">
-              <button
-                onClick={() => setIsMapModalOpen(false)}
-                className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors border border-zinc-700 cursor-pointer"
-              >
-                Close
-              </button>
-              <button
-                onClick={() => {
-                  onCopyMap(repoMap);
-                  setIsMapModalOpen(false);
-                }}
-                className="px-4 py-2 text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-500 rounded-lg transition-colors shadow-lg shadow-cyan-900/20 cursor-pointer"
-              >
-                Copy Raw Map
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-
 ==================================================
-FILE PATH: src\components\Toast.tsx
+FILE PATH: src\components\prompt\MentionDropdown.tsx
 ==================================================
-import { Check } from "lucide-react";
-import { useEffect } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import React from "react";
+import { createPortal } from "react-dom";
+import { FileText } from "lucide-react";
+import { FuzzyResult } from "../../utils/fuzzySearch";
 
-interface ToastProps {
-  message: string | null;
-  onClose: () => void;
+interface MentionDropdownProps {
+  mentionQuery: string | null;
+  mentionMatches: FuzzyResult[];
+  mentionPos: {
+    top: number;
+    left: number;
+    width: number;
+    maxHeight: number;
+    direction: "up" | "down";
+  } | null;
+  activeMentionIndex: number;
+  selectedFiles: Set<string>;
+  mentionPopupRef: React.RefObject<HTMLDivElement | null>;
+  onInsertMention: (filePath: string) => void;
+  onHoverMention: (index: number) => void;
 }
 
-export function Toast({ message, onClose }: ToastProps) {
-  useEffect(() => {
-    if (message) {
-      const timer = setTimeout(onClose, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [message, onClose]);
+export function MentionDropdown({
+  mentionQuery,
+  mentionMatches,
+  mentionPos,
+  activeMentionIndex,
+  selectedFiles,
+  mentionPopupRef,
+  onInsertMention,
+  onHoverMention,
+}: MentionDropdownProps) {
+  if (mentionQuery === null || mentionMatches.length === 0 || !mentionPos) {
+    return null;
+  }
 
-  return (
-    <AnimatePresence>
-      {message && (
-        <motion.div
-          initial={{ opacity: 0, y: 50, scale: 0.9 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
-          className="fixed bottom-24 right-8 z-50 flex items-center px-4 py-3 bg-zinc-800 border border-zinc-700 text-zinc-100 rounded-lg shadow-2xl"
-        >
-          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 mr-3">
-            <Check className="w-3.5 h-3.5" />
+  const renderFuzzyPath = (result: FuzzyResult) => {
+    const dirLen = result.dirPath ? result.dirPath.length + 1 : 0;
+    const dirChars = result.filePath.slice(0, dirLen).split("");
+    const fileChars = result.filePath.slice(dirLen).split("");
+
+    const renderChars = (chars: string[], offset: number) =>
+      chars.map((char, i) => {
+        const idx = offset + i;
+        const isMatched = result.matchedIndices.has(idx);
+        return (
+          <span
+            key={idx}
+            className={
+              isMatched
+                ? "text-cyan-400 font-bold bg-cyan-950/60 rounded-[1px]"
+                : "text-zinc-400"
+            }
+          >
+            {char}
+          </span>
+        );
+      });
+
+    return (
+      <span className="font-mono text-xs flex items-center min-w-0">
+        {dirChars.length > 0 && (
+          <span
+            className="overflow-hidden whitespace-nowrap text-ellipsis shrink"
+            style={{ direction: "rtl", textAlign: "left" }}
+            title={result.dirPath}
+          >
+            {renderChars(dirChars, 0)}
+          </span>
+        )}
+        <span className="whitespace-nowrap shrink-0">
+          {renderChars(fileChars, dirLen)}
+        </span>
+      </span>
+    );
+  };
+
+  return createPortal(
+    <div
+      ref={mentionPopupRef}
+      className="fixed bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-[100] flex flex-col"
+      style={{
+        left: mentionPos.left,
+        width: mentionPos.width,
+        maxHeight: mentionPos.maxHeight,
+        top: mentionPos.direction === "down" ? mentionPos.top : undefined,
+        bottom:
+          mentionPos.direction === "up"
+            ? window.innerHeight - mentionPos.top
+            : undefined,
+      }}
+    >
+      <div className="p-1.5 bg-zinc-950 border-b border-zinc-800 text-[10px] text-zinc-400 font-medium flex justify-between shrink-0">
+        <span>Fuzzy Matches for "@{mentionQuery}"</span>
+        <span className="text-zinc-600">
+          ↑↓ to navigate, Enter to select
+        </span>
+      </div>
+      <div className="overflow-y-auto custom-scrollbar">
+        {mentionMatches.map((res, idx) => (
+          <div
+            key={res.filePath}
+            onClick={() => onInsertMention(res.filePath)}
+            onMouseEnter={() => onHoverMention(idx)}
+            className={`px-3 py-1.5 text-xs flex items-center justify-between cursor-pointer transition-colors gap-2 ${
+              idx === activeMentionIndex
+                ? "bg-cyan-600/30 text-cyan-200 border-l-2 border-cyan-500"
+                : "text-zinc-300 hover:bg-zinc-800/50"
+            }`}
+          >
+            <div className="flex items-center min-w-0 flex-1">
+              <FileText className="w-3.5 h-3.5 mr-2 text-zinc-400 shrink-0" />
+              {renderFuzzyPath(res)}
+            </div>
+            {selectedFiles.has(res.filePath) && (
+              <span className="text-[9px] bg-cyan-500/20 text-cyan-400 font-mono px-1 py-0.5 rounded border border-cyan-500/30 shrink-0">
+                Added
+              </span>
+            )}
           </div>
-          <span className="text-sm font-medium">{message}</span>
-        </motion.div>
-      )}
-    </AnimatePresence>
+        ))}
+      </div>
+    </div>,
+    document.body,
   );
 }
 
+==================================================
+FILE PATH: src\components\prompt\SuggestedContextBar.tsx
+==================================================
+import React from "react";
+import { Sparkles, Globe, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+
+export interface SuggestedFile {
+  filePath: string;
+  type: "parent" | "child" | "hub" | "api";
+  importedActiveFiles: string[];
+  importingActiveFiles: string[];
+  tooltip: string;
+}
+
+interface SuggestedContextBarProps {
+  suggestedFiles: SuggestedFile[];
+  onAddAllSuggestions: () => void;
+  onToggleSuggestion: (filePath: string) => void;
+}
+
+export function SuggestedContextBar({
+  suggestedFiles,
+  onAddAllSuggestions,
+  onToggleSuggestion,
+}: SuggestedContextBarProps) {
+  if (suggestedFiles.length === 0) return null;
+
+  return (
+    <div className="bg-zinc-900/90 border border-zinc-800 rounded-lg p-2.5 space-y-2 animate-fadeIn shrink-0">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-zinc-200 font-semibold flex items-center">
+          <Sparkles className="w-3.5 h-3.5 mr-1.5 text-indigo-400" />
+          Suggested Context ({suggestedFiles.length})
+        </span>
+        <button
+          onClick={onAddAllSuggestions}
+          className="text-[10px] bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-2 py-0.5 rounded transition-colors cursor-pointer"
+        >
+          + Add All
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto custom-scrollbar">
+        {suggestedFiles.map((item) => {
+          const fileName = item.filePath.split("/").pop() || item.filePath;
+
+          if (item.type === "api") {
+            return (
+              <button
+                key={item.filePath}
+                onClick={() => onToggleSuggestion(item.filePath)}
+                title={item.tooltip}
+                className="text-[10px] bg-emerald-950/50 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/70 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors shadow-sm"
+              >
+                <Globe className="w-3 h-3 text-emerald-400 shrink-0" />
+                <span className="font-mono truncate max-w-[130px]">
+                  {fileName}
+                </span>
+              </button>
+            );
+          }
+
+          if (item.type === "parent") {
+            return (
+              <button
+                key={item.filePath}
+                onClick={() => onToggleSuggestion(item.filePath)}
+                title={item.tooltip}
+                className="text-[10px] bg-purple-950/40 border border-purple-500/40 text-purple-300 hover:bg-purple-900/60 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
+              >
+                <ArrowUp className="w-3 h-3 text-purple-400 shrink-0" />
+                <span className="font-mono truncate max-w-[130px]">
+                  {fileName}
+                </span>
+              </button>
+            );
+          }
+
+          if (item.type === "child") {
+            return (
+              <button
+                key={item.filePath}
+                onClick={() => onToggleSuggestion(item.filePath)}
+                title={item.tooltip}
+                className="text-[10px] bg-cyan-950/40 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-900/60 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
+              >
+                <ArrowDown className="w-3 h-3 text-cyan-400 shrink-0" />
+                <span className="font-mono truncate max-w-[130px]">
+                  {fileName}
+                </span>
+              </button>
+            );
+          }
+
+          return (
+            <button
+              key={item.filePath}
+              onClick={() => onToggleSuggestion(item.filePath)}
+              title={item.tooltip}
+              className="text-[10px] bg-gradient-to-r from-purple-950/50 to-cyan-950/50 border border-indigo-500/50 text-indigo-200 hover:from-purple-900/70 hover:to-cyan-900/70 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
+            >
+              <ArrowUpDown className="w-3 h-3 text-indigo-300 shrink-0" />
+              <span className="font-mono truncate max-w-[130px]">
+                {fileName}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+==================================================
+FILE PATH: src\hooks\useMentionPopup.ts
+==================================================
+import { useState, useEffect, useMemo, useRef, ChangeEvent, KeyboardEvent } from "react";
+import { fuzzySearchFiles } from "../utils/fuzzySearch";
+
+interface UseMentionPopupProps {
+  request: string;
+  files: string[];
+  setRequest: (value: string) => void;
+  onAddSeedFile: (filePath: string) => void;
+}
+
+export function useMentionPopup({
+  request,
+  files,
+  setRequest,
+  onAddSeedFile,
+}: UseMentionPopupProps) {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const mentionPopupRef = useRef<HTMLDivElement | null>(null);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1);
+  const [activeMentionIndex, setActiveMentionIndex] = useState<number>(0);
+  const [mentionPos, setMentionPos] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    maxHeight: number;
+    direction: "up" | "down";
+  } | null>(null);
+
+  const mentionMatches = useMemo(() => {
+    if (mentionQuery === null) return [];
+    return fuzzySearchFiles(files, mentionQuery);
+  }, [files, mentionQuery]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        mentionPopupRef.current &&
+        !mentionPopupRef.current.contains(e.target as Node) &&
+        textareaRef.current &&
+        !textareaRef.current.contains(e.target as Node)
+      ) {
+        setMentionQuery(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (mentionQuery === null || !textareaRef.current) {
+      setMentionPos(null);
+      return;
+    }
+
+    const MARGIN = 8;
+    const MAX_PANEL_HEIGHT = 260;
+    const MIN_PANEL_HEIGHT = 120;
+
+    const updatePosition = () => {
+      const rect = textareaRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const spaceAbove = rect.top - MARGIN;
+      const spaceBelow = window.innerHeight - rect.bottom - MARGIN;
+      const openUp = spaceAbove >= 160 || spaceAbove >= spaceBelow;
+
+      const maxHeight = Math.min(
+        MAX_PANEL_HEIGHT,
+        Math.max(MIN_PANEL_HEIGHT, (openUp ? spaceAbove : spaceBelow) - MARGIN),
+      );
+
+      setMentionPos({
+        top: openUp ? rect.top - MARGIN : rect.bottom + MARGIN,
+        left: rect.left,
+        width: rect.width,
+        maxHeight,
+        direction: openUp ? "up" : "down",
+      });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [mentionQuery, mentionMatches.length]);
+
+  const handleTextareaChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    const cursorPos = e.target.selectionStart;
+    setRequest(value);
+
+    const textBeforeCursor = value.slice(0, cursorPos);
+    const match = textBeforeCursor.match(/@([a-zA-Z0-9_\-./]*)$/);
+
+    if (match) {
+      setMentionQuery(match[1]);
+      setMentionStartIndex(cursorPos - match[0].length);
+      setActiveMentionIndex(0);
+    } else {
+      setMentionQuery(null);
+    }
+  };
+
+  const insertMention = (filePath: string) => {
+    if (mentionStartIndex < 0 || !textareaRef.current) return;
+
+    const cursorPos = textareaRef.current.selectionStart;
+    const before = request.slice(0, mentionStartIndex);
+    const after = request.slice(cursorPos);
+
+    const newText = `${before}@${filePath} ${after}`;
+    setRequest(newText);
+
+    onAddSeedFile(filePath);
+    setMentionQuery(null);
+
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const newCursorPos = mentionStartIndex + filePath.length + 2;
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 0);
+  };
+
+  const handleTextareaKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionQuery !== null && mentionMatches.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setActiveMentionIndex((prev) => (prev + 1) % mentionMatches.length);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setActiveMentionIndex(
+          (prev) => (prev - 1 + mentionMatches.length) % mentionMatches.length,
+        );
+      } else if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        insertMention(mentionMatches[activeMentionIndex].filePath);
+      } else if (e.key === "Escape") {
+        setMentionQuery(null);
+      }
+    }
+  };
+
+  return {
+    textareaRef,
+    mentionPopupRef,
+    mentionQuery,
+    mentionMatches,
+    mentionPos,
+    activeMentionIndex,
+    setActiveMentionIndex,
+    handleTextareaChange,
+    handleTextareaKeyDown,
+    insertMention,
+  };
+}
+
+==================================================
+FILE PATH: src\hooks\useRepoContext.ts
+==================================================
+import { useState, useEffect, useCallback } from "react";
+import { repoApi, historyApi } from "../api/client";
+import { HistoryLog } from "../types";
+
+export function useRepoContext() {
+  const [repoPath, setRepoPath] = useState<string>("Loading...");
+  const [repoFiles, setRepoFiles] = useState<string[]>([]);
+  const [repoMap, setRepoMap] = useState<string>("");
+  const [fileStats, setFileStats] = useState<
+    Record<string, { size: number; tokens: number }>
+  >({});
+  const [dependencyMap, setDependencyMap] = useState<{
+    outbound: Record<string, string[]>;
+    inbound: Record<string, string[]>;
+    apiOutbound?: Record<string, string[]>;
+    apiInbound?: Record<string, string[]>;
+  }>({ outbound: {}, inbound: {} });
+  const [logs, setLogs] = useState<HistoryLog[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  const fetchHistory = useCallback(async () => {
+    try {
+      const data = await historyApi.fetchHistory();
+      if (data.success) {
+        setLogs(data.logs);
+      }
+    } catch (err) {
+      console.error("Failed to fetch git history:", err);
+    }
+  }, []);
+
+  const loadRepo = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const data = await repoApi.fetchRepo();
+      if (data.success) {
+        setRepoPath(data.path);
+        setRepoFiles(data.files);
+        setRepoMap(data.repoMap);
+        setFileStats(data.fileStats || {});
+        setDependencyMap(data.dependencyMap || { outbound: {}, inbound: {} });
+      }
+    } catch (err) {
+      console.error("Failed to fetch repo context:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadRepo();
+    fetchHistory();
+  }, [loadRepo, fetchHistory]);
+
+  const changeRepo = async (newPath: string): Promise<boolean> => {
+    if (!newPath || newPath === repoPath) return false;
+
+    try {
+      const data = await repoApi.changeRepo(newPath);
+      if (data.success) {
+        setRepoPath(data.path);
+        setRepoFiles(data.files);
+        setRepoMap(data.repoMap);
+        setFileStats(data.fileStats || {});
+        setDependencyMap(data.dependencyMap || { outbound: {}, inbound: {} });
+        fetchHistory();
+        return true;
+      } else {
+        alert("Error: " + (data.error || "Failed to change repository path"));
+        return false;
+      }
+    } catch (err) {
+      alert("Failed to update repository path. Ensure backend is running.");
+      return false;
+    }
+  };
+
+  return {
+    repoPath,
+    repoFiles,
+    repoMap,
+    fileStats,
+    dependencyMap,
+    logs,
+    isLoading,
+    changeRepo,
+    refreshHistory: fetchHistory,
+  };
+}
+
+==================================================
+FILE PATH: src\hooks\useSuggestedContext.ts
+==================================================
+import { useMemo } from "react";
+import { SuggestedFile } from "../components/prompt/SuggestedContextBar";
+
+interface UseSuggestedContextProps {
+  seedFiles: Set<string>;
+  selectedFiles: Set<string>;
+  dependencyMap?: {
+    outbound: Record<string, string[]>;
+    inbound: Record<string, string[]>;
+    apiOutbound?: Record<string, string[]>;
+    apiInbound?: Record<string, string[]>;
+  };
+}
+
+export function useSuggestedContext({
+  seedFiles,
+  selectedFiles,
+  dependencyMap,
+}: UseSuggestedContextProps): SuggestedFile[] {
+  return useMemo(() => {
+    if (
+      !dependencyMap ||
+      (!dependencyMap.outbound &&
+        !dependencyMap.inbound &&
+        !dependencyMap.apiOutbound &&
+        !dependencyMap.apiInbound) ||
+      seedFiles.size === 0
+    ) {
+      return [];
+    }
+
+    const outboundMap = dependencyMap.outbound || {};
+    const inboundMap = dependencyMap.inbound || {};
+    const apiOutboundMap = dependencyMap.apiOutbound || {};
+    const apiInboundMap = dependencyMap.apiInbound || {};
+
+    const candidates = new Set<string>();
+
+    seedFiles.forEach((file) => {
+      const children = outboundMap[file] || [];
+      children.forEach((child) => {
+        if (!selectedFiles.has(child)) candidates.add(child);
+      });
+
+      const parents = inboundMap[file] || [];
+      parents.forEach((parent) => {
+        if (!selectedFiles.has(parent)) candidates.add(parent);
+      });
+
+      const apiTargets = apiOutboundMap[file] || [];
+      apiTargets.forEach((apiTarget) => {
+        if (!selectedFiles.has(apiTarget)) candidates.add(apiTarget);
+      });
+
+      const apiCallers = apiInboundMap[file] || [];
+      apiCallers.forEach((apiCaller) => {
+        if (!selectedFiles.has(apiCaller)) candidates.add(apiCaller);
+      });
+    });
+
+    const results: SuggestedFile[] = [];
+
+    candidates.forEach((candPath) => {
+      const candOutbound = outboundMap[candPath] || [];
+      const candInbound = inboundMap[candPath] || [];
+      const candApiOutbound = apiOutboundMap[candPath] || [];
+      const candApiInbound = apiInboundMap[candPath] || [];
+
+      const isApiHandler = candApiInbound.some((f) => seedFiles.has(f));
+      const isApiClient = candApiOutbound.some((f) => seedFiles.has(f));
+
+      if (isApiHandler || isApiClient) {
+        const seedNames =
+          seedFiles.size > 0
+            ? Array.from(seedFiles)
+                .map((f) => f.split("/").pop() || f)
+                .join(", ")
+            : "";
+        results.push({
+          filePath: candPath,
+          type: "api",
+          importedActiveFiles: [],
+          importingActiveFiles: [],
+          tooltip: `API Endpoint Link: Handles network calls for ${seedNames}`,
+        });
+        return;
+      }
+
+      const importedSeed = candOutbound.filter((f) => seedFiles.has(f));
+      const importingSeed = candInbound.filter((f) => seedFiles.has(f));
+
+      const isParent = importedSeed.length > 0;
+      const isChild = importingSeed.length > 0;
+
+      let type: "parent" | "child" | "hub" = "child";
+      let tooltip = "";
+
+      if (isParent && isChild) {
+        type = "hub";
+        tooltip = "Hub: Both a parent and child across active context";
+      } else if (isParent) {
+        type = "parent";
+        const fileNames = importedSeed
+          .map((f) => f.split("/").pop() || f)
+          .join(", ");
+        tooltip = `Parent: Imports ${fileNames}`;
+      } else {
+        type = "child";
+        const fileNames = importingSeed
+          .map((f) => f.split("/").pop() || f)
+          .join(", ");
+        tooltip = `Child: Imported by ${fileNames}`;
+      }
+
+      results.push({
+        filePath: candPath,
+        type,
+        importedActiveFiles: importedSeed,
+        importingActiveFiles: importingSeed,
+        tooltip,
+      });
+    });
+
+    return results;
+  }, [seedFiles, selectedFiles, dependencyMap]);
+}
 
 ==================================================
 FILE PATH: src\utils\diffParser.ts
@@ -2718,21 +3827,41 @@ export function parseDiffBlocks(rawText: string): DiffBlock[] {
       );
       if (fileMatch) currentFile = fileMatch[1];
 
-      if (trimmed.startsWith("<<<<<<< SEARCH")) {
+      // MOVE/RENAME directive — its own standalone line, no SEARCH/REPLACE
+      // markers needed. Accepts "->", "→", or "to" as the separator.
+      const moveMatch = trimmed.match(
+        /^(?:MOVE|RENAME|Move|Rename)\s*:?\s*[`"']?([^`"'\n]+?)[`"']?\s*(?:->|→|to)\s*[`"']?([^`"'\n]+?)[`"']?$/i,
+      );
+      if (moveMatch) {
+        console.log(
+          `[Parser] 📦 Found MOVE directive: ${moveMatch[1]} -> ${moveMatch[2]}`,
+        );
+        blocks.push({
+          id: String(index++),
+          file: moveMatch[1].trim(),
+          status: "match",
+          search: "",
+          replace: "",
+          type: "move",
+          moveTo: moveMatch[2].trim(),
+        });
+      }
+
+      if (trimmed === "<<<<<<< SEARCH") {
         console.log(`[Parser] 🟢 Found SEARCH start at line ${i + 1}`);
         state = "SEARCH";
         currentSearch = [];
         currentReplace = [];
       }
     } else if (state === "SEARCH") {
-      if (trimmed.startsWith("=======")) {
+      if (trimmed === "=======") {
         console.log(`[Parser] 🟡 Found DIVIDER at line ${i + 1}`);
         state = "REPLACE";
       } else {
         currentSearch.push(line);
       }
     } else if (state === "REPLACE") {
-      if (trimmed.startsWith(">>>>>>> REPLACE")) {
+      if (trimmed === ">>>>>>> REPLACE") {
         console.log(
           `[Parser] 🔴 Found REPLACE end at line ${i + 1}. Pushing block!`,
         );
@@ -2791,4 +3920,254 @@ export function parseDiffBlocks(rawText: string): DiffBlock[] {
   return blocks;
 }
 
+
+==================================================
+FILE PATH: src\utils\fuzzySearch.ts
+==================================================
+export interface FuzzyResult {
+  filePath: string;
+  fileName: string;
+  dirPath: string;
+  score: number;
+  matchedIndices: Set<number>;
+}
+
+export function fuzzySearchFiles(files: string[], query: string): FuzzyResult[] {
+  if (!query) {
+    return files.slice(0, 8).map((f) => {
+      const parts = f.split("/");
+      const fileName = parts.pop() || f;
+      return {
+        filePath: f,
+        fileName,
+        dirPath: parts.join("/"),
+        score: 0,
+        matchedIndices: new Set<number>(),
+      };
+    });
+  }
+
+  const q = query.toLowerCase();
+  const results: FuzzyResult[] = [];
+
+  for (const file of files) {
+    const lowerFile = file.toLowerCase();
+    let qIdx = 0;
+    let score = 0;
+    let consecutive = 0;
+    const matchedIndices = new Set<number>();
+
+    const parts = file.split("/");
+    const fileName = parts.pop() || file;
+    const dirPath = parts.join("/");
+    const fileNameStartIdx = file.lastIndexOf("/") + 1;
+
+    for (let i = 0; i < file.length; i++) {
+      if (qIdx < q.length && lowerFile[i] === q[qIdx]) {
+        matchedIndices.add(i);
+        qIdx++;
+        score += 10;
+        consecutive += 1;
+        score += consecutive * 5;
+
+        if (i >= fileNameStartIdx) score += 15;
+
+        if (
+          i === 0 ||
+          i === fileNameStartIdx ||
+          " /._-".includes(file[i - 1])
+        ) {
+          score += 20;
+        }
+      } else {
+        consecutive = 0;
+      }
+    }
+
+    if (qIdx === q.length) {
+      results.push({
+        filePath: file,
+        fileName,
+        dirPath,
+        score,
+        matchedIndices,
+      });
+    }
+  }
+
+  return results.sort((a, b) => b.score - a.score).slice(0, 8);
+}
+
+==================================================
+FILE PATH: src\utils\promptTemplates.ts
+==================================================
+export function formatActiveFilesContext(
+  selectedFiles: Set<string> | string[],
+  contents: Record<string, string>
+): string {
+  const filesArray = Array.from(selectedFiles);
+  if (filesArray.length === 0) {
+    return "No specific files selected.";
+  }
+
+  let activeFilesText = "";
+  for (const f of filesArray) {
+    activeFilesText += `--- START OF FILE ${f} ---\n${contents[f] || ""}\n--- END OF FILE ${f} ---\n\n`;
+  }
+  return activeFilesText;
+}
+
+interface FullContextPromptParams {
+  repoMap: string;
+  activeFilesText: string;
+  userRequest: string;
+}
+
+export function buildFullContextPrompt({
+  repoMap,
+  activeFilesText,
+  userRequest,
+}: FullContextPromptParams): string {
+  const SEARCH_MARKER = "<".repeat(7) + " SEARCH";
+  const EQUALS_MARKER = "=".repeat(7);
+  const REPLACE_MARKER = ">".repeat(7) + " REPLACE";
+
+  return `ROLE: Senior Software Architect & Elite Developer
+You write clean, production-grade, type-safe, and secure code, keeping system architecture and long-term maintainability in mind.
+
+ADVISORY PROTOCOL:
+If the user requests a code change that is unoptimized or violates best practices:
+1. Fully comply with and implement the exact requested change.
+2. At the end of your response, briefly suggest the industry-standard alternative and why it is better, without being preachy or refusing the request.
+
+FILE SIZE ADVISORY:
+- As a rough guideline, a single-responsibility file should rarely exceed ~300-400 lines. Treat this as a heuristic, not a hard rule — a dense logic file and a long-but-simple types/config file don't carry the same weight.
+- If a file you are editing (in ACTIVE FILES CONTEXT) is already at or beyond that size after your change, do NOT split it automatically. Implement the requested change first, then add a brief closing note that the file is a good candidate for splitting, with a one-line suggestion of how (e.g. which functions/components would move where).
+- Only actually emit MOVE/CREATE blocks to perform a split when the user's request explicitly asks for restructuring — see the INTELLIGENT MODULARITY RULE below.
+
+OUTPUT FORMAT & GUARDRAILS:
+You must output code modifications using exact SEARCH/REPLACE blocks.
+
+1. FORMAT RULE: Every modification MUST specify the file path and use this exact delimiter:
+   FILE: path/to/file.ext
+   ${SEARCH_MARKER}
+   [exact existing code to replace]
+   ${EQUALS_MARKER}
+   [new code]
+   ${REPLACE_MARKER}
+
+2. THE 80% OVERWRITE RULE (Token Optimization):
+   - For partial edits (<80% of file changing): Use targeted SEARCH/REPLACE blocks.
+   - For NEW files OR total file rewrites (>80% of file changing): Leave the SEARCH block EMPTY (${SEARCH_MARKER}\n${EQUALS_MARKER}\n[new code]\n${REPLACE_MARKER}) so you do not waste output tokens repeating old code.
+
+3. FILE OPERATIONS RULE (Create & Move/Rename):
+   - CREATE a new file using the FILE: format above with an EMPTY SEARCH block (see Rule 2) — this is the ONLY syntax for new files.
+   - MOVE or RENAME an existing file with its own standalone line — no SEARCH/REPLACE markers, no code body:
+     MOVE: 'old/path/File.ext' -> 'new/path/File.ext'
+     RENAME: 'src/components/Header.tsx' -> 'src/components/AppHeader.tsx'
+   - If a MOVE changes a file's import path, you MUST also emit SEARCH/REPLACE blocks updating every import/require statement in any OTHER file shown in ACTIVE FILES CONTEXT that references the old path, in the SAME response. Never move a file without fixing its known importers.
+
+4. INTELLIGENT MODULARITY RULE (Structure for future token cost):
+   - Default to several small, single-responsibility files over one large one. Every file you fully rewrite becomes a future context cost — smaller, well-named files let later requests pull in only what's relevant instead of a monolith.
+   - Only propose splitting or moving EXISTING code when it's a clear, self-contained win (a file has grown unrelated responsibilities, or the user explicitly asked for restructuring). Do not reorganize files as an unsolicited side effect of an unrelated edit.
+   - When you do split a file, keep each new piece focused: use Rule 2's empty-SEARCH syntax for the new files and MOVE for anything relocated verbatim, rather than rewriting everything as one giant diff.
+
+5. ANCHOR RULE (Keep SEARCH blocks small):
+   - Copy only 2-3 unique lines at the top/bottom of the edit area ("anchors") to keep blocks minimal.
+
+6. EXACT WHITESPACE RULE:
+   - Code inside SEARCH MUST match the original file's indentation, spaces, and tabs 100% exactly.
+
+7. SINGLE CODE BLOCK RULE:
+   - You MUST wrap your ENTIRE response, including all FILE paths and SEARCH/REPLACE blocks, inside a single markdown code block (using \`\`\`markdown and \`\`\`) to ensure easy copy-pasting.
+   
+==================================================
+REPO MAP (Project Blueprint):
+${repoMap || "No map generated."}
+
+==================================================
+ACTIVE FILES CONTEXT:
+${activeFilesText}
+==================================================
+USER REQUEST:
+${userRequest}`;
+}
+
+interface FilesAndPromptParams {
+  activeFilesText: string;
+  userRequest: string;
+}
+
+export function buildFilesAndPromptOnly({
+  activeFilesText,
+  userRequest,
+}: FilesAndPromptParams): string {
+  return `==================================================\nACTIVE FILES CONTEXT:\n${activeFilesText}==================================================\nUSER REQUEST:\n${userRequest}`;
+}
+
+==================================================
+FILE PATH: src\utils\treeBuilder.ts
+==================================================
+export interface TreeNode {
+  name: string;
+  path: string;
+  isFolder: boolean;
+  children: TreeNode[];
+  allFiles: string[];
+}
+
+export function buildFileTree(files: string[], searchQuery: string = ""): TreeNode {
+  const root: TreeNode = {
+    name: "root",
+    path: "",
+    isFolder: true,
+    children: [],
+    allFiles: [],
+  };
+
+  const filteredFiles = files.filter((f) =>
+    f.toLowerCase().includes(searchQuery.toLowerCase()),
+  );
+
+  filteredFiles.forEach((filePath) => {
+    const parts = filePath.split("/");
+    let current = root;
+    current.allFiles.push(filePath);
+
+    let currentPath = "";
+    parts.forEach((part, index) => {
+      const isLast = index === parts.length - 1;
+      currentPath = currentPath ? `${currentPath}/${part}` : part;
+
+      let child = current.children.find((c) => c.name === part);
+      if (!child) {
+        child = {
+          name: part,
+          path: currentPath,
+          isFolder: !isLast,
+          children: [],
+          allFiles: [],
+        };
+        current.children.push(child);
+      }
+
+      if (!isLast) {
+        child.allFiles.push(filePath);
+      }
+
+      current = child;
+    });
+  });
+
+  const sortNodes = (node: TreeNode) => {
+    node.children.sort((a, b) => {
+      if (a.isFolder === b.isFolder) return a.name.localeCompare(b.name);
+      return a.isFolder ? -1 : 1;
+    });
+    node.children.forEach(sortNodes);
+  };
+  sortNodes(root);
+
+  return root;
+}
 
