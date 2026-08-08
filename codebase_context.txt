@@ -161,6 +161,7 @@ export default tseslint.config(
       "server/adapters/**/*.ts",
       "server/services/**/*.ts",
       "src/features/*/utils/**/*.{ts,tsx}",
+      "src/features/*/components/**/*.{ts,tsx}",
     ],
     plugins: { boundaries },
     settings: { "boundaries/elements": boundaryElements },
@@ -195,6 +196,25 @@ export default tseslint.config(
             disallow: [{ to: { element: { type: "routes" } } }],
             message: "Services cannot import routes (downward flow only).",
           },
+          {
+            from: { element: { type: "feature-components" } },
+            disallow: [{ to: { element: { type: "api" } } }],
+            message: "Components should use hooks, not API directly.",
+          },
+        ],
+      }],
+    },
+  },
+
+  // --- 4b: FS/Node built-in barrier for routes & services ---
+  {
+    files: ["server/routes/**/*.ts", "server/services/**/*.ts"],
+    rules: {
+      "no-restricted-imports": ["error", {
+        paths: [
+          { name: "fs", message: "Routes/services must not touch the filesystem directly — add or use an adapter function in server/adapters/." },
+          { name: "path", message: "Move path handling into an adapter." },
+          { name: "child_process", message: "Process spawning belongs in an adapter (see gitAdapter.ts/osAdapter.ts)." },
         ],
       }],
     },
@@ -222,30 +242,7 @@ export default tseslint.config(
     },
   },
 
-  // --- 4b: known debt — "warn" only. components → api ---
-  // Uses boundaries (module-resolution based) instead of a
-  // no-restricted-imports relative-depth hack, so it stays correct
-  // regardless of how deeply a component file is nested
-  // (components/prompt/*, components/diff/*, etc. all covered by the
-  // same rule — no per-depth pattern to maintain).
-  {
-    files: ["src/features/*/components/**/*.{ts,tsx}"],
-    plugins: { boundaries },
-    settings: { "boundaries/elements": boundaryElements },
-    rules: {
-      "boundaries/dependencies": ["warn", {
-        default: "allow",
-        policies: [
-          {
-            from: { element: { type: "feature-components" } },
-            disallow: [{ to: { element: { type: "api" } } }],
-            message: "Components should use hooks, not API directly (Technical Debt).",
-          },
-        ],
-      }],
-    },
-  }
-);
+  );
 
 ==================================================
 FILE PATH: governance_system_requirements.md
