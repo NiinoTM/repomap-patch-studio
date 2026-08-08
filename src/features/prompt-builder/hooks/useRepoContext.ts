@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { repoApi, historyApi } from "../api/client";
-import { HistoryLog } from "../types";
+import { repoApi, historyApi } from "../../../api/client";
+import { HistoryLog } from "../../../types";
 
 export function useRepoContext() {
   const [repoPath, setRepoPath] = useState<string>("Loading...");

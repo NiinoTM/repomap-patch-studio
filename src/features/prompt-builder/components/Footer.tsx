@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Check, GitCommit, History } from "lucide-react";
-import { DiffBlock, HistoryLog } from "../types";
-import { api } from "../api/client";
+import { DiffBlock, HistoryLog } from "../../../types";
+import { api } from "../../../api/client";
 
 interface FooterProps {
   logs: HistoryLog[];

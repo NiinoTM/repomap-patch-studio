@@ -8,7 +8,7 @@ import {
 import { MentionDropdown } from "./prompt/MentionDropdown";
 import { SuggestedContextBar } from "./prompt/SuggestedContextBar";
 import { FileTree } from "./prompt/FileTree";
-import { filesApi } from "../api/client";
+import { filesApi } from "../../../api/client";
 import { useMentionPopup } from "../hooks/useMentionPopup";
 import { useSuggestedContext } from "../hooks/useSuggestedContext";
 

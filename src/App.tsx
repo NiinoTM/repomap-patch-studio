@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { Header } from "./components/Header";
-import { PromptPanel } from "./components/PromptPanel";
-import { DiffPanel } from "./components/DiffPanel";
-import { Footer } from "./components/Footer";
-import { Toast } from "./components/Toast";
+import { Header } from "./features/prompt-builder/components/Header";
+import { PromptPanel } from "./features/prompt-builder/components/PromptPanel";
+import { DiffPanel } from "./features/prompt-builder/components/DiffPanel";
+import { Footer } from "./features/prompt-builder/components/Footer";
+import { Toast } from "./features/prompt-builder/components/Toast";
 import { DiffBlock } from "./types";
-import { parseDiffBlocks } from "./utils/diffParser";
+import { parseDiffBlocks } from "./features/prompt-builder/utils/diffParser";
 import { filesApi } from "./api/client";
-import { useRepoContext } from "./hooks/useRepoContext";
+import { useRepoContext } from "./features/prompt-builder/hooks/useRepoContext";
 
 export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);

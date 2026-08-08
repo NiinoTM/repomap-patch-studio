@@ -2,6 +2,11 @@
 # Generated from: C:\Users\Niino\Desktop\repomap-patch-studio
 
 ==================================================
+FILE PATH: .eslintcache
+==================================================
+[{"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\eslint.config.js":"1","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\eslint.quality.config.js":"2","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\server\\index.ts":"3","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\server\\routes\\historyRoutes.ts":"4","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\server\\routes\\patchRoutes.ts":"5","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\server\\routes\\repoRoutes.ts":"6","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\server\\services\\dependencyService.ts":"7","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\server\\services\\patchEngine.ts":"8","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\server\\services\\repoMapService.ts":"9","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\server\\services\\syntaxService.ts":"10","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\api\\client.ts":"11","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\App.tsx":"12","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\components\\DiffPanel.tsx":"13","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\components\\Footer.tsx":"14","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\components\\Header.tsx":"15","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\components\\prompt\\FileTree.tsx":"16","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\components\\prompt\\MentionDropdown.tsx":"17","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\components\\prompt\\SuggestedContextBar.tsx":"18","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\components\\PromptPanel.tsx":"19","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\components\\Toast.tsx":"20","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\hooks\\useMentionPopup.ts":"21","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\hooks\\useRepoContext.ts":"22","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\hooks\\useSuggestedContext.ts":"23","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\main.tsx":"24","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\types.ts":"25","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\utils\\diffParser.ts":"26","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\utils\\fuzzySearch.ts":"27","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\utils\\promptTemplates.ts":"28","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\utils\\treeBuilder.ts":"29","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\server\\adapters\\gitAdapter.ts":"30","C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\server\\adapters\\osAdapter.ts":"31"},{"size":5770,"mtime":1786211557157,"results":"32","hashOfConfig":"33"},{"size":1975,"mtime":1786208376709,"results":"34","hashOfConfig":"33"},{"size":510,"mtime":1786206299090,"results":"35","hashOfConfig":"36"},{"size":460,"mtime":1786211143799,"results":"37","hashOfConfig":"38"},{"size":6012,"mtime":1786211143799,"results":"39","hashOfConfig":"38"},{"size":2559,"mtime":1786211210930,"results":"40","hashOfConfig":"38"},{"size":4895,"mtime":1786206299098,"results":"41","hashOfConfig":"42"},{"size":3851,"mtime":1786206299104,"results":"43","hashOfConfig":"42"},{"size":1922,"mtime":1786206299106,"results":"44","hashOfConfig":"42"},{"size":980,"mtime":1786206299108,"results":"45","hashOfConfig":"42"},{"size":3192,"mtime":1786206299113,"results":"46","hashOfConfig":"36"},{"size":6319,"mtime":1786206299111,"results":"47","hashOfConfig":"36"},{"size":26532,"mtime":1786199186208,"results":"48","hashOfConfig":"49"},{"size":8918,"mtime":1786206299116,"results":"50","hashOfConfig":"51"},{"size":6091,"mtime":1786206299119,"results":"52","hashOfConfig":"51"},{"size":7187,"mtime":1786206299124,"results":"53","hashOfConfig":"51"},{"size":4204,"mtime":1786206299126,"results":"54","hashOfConfig":"51"},{"size":4398,"mtime":1786206299128,"results":"55","hashOfConfig":"51"},{"size":13914,"mtime":1786206299121,"results":"56","hashOfConfig":"49"},{"size":1146,"mtime":1786066509024,"results":"57","hashOfConfig":"51"},{"size":5084,"mtime":1786206299131,"results":"58","hashOfConfig":"36"},{"size":2718,"mtime":1786206299132,"results":"59","hashOfConfig":"36"},{"size":3976,"mtime":1786206299134,"results":"60","hashOfConfig":"36"},{"size":235,"mtime":1786066509070,"results":"61","hashOfConfig":"36"},{"size":497,"mtime":1786086391964,"results":"62","hashOfConfig":"36"},{"size":3665,"mtime":1786086391967,"results":"63","hashOfConfig":"42"},{"size":1745,"mtime":1786206299136,"results":"64","hashOfConfig":"42"},{"size":7099,"mtime":1786207086694,"results":"65","hashOfConfig":"42"},{"size":1493,"mtime":1786206299140,"results":"66","hashOfConfig":"42"},{"size":5087,"mtime":1786206299100,"results":"67","hashOfConfig":"42"},{"size":968,"mtime":1786211147320,"results":"68","hashOfConfig":"42"},{"filePath":"69","messages":"70","suppressedMessages":"71","errorCount":0,"fatalErrorCount":0,"warningCount":0,"fixableErrorCount":0,"fixableWarningCount":0},"dhmnl2",{"filePath":"72","messages":"73","suppressedMessages":"74","errorCount":0,"fatalErrorCount":0,"warningCount":0,"fixableErrorCount":0,"fixableWarningCount":0},{"filePath":"75","messages":"76","suppressedMessages":"77","errorCount":0,"fatalErrorCount":0,"warningCount":0,"fixableErrorCount":0,"fixableWarningCount":0},"gw499h",{"filePath":"78","messages":"79","suppressedMessages":"80","errorCount":0,"fatalErrorCount":0,"warningCount":0,"fixableErrorCount":0,"fixableWarningCount":0},"13mlzob",{"filePath":"81","messages":"82","suppressedMessages":"83","errorCount":0,"fatalErrorCount":0,"warningCount":2,"fixableErrorCount":0,"fixableWarningCount":0,"source":null},{"filePath":"84","messages":"85","suppressedMessages":"86","errorCount":0,"fatalErrorCount":0,"warningCount":0,"fixableErrorCount":0,"fixableWarningCount":0},{"filePath":"87","messages":"88","suppressedMessages":"89","errorCount":0,"fatalErrorCount":0,"warningCount":2,"fixableErrorCount":0,"fixableWarningCount":0,"source":null},"23hto8",{"filePath":"90","messages":"91","suppressedMessages":"92","errorCount":0,"fatalErrorCount":0,"warningCount":2,"fixableErrorCount":0,"fixableWarningCount":0,"source":null},{"filePath":"93","messages":"94","suppressedMessages":"95","errorCount":0,"fatalErrorCount":0,"warningCount":2,"fixableErrorCount":0,"fixableWarningCount":0,"source":null},{"filePath":"96","messages":"97","suppressedMessages":"98","errorCount":0,"fatalErrorCount":0,"warningCount":0,"fixableErrorCount":0,"fixableWarningCount":0},{"filePath":"99","messages":"100","suppressedMessages":"101","errorCount":0,"fatalErrorCount":0,"warningCount":0,"fixableErrorCount":0,"fixableWarningCount":0},{"filePath":"102","messages":"103","suppressedMessages":"104","errorCount":0,"fatalErrorCount":0,"warningCount":3,"fixableErrorCount":0,"fixableWarningCount":0,"source":null},{"filePath":"105","messages":"106","suppressedMessages":"107","errorCount":0,"fatalErrorCount":0,"warningCount":4,"fixableErrorCount":0,"fixableWarningCount":0,"source":null},"o32ua3",{"filePath":"108","messages":"109","suppressedMessages":"110","errorCount":0,"fatalErrorCount":0,"warningCount":3,"fixableErrorCount":0,"fixableWarningCount":0,"source":null},"naluhd",{"filePath":"111","messages":"112","suppressedMessages":"113","errorCount":0,"fatalErrorCount":0,"warningCount":1,"fixableErrorCount":0,"fixableWarningCount":0,"source":null},{"filePath":"114","messages":"115","suppressedMessages":"116","errorCount":0,"fatalErrorCount":0,"warningCount":3,"fixableErrorCount":0,"fixableWarningCount":0,"source":null},{"filePath":"117","messages":"118","suppressedMessages":"119","errorCount":0,"fatalErrorCount":0,"warningCount":1,"fixableErrorCount":0,"fixableWarningCount":0,"source":null},{"filePath":"120","messages":"121","suppressedMessages":"122","errorCount":0,"fatalErrorCount":0,"warningCount":2,"fixableErrorCount":0,"fixableWarningCount":0,"source":null},{"filePath":"123","messages":"124","suppressedMessages":"125","errorCount":0,"fatalErrorCount":0,"warningCount":1,"fixableErrorCount":0,"fixableWarningCount":0,"source":null},{"filePath":"126","messages":"127","suppressedMessages":"128","errorCount":0,"fatalErrorCount":0,"warningCount":0,"fixableErrorCount":0,"fixableWarningCount":0},{"filePath":"129","messages":"130","suppressedMessages":"131","errorCount":0,"fatalErrorCount":0,"warningCount":1,"fixableErrorCount":0,"fixableWarningCount":0,"source":null},{"filePath":"132","messages":"133","suppressedMessages":"134","errorCount":0,"fatalErrorCount":0,"warningCount":1,"fixableErrorCount":0,"fixableWarningCount":0,"source":null},{"filePath":"135","messages":"136","suppressedMessages":"137","errorCount":0,"fatalErrorCount":0,"warningCount":5,"fixableErrorCount":0,"fixableWarningCount":0,"source":null},{"filePath":"138","messages":"139","suppressedMessages":"140","errorCount":0,"fatalErrorCount":0,"warningCount":0,"fixableErrorCount":0,"fixableWarningCount":0},{"filePath":"141","messages":"142","suppressedMessages":"143","errorCount":0,"fatalErrorCount":0,"warningCount":0,"fixableErrorCount":0,"fixableWarningCount":0},{"filePath":"144","messages":"145","suppressedMessages":"146","errorCount":0,"fatalErrorCount":0,"warningCount":2,"fixableErrorCount":0,"fixableWarningCount":0,"source":null},{"filePath":"147","messages":"148","suppressedMessages":"149","errorCount":0,"fatalErrorCount":0,"warningCount":2,"fixableErrorCount":0,"fixableWarningCount":0,"source":null},{"filePath":"150","messages":"151","suppressedMessages":"152","errorCount":0,"fatalErrorCount":0,"warningCount":1,"fixableErrorCount":0,"fixableWarningCount":0,"source":null},{"filePath":"153","messages":"154","suppressedMessages":"155","errorCount":0,"fatalErrorCount":0,"warningCount":0,"fixableErrorCount":0,"fixableWarningCount":0},{"filePath":"156","messages":"157","suppressedMessages":"158","errorCount":0,"fatalErrorCount":0,"warningCount":0,"fixableErrorCount":0,"fixableWarningCount":0},{"filePath":"159","messages":"160","suppressedMessages":"161","errorCount":0,"fatalErrorCount":0,"warningCount":0,"fixableErrorCount":0,"fixableWarningCount":0},"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\eslint.config.js",[],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\eslint.quality.config.js",[],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\server\\index.ts",[],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\server\\routes\\historyRoutes.ts",[],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\server\\routes\\patchRoutes.ts",["162","163"],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\server\\routes\\repoRoutes.ts",[],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\server\\services\\dependencyService.ts",["164","165"],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\server\\services\\patchEngine.ts",["166","167"],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\server\\services\\repoMapService.ts",["168","169"],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\server\\services\\syntaxService.ts",[],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\api\\client.ts",[],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\App.tsx",["170","171","172"],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\components\\DiffPanel.tsx",["173","174","175","176"],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\components\\Footer.tsx",["177","178","179"],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\components\\Header.tsx",["180"],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\components\\prompt\\FileTree.tsx",["181","182","183"],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\components\\prompt\\MentionDropdown.tsx",["184"],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\components\\prompt\\SuggestedContextBar.tsx",["185","186"],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\components\\PromptPanel.tsx",["187"],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\components\\Toast.tsx",[],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\hooks\\useMentionPopup.ts",["188"],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\hooks\\useRepoContext.ts",["189"],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\hooks\\useSuggestedContext.ts",["190","191","192","193","194"],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\main.tsx",[],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\types.ts",[],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\utils\\diffParser.ts",["195","196"],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\utils\\fuzzySearch.ts",["197","198"],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\utils\\promptTemplates.ts",["199"],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\src\\utils\\treeBuilder.ts",[],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\server\\adapters\\gitAdapter.ts",[],[],"C:\\Users\\Niino\\Desktop\\repomap-patch-studio\\server\\adapters\\osAdapter.ts",[],[],{"ruleId":"200","severity":1,"message":"201","line":28,"column":58,"messageId":"202","endLine":28,"endColumn":60},{"ruleId":"203","severity":1,"message":"204","line":28,"column":58,"messageId":"205","endLine":28,"endColumn":60},{"ruleId":"200","severity":1,"message":"206","line":14,"column":8,"messageId":"202","endLine":14,"endColumn":33},{"ruleId":"203","severity":1,"message":"207","line":14,"column":8,"messageId":"205","endLine":14,"endColumn":33},{"ruleId":"200","severity":1,"message":"208","line":71,"column":8,"messageId":"202","endLine":71,"endColumn":36},{"ruleId":"203","severity":1,"message":"209","line":71,"column":8,"messageId":"205","endLine":71,"endColumn":36},{"ruleId":"200","severity":1,"message":"210","line":7,"column":8,"messageId":"202","endLine":7,"endColumn":32},{"ruleId":"203","severity":1,"message":"211","line":7,"column":8,"messageId":"205","endLine":7,"endColumn":32},{"ruleId":"200","severity":1,"message":"212","line":12,"column":16,"messageId":"202","endLine":12,"endColumn":28},{"ruleId":"200","severity":1,"message":"213","line":61,"column":46,"messageId":"202","endLine":61,"endColumn":48},{"ruleId":"203","severity":1,"message":"214","line":91,"column":52,"messageId":"205","endLine":91,"endColumn":54},{"ruleId":"200","severity":1,"message":"215","line":26,"column":8,"messageId":"202","endLine":26,"endColumn":26},{"ruleId":"203","severity":1,"message":"216","line":26,"column":8,"messageId":"205","endLine":26,"endColumn":26},{"ruleId":"200","severity":1,"message":"217","line":299,"column":41,"messageId":"202","endLine":299,"endColumn":43},{"ruleId":"203","severity":1,"message":"218","line":299,"column":41,"messageId":"205","endLine":299,"endColumn":43},{"ruleId":"200","severity":1,"message":"219","line":13,"column":8,"messageId":"202","endLine":13,"endColumn":23},{"ruleId":"203","severity":1,"message":"220","line":13,"column":8,"messageId":"205","endLine":13,"endColumn":23},{"ruleId":"203","severity":1,"message":"221","line":31,"column":5,"messageId":"205","endLine":31,"endColumn":7},{"ruleId":"200","severity":1,"message":"222","line":16,"column":8,"messageId":"202","endLine":16,"endColumn":23},{"ruleId":"200","severity":1,"message":"223","line":27,"column":8,"messageId":"202","endLine":27,"endColumn":25},{"ruleId":"200","severity":1,"message":"224","line":58,"column":71,"messageId":"202","endLine":58,"endColumn":73},{"ruleId":"203","severity":1,"message":"225","line":58,"column":71,"messageId":"205","endLine":58,"endColumn":73},{"ruleId":"200","severity":1,"message":"226","line":23,"column":8,"messageId":"202","endLine":23,"endColumn":32},{"ruleId":"200","severity":1,"message":"227","line":18,"column":8,"messageId":"202","endLine":18,"endColumn":36},{"ruleId":"200","severity":1,"message":"228","line":40,"column":36,"messageId":"202","endLine":40,"endColumn":38},{"ruleId":"200","severity":1,"message":"229","line":35,"column":8,"messageId":"202","endLine":35,"endColumn":28},{"ruleId":"200","severity":1,"message":"230","line":11,"column":8,"messageId":"202","endLine":11,"endColumn":32},{"ruleId":"200","severity":1,"message":"231","line":5,"column":8,"messageId":"202","endLine":5,"endColumn":31},{"ruleId":"200","severity":1,"message":"232","line":15,"column":8,"messageId":"202","endLine":15,"endColumn":36},{"ruleId":"200","severity":1,"message":"233","line":20,"column":21,"messageId":"202","endLine":20,"endColumn":23},{"ruleId":"203","severity":1,"message":"214","line":20,"column":21,"messageId":"205","endLine":20,"endColumn":23},{"ruleId":"200","severity":1,"message":"234","line":63,"column":35,"messageId":"202","endLine":63,"endColumn":37},{"ruleId":"203","severity":1,"message":"214","line":63,"column":35,"messageId":"205","endLine":63,"endColumn":37},{"ruleId":"200","severity":1,"message":"235","line":3,"column":8,"messageId":"202","endLine":3,"endColumn":32},{"ruleId":"203","severity":1,"message":"236","line":3,"column":8,"messageId":"205","endLine":3,"endColumn":32},{"ruleId":"200","severity":1,"message":"237","line":9,"column":8,"messageId":"202","endLine":9,"endColumn":33},{"ruleId":"203","severity":1,"message":"238","line":9,"column":8,"messageId":"205","endLine":9,"endColumn":33},{"ruleId":"200","severity":1,"message":"239","line":23,"column":8,"messageId":"202","endLine":23,"endColumn":39},"max-lines-per-function","Arrow function has too many lines (133). Maximum allowed is 50.","exceed","complexity","Arrow function has a complexity of 35. Maximum allowed is 10.","complex","Function 'getDependencyMap' has too many lines (112). Maximum allowed is 50.","Function 'getDependencyMap' has a complexity of 34. Maximum allowed is 10.","Function 'applyBlockToContent' has too many lines (60). Maximum allowed is 50.","Function 'applyBlockToContent' has a complexity of 12. Maximum allowed is 10.","Function 'generateRepoMap' has too many lines (52). Maximum allowed is 50.","Function 'generateRepoMap' has a complexity of 13. Maximum allowed is 10.","Function 'App' has too many lines (167). Maximum allowed is 50.","Async arrow function has too many lines (81). Maximum allowed is 50.","Arrow function has a complexity of 11. Maximum allowed is 10.","Function 'DiffPanel' has too many lines (531). Maximum allowed is 50.","Function 'DiffPanel' has a complexity of 13. Maximum allowed is 10.","Arrow function has too many lines (255). Maximum allowed is 50.","Arrow function has a complexity of 25. Maximum allowed is 10.","Function 'Footer' has too many lines (209). Maximum allowed is 50.","Function 'Footer' has a complexity of 11. Maximum allowed is 10.","Async arrow function has a complexity of 13. Maximum allowed is 10.","Function 'Header' has too many lines (148). Maximum allowed is 50.","Function 'FileTree' has too many lines (168). Maximum allowed is 50.","Arrow function has too many lines (87). Maximum allowed is 50.","Arrow function has a complexity of 14. Maximum allowed is 10.","Function 'MentionDropdown' has too many lines (100). Maximum allowed is 50.","Function 'SuggestedContextBar' has too many lines (86). Maximum allowed is 50.","Arrow function has too many lines (61). Maximum allowed is 50.","Function 'PromptPanel' has too many lines (341). Maximum allowed is 50.","Function 'useMentionPopup' has too many lines (132). Maximum allowed is 50.","Function 'useRepoContext' has too many lines (79). Maximum allowed is 50.","Function 'useSuggestedContext' has too many lines (96). Maximum allowed is 50.","Arrow function has too many lines (90). Maximum allowed is 50.","Arrow function has too many lines (53). Maximum allowed is 50.","Function 'parseDiffBlocks' has too many lines (105). Maximum allowed is 50.","Function 'parseDiffBlocks' has a complexity of 15. Maximum allowed is 10.","Function 'fuzzySearchFiles' has too many lines (57). Maximum allowed is 50.","Function 'fuzzySearchFiles' has a complexity of 12. Maximum allowed is 10.","Function 'buildFullContextPrompt' has too many lines (81). Maximum allowed is 50."]
+
+==================================================
 FILE PATH: .gitignore
 ==================================================
 node_modules/
@@ -419,7 +424,10 @@ FILE PATH: package.json
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js server.ts",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit && eslint .",
+    "lint:size": "eslint . --max-warnings=0",
+    "lint:quality": "eslint . --config eslint.quality.config.js",
+    "prepare": "husky"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -433,6 +441,7 @@ FILE PATH: package.json
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.18",
@@ -440,9 +449,13 @@ FILE PATH: package.json
     "autoprefixer": "^10.4.21",
     "concurrently": "^9.1.2",
     "esbuild": "^0.25.0",
+    "eslint": "^10.8.1",
+    "eslint-plugin-boundaries": "^7.1.0",
+    "globals": "^17.9.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
+    "typescript-eslint": "^8.66.0",
     "vite": "^6.2.3"
   }
 }
@@ -529,6 +542,135 @@ export default defineConfig(() => {
 
 
 ==================================================
+FILE PATH: .husky\_\.gitignore
+==================================================
+*
+
+==================================================
+FILE PATH: .husky\_\applypatch-msg
+==================================================
+#!/usr/bin/env sh
+. "$(dirname "$0")/h"
+
+==================================================
+FILE PATH: .husky\_\commit-msg
+==================================================
+#!/usr/bin/env sh
+. "$(dirname "$0")/h"
+
+==================================================
+FILE PATH: .husky\_\h
+==================================================
+#!/usr/bin/env sh
+[ "$HUSKY" = "2" ] && set -x
+n=$(basename "$0")
+s=$(dirname "$(dirname "$0")")/$n
+
+[ ! -f "$s" ] && exit 0
+
+if [ -f "$HOME/.huskyrc" ]; then
+	echo "husky - '~/.huskyrc' is DEPRECATED, please move your code to ~/.config/husky/init.sh"
+fi
+i="${XDG_CONFIG_HOME:-$HOME/.config}/husky/init.sh"
+[ -f "$i" ] && . "$i"
+
+[ "${HUSKY-}" = "0" ] && exit 0
+
+export PATH="node_modules/.bin:$PATH"
+sh -e "$s" "$@"
+c=$?
+
+[ $c != 0 ] && echo "husky - $n script failed (code $c)"
+[ $c = 127 ] && echo "husky - command not found in PATH=$PATH"
+exit $c
+
+
+==================================================
+FILE PATH: .husky\_\husky.sh
+==================================================
+echo "husky - DEPRECATED
+
+Please remove the following two lines from $0:
+
+#!/usr/bin/env sh
+. \"\$(dirname -- \"\$0\")/_/husky.sh\"
+
+They WILL FAIL in v10.0.0
+"
+
+==================================================
+FILE PATH: .husky\_\post-applypatch
+==================================================
+#!/usr/bin/env sh
+. "$(dirname "$0")/h"
+
+==================================================
+FILE PATH: .husky\_\post-checkout
+==================================================
+#!/usr/bin/env sh
+. "$(dirname "$0")/h"
+
+==================================================
+FILE PATH: .husky\_\post-commit
+==================================================
+#!/usr/bin/env sh
+. "$(dirname "$0")/h"
+
+==================================================
+FILE PATH: .husky\_\post-merge
+==================================================
+#!/usr/bin/env sh
+. "$(dirname "$0")/h"
+
+==================================================
+FILE PATH: .husky\_\post-rewrite
+==================================================
+#!/usr/bin/env sh
+. "$(dirname "$0")/h"
+
+==================================================
+FILE PATH: .husky\_\pre-applypatch
+==================================================
+#!/usr/bin/env sh
+. "$(dirname "$0")/h"
+
+==================================================
+FILE PATH: .husky\_\pre-auto-gc
+==================================================
+#!/usr/bin/env sh
+. "$(dirname "$0")/h"
+
+==================================================
+FILE PATH: .husky\_\pre-commit
+==================================================
+#!/usr/bin/env sh
+. "$(dirname "$0")/h"
+
+==================================================
+FILE PATH: .husky\_\pre-merge-commit
+==================================================
+#!/usr/bin/env sh
+. "$(dirname "$0")/h"
+
+==================================================
+FILE PATH: .husky\_\pre-push
+==================================================
+#!/usr/bin/env sh
+. "$(dirname "$0")/h"
+
+==================================================
+FILE PATH: .husky\_\pre-rebase
+==================================================
+#!/usr/bin/env sh
+. "$(dirname "$0")/h"
+
+==================================================
+FILE PATH: .husky\_\prepare-commit-msg
+==================================================
+#!/usr/bin/env sh
+. "$(dirname "$0")/h"
+
+==================================================
 FILE PATH: server\index.ts
 ==================================================
 import express from "express";
@@ -550,10 +692,234 @@ app.listen(PORT, () =>
 );
 
 ==================================================
+FILE PATH: server\adapters\gitAdapter.ts
+==================================================
+import fs from "fs";
+import path from "path";
+import { execSync } from "child_process";
+
+let targetRepoPath: string = process.cwd();
+
+export const repoState = {
+  getRepoPath: (): string => targetRepoPath,
+  setRepoPath: (newPath: string): void => {
+    targetRepoPath = path.resolve(newPath);
+  },
+};
+
+export const isSecretFile = (fileName: string): boolean => /^\.env(\..+)?$/.test(fileName);
+
+const HEAVY_DIR_SEGMENTS = new Set([
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  "coverage",
+  ".vscode",
+  ".idea",
+  "backups",
+]);
+
+const HEAVY_FILE_EXTENSIONS = new Set([".sqlite", ".sqlite3", ".db", ".log"]);
+
+export const isHeavyOrJunkPath = (filePath: string): boolean => {
+  const segments = filePath.split("/");
+  if (segments.some((seg) => HEAVY_DIR_SEGMENTS.has(seg))) return true;
+  const ext = path.extname(filePath).toLowerCase();
+  return HEAVY_FILE_EXTENSIONS.has(ext);
+};
+
+export const getAllFilesFallback = (
+  dir: string,
+  basePath: string = dir,
+  fileList: string[] = []
+): string[] => {
+  if (!fs.existsSync(dir)) return fileList;
+  const files = fs.readdirSync(dir);
+  for (const file of files) {
+    const filePath = path.join(dir, file);
+    const stat = fs.statSync(filePath);
+    if (stat.isDirectory()) {
+      if (
+        ![
+          "node_modules",
+          ".git",
+          "dist",
+          "build",
+          "coverage",
+          ".vscode",
+          ".idea",
+        ].includes(file)
+      ) {
+        getAllFilesFallback(filePath, basePath, fileList);
+      }
+    } else if (!isSecretFile(file)) {
+      fileList.push(path.relative(basePath, filePath).replace(/\\/g, "/"));
+    }
+  }
+  return fileList;
+};
+
+export const getAllFiles = (dir: string = targetRepoPath, basePath: string = dir): string[] => {
+  try {
+    const raw = execSync("git ls-files --cached --others --exclude-standard", {
+      cwd: basePath,
+      encoding: "utf-8",
+    });
+    return raw
+      .split(/\r?\n/)
+      .map((f) => f.trim())
+      .filter(Boolean)
+      .filter((f) => !isSecretFile(path.basename(f)))
+      .filter((f) => !isHeavyOrJunkPath(f));
+  } catch (e) {
+    return getAllFilesFallback(dir, basePath);
+  }
+};
+
+export interface FileStat {
+  size: number;
+  tokens: number;
+}
+
+export const getFileStats = (
+  basePath: string = targetRepoPath,
+  filesList: string[]
+): Record<string, FileStat> => {
+  const stats: Record<string, FileStat> = {};
+  for (const file of filesList) {
+    try {
+      const fullPath = path.join(basePath, file);
+      const size = fs.statSync(fullPath).size;
+      stats[file] = { size, tokens: Math.ceil(size / 3.8) };
+    } catch (e) {
+      stats[file] = { size: 0, tokens: 0 };
+    }
+  }
+  return stats;
+};
+
+export interface HistoryLogItem {
+  id: string;
+  timestamp: string;
+  message: string;
+  files: string[];
+}
+
+export const getGitHistory = (basePath: string = targetRepoPath): HistoryLogItem[] => {
+  try {
+    const raw = execSync(
+      `git log -n 30 --no-merges --pretty=format:%H%x09%ar%x09%s --name-only`,
+      { cwd: basePath, encoding: "utf-8" },
+    );
+
+    return raw
+      .split(/\r?\n\r?\n/)
+      .map((block) => block.trim())
+      .filter(Boolean)
+      .map((block) => {
+        const lines = block.split(/\r?\n/);
+        const [hash, timestamp, message] = lines[0].split("\t");
+        const files = lines.slice(1).filter(Boolean);
+        return {
+          id: hash ? hash.slice(0, 7) : "unknown",
+          timestamp: timestamp || "",
+          message: message || "",
+          files,
+        };
+      })
+      .filter((log) => log.message !== "pre-ai-edit");
+  } catch (err) {
+    return [];
+  }
+};
+
+export const gitUndo = (basePath: string = targetRepoPath): void => {
+  execSync("git reset --hard HEAD~1", {
+    cwd: basePath,
+    stdio: "ignore",
+  });
+};
+
+export const gitSnapshotPreEdit = (basePath: string = targetRepoPath): void => {
+  try {
+    execSync('git add . && git commit -m "pre-ai-edit"', {
+      cwd: basePath,
+      stdio: "ignore",
+    });
+  } catch (e) {}
+};
+
+export const gitMoveFile = (
+  basePath: string,
+  sourceRel: string,
+  destRel: string
+): void => {
+  const destFullPath = path.resolve(basePath, destRel);
+  const destDir = path.dirname(destFullPath);
+  if (!fs.existsSync(destDir)) {
+    fs.mkdirSync(destDir, { recursive: true });
+  }
+
+  try {
+    execSync(`git mv -f "${sourceRel}" "${destRel}"`, {
+      cwd: basePath,
+      stdio: "ignore",
+    });
+  } catch (e) {
+    fs.renameSync(path.resolve(basePath, sourceRel), destFullPath);
+  }
+};
+
+export const formatFile = (basePath: string, fileRel: string): void => {
+  try {
+    execSync(`npx prettier --write "${fileRel}"`, {
+      cwd: basePath,
+      stdio: "ignore",
+    });
+  } catch (e) {}
+};
+
+export const gitCommit = (
+  basePath: string,
+  message: string = "ai-edit: updated files"
+): void => {
+  execSync(`git add . && git commit -m "${message}"`, {
+    cwd: basePath,
+    stdio: "ignore",
+  });
+};
+
+==================================================
+FILE PATH: server\adapters\osAdapter.ts
+==================================================
+import { execSync } from "child_process";
+
+/**
+ * Opens platform-native folder selection dialog and returns the selected directory path.
+ */
+export function openNativeFolderDialog(): string {
+  let cmd = "";
+  if (process.platform === "win32") {
+    cmd = `powershell -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.ValidateNames = $false; $f.CheckFileExists = $false; $f.CheckPathExists = $true; $f.FileName = 'Select This Folder'; $f.Title = 'Select Repository Folder'; if($f.ShowDialog() -eq 'OK') { [System.IO.Path]::GetDirectoryName($f.FileName) }"`;
+  } else if (process.platform === "darwin") {
+    cmd = `osascript -e 'POSIX path of (choose folder)'`;
+  } else {
+    cmd = `zenity --file-selection --directory 2>/dev/null || kdialog --getexistingdirectory 2>/dev/null`;
+  }
+
+  try {
+    return execSync(cmd, { encoding: "utf-8" }).trim();
+  } catch (err) {
+    return "";
+  }
+}
+
+==================================================
 FILE PATH: server\routes\historyRoutes.ts
 ==================================================
 import { Router, Request, Response } from "express";
-import { repoState, getGitHistory } from "../services/gitService";
+import { repoState, getGitHistory } from "../adapters/gitAdapter";
 
 export const historyRouter = Router();
 
@@ -580,7 +946,7 @@ import {
   formatFile,
   gitCommit,
   gitUndo,
-} from "../services/gitService";
+} from "../adapters/gitAdapter";
 import {
   applyBlockToContent,
   validateSyntax,
@@ -774,10 +1140,10 @@ import {
   repoState,
   getAllFiles,
   getFileStats,
-} from "../services/gitService";
+} from "../adapters/gitAdapter";
 import { generateRepoMap } from "../services/repoMapService";
 import { getDependencyMap } from "../services/dependencyService";
-import { openNativeFolderDialog } from "../services/osService";
+import { openNativeFolderDialog } from "../adapters/osAdapter";
 
 export const repoRouter = Router();
 
@@ -1000,230 +1366,6 @@ export function getDependencyMap(basePath: string, filesList: string[]): Depende
   }
 
   return { outbound, inbound, apiOutbound, apiInbound };
-}
-
-==================================================
-FILE PATH: server\services\gitService.ts
-==================================================
-import fs from "fs";
-import path from "path";
-import { execSync } from "child_process";
-
-let targetRepoPath: string = process.cwd();
-
-export const repoState = {
-  getRepoPath: (): string => targetRepoPath,
-  setRepoPath: (newPath: string): void => {
-    targetRepoPath = path.resolve(newPath);
-  },
-};
-
-export const isSecretFile = (fileName: string): boolean => /^\.env(\..+)?$/.test(fileName);
-
-const HEAVY_DIR_SEGMENTS = new Set([
-  "node_modules",
-  ".git",
-  "dist",
-  "build",
-  "coverage",
-  ".vscode",
-  ".idea",
-  "backups",
-]);
-
-const HEAVY_FILE_EXTENSIONS = new Set([".sqlite", ".sqlite3", ".db", ".log"]);
-
-export const isHeavyOrJunkPath = (filePath: string): boolean => {
-  const segments = filePath.split("/");
-  if (segments.some((seg) => HEAVY_DIR_SEGMENTS.has(seg))) return true;
-  const ext = path.extname(filePath).toLowerCase();
-  return HEAVY_FILE_EXTENSIONS.has(ext);
-};
-
-export const getAllFilesFallback = (
-  dir: string,
-  basePath: string = dir,
-  fileList: string[] = []
-): string[] => {
-  if (!fs.existsSync(dir)) return fileList;
-  const files = fs.readdirSync(dir);
-  for (const file of files) {
-    const filePath = path.join(dir, file);
-    const stat = fs.statSync(filePath);
-    if (stat.isDirectory()) {
-      if (
-        ![
-          "node_modules",
-          ".git",
-          "dist",
-          "build",
-          "coverage",
-          ".vscode",
-          ".idea",
-        ].includes(file)
-      ) {
-        getAllFilesFallback(filePath, basePath, fileList);
-      }
-    } else if (!isSecretFile(file)) {
-      fileList.push(path.relative(basePath, filePath).replace(/\\/g, "/"));
-    }
-  }
-  return fileList;
-};
-
-export const getAllFiles = (dir: string = targetRepoPath, basePath: string = dir): string[] => {
-  try {
-    const raw = execSync("git ls-files --cached --others --exclude-standard", {
-      cwd: basePath,
-      encoding: "utf-8",
-    });
-    return raw
-      .split(/\r?\n/)
-      .map((f) => f.trim())
-      .filter(Boolean)
-      .filter((f) => !isSecretFile(path.basename(f)))
-      .filter((f) => !isHeavyOrJunkPath(f));
-  } catch (e) {
-    return getAllFilesFallback(dir, basePath);
-  }
-};
-
-export interface FileStat {
-  size: number;
-  tokens: number;
-}
-
-export const getFileStats = (
-  basePath: string = targetRepoPath,
-  filesList: string[]
-): Record<string, FileStat> => {
-  const stats: Record<string, FileStat> = {};
-  for (const file of filesList) {
-    try {
-      const fullPath = path.join(basePath, file);
-      const size = fs.statSync(fullPath).size;
-      stats[file] = { size, tokens: Math.ceil(size / 3.8) };
-    } catch (e) {
-      stats[file] = { size: 0, tokens: 0 };
-    }
-  }
-  return stats;
-};
-
-export interface HistoryLogItem {
-  id: string;
-  timestamp: string;
-  message: string;
-  files: string[];
-}
-
-export const getGitHistory = (basePath: string = targetRepoPath): HistoryLogItem[] => {
-  try {
-    const raw = execSync(
-      `git log -n 30 --no-merges --pretty=format:%H%x09%ar%x09%s --name-only`,
-      { cwd: basePath, encoding: "utf-8" },
-    );
-
-    return raw
-      .split(/\r?\n\r?\n/)
-      .map((block) => block.trim())
-      .filter(Boolean)
-      .map((block) => {
-        const lines = block.split(/\r?\n/);
-        const [hash, timestamp, message] = lines[0].split("\t");
-        const files = lines.slice(1).filter(Boolean);
-        return {
-          id: hash ? hash.slice(0, 7) : "unknown",
-          timestamp: timestamp || "",
-          message: message || "",
-          files,
-        };
-      })
-      .filter((log) => log.message !== "pre-ai-edit");
-  } catch (err) {
-    return [];
-  }
-};
-
-export const gitUndo = (basePath: string = targetRepoPath): void => {
-  execSync("git reset --hard HEAD~1", {
-    cwd: basePath,
-    stdio: "ignore",
-  });
-};
-
-export const gitSnapshotPreEdit = (basePath: string = targetRepoPath): void => {
-  try {
-    execSync('git add . && git commit -m "pre-ai-edit"', {
-      cwd: basePath,
-      stdio: "ignore",
-    });
-  } catch (e) {}
-};
-
-export const gitMoveFile = (
-  basePath: string,
-  sourceRel: string,
-  destRel: string
-): void => {
-  const destFullPath = path.resolve(basePath, destRel);
-  const destDir = path.dirname(destFullPath);
-  if (!fs.existsSync(destDir)) {
-    fs.mkdirSync(destDir, { recursive: true });
-  }
-
-  try {
-    execSync(`git mv -f "${sourceRel}" "${destRel}"`, {
-      cwd: basePath,
-      stdio: "ignore",
-    });
-  } catch (e) {
-    fs.renameSync(path.resolve(basePath, sourceRel), destFullPath);
-  }
-};
-
-export const formatFile = (basePath: string, fileRel: string): void => {
-  try {
-    execSync(`npx prettier --write "${fileRel}"`, {
-      cwd: basePath,
-      stdio: "ignore",
-    });
-  } catch (e) {}
-};
-
-export const gitCommit = (
-  basePath: string,
-  message: string = "ai-edit: updated files"
-): void => {
-  execSync(`git add . && git commit -m "${message}"`, {
-    cwd: basePath,
-    stdio: "ignore",
-  });
-};
-
-==================================================
-FILE PATH: server\services\osService.ts
-==================================================
-import { execSync } from "child_process";
-
-/**
- * Opens platform-native folder selection dialog and returns the selected directory path.
- */
-export function openNativeFolderDialog(): string {
-  let cmd = "";
-  if (process.platform === "win32") {
-    cmd = `powershell -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.ValidateNames = $false; $f.CheckFileExists = $false; $f.CheckPathExists = $true; $f.FileName = 'Select This Folder'; $f.Title = 'Select Repository Folder'; if($f.ShowDialog() -eq 'OK') { [System.IO.Path]::GetDirectoryName($f.FileName) }"`;
-  } else if (process.platform === "darwin") {
-    cmd = `osascript -e 'POSIX path of (choose folder)'`;
-  } else {
-    cmd = `zenity --file-selection --directory 2>/dev/null || kdialog --getexistingdirectory 2>/dev/null`;
-  }
-
-  try {
-    return execSync(cmd, { encoding: "utf-8" }).trim();
-  } catch (err) {
-    return "";
-  }
 }
 
 ==================================================
@@ -1480,9 +1622,9 @@ import { DiffPanel } from "./components/DiffPanel";
 import { Footer } from "./components/Footer";
 import { Toast } from "./components/Toast";
 import { DiffBlock } from "./types";
-import { parseDiffBlocks } from "./utils/diffParser";
+import { parseDiffBlocks } from "./features/prompt-builder/utils/diffParser";
 import { filesApi } from "./api/client";
-import { useRepoContext } from "./hooks/useRepoContext";
+import { useRepoContext } from "./features/prompt-builder/hooks/useRepoContext";
 
 export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -1865,7 +2007,7 @@ export const api = {
 };
 
 ==================================================
-FILE PATH: src\components\DiffPanel.tsx
+FILE PATH: src\features\prompt-builder\components\DiffPanel.tsx
 ==================================================
 import { useState, useEffect } from "react";
 import {
@@ -2449,7 +2591,7 @@ export function DiffPanel({
 
 
 ==================================================
-FILE PATH: src\components\Footer.tsx
+FILE PATH: src\features\prompt-builder\components\Footer.tsx
 ==================================================
 import { useRef, useState } from "react";
 import { Check, GitCommit, History } from "lucide-react";
@@ -2687,7 +2829,7 @@ export function Footer({
 }
 
 ==================================================
-FILE PATH: src\components\Header.tsx
+FILE PATH: src\features\prompt-builder\components\Header.tsx
 ==================================================
 import React, { useState } from "react";
 import { api } from "../api/client";
@@ -2867,7 +3009,7 @@ export function Header({
 }
 
 ==================================================
-FILE PATH: src\components\PromptPanel.tsx
+FILE PATH: src\features\prompt-builder\components\PromptPanel.tsx
 ==================================================
 import { useState, useEffect, useMemo } from "react";
 import { Copy, Map, Eye, X, FileText, AtSign } from "lucide-react";
@@ -3281,7 +3423,7 @@ export function PromptPanel({
 }
 
 ==================================================
-FILE PATH: src\components\Toast.tsx
+FILE PATH: src\features\prompt-builder\components\Toast.tsx
 ==================================================
 import { Check } from "lucide-react";
 import { useEffect } from "react";
@@ -3321,7 +3463,7 @@ export function Toast({ message, onClose }: ToastProps) {
 
 
 ==================================================
-FILE PATH: src\components\prompt\FileTree.tsx
+FILE PATH: src\features\prompt-builder\components\prompt\FileTree.tsx
 ==================================================
 import React, { useState, useMemo } from "react";
 import {
@@ -3530,7 +3672,7 @@ export function FileTree({
 }
 
 ==================================================
-FILE PATH: src\components\prompt\MentionDropdown.tsx
+FILE PATH: src\features\prompt-builder\components\prompt\MentionDropdown.tsx
 ==================================================
 import React from "react";
 import { createPortal } from "react-dom";
@@ -3660,7 +3802,7 @@ export function MentionDropdown({
 }
 
 ==================================================
-FILE PATH: src\components\prompt\SuggestedContextBar.tsx
+FILE PATH: src\features\prompt-builder\components\prompt\SuggestedContextBar.tsx
 ==================================================
 import React from "react";
 import { Sparkles, Globe, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
@@ -3772,7 +3914,7 @@ export function SuggestedContextBar({
 }
 
 ==================================================
-FILE PATH: src\hooks\useMentionPopup.ts
+FILE PATH: src\features\prompt-builder\hooks\useMentionPopup.ts
 ==================================================
 import { useState, useEffect, useMemo, useRef, ChangeEvent, KeyboardEvent } from "react";
 import { fuzzySearchFiles } from "../utils/fuzzySearch";
@@ -3937,11 +4079,11 @@ export function useMentionPopup({
 }
 
 ==================================================
-FILE PATH: src\hooks\useRepoContext.ts
+FILE PATH: src\features\prompt-builder\hooks\useRepoContext.ts
 ==================================================
 import { useState, useEffect, useCallback } from "react";
-import { repoApi, historyApi } from "../api/client";
-import { HistoryLog } from "../types";
+import { repoApi, historyApi } from "../../../api/client";
+import { HistoryLog } from "../../../types";
 
 export function useRepoContext() {
   const [repoPath, setRepoPath] = useState<string>("Loading...");
@@ -4030,7 +4172,7 @@ export function useRepoContext() {
 }
 
 ==================================================
-FILE PATH: src\hooks\useSuggestedContext.ts
+FILE PATH: src\features\prompt-builder\hooks\useSuggestedContext.ts
 ==================================================
 import { useMemo } from "react";
 import { SuggestedFile } from "../components/prompt/SuggestedContextBar";
@@ -4160,9 +4302,9 @@ export function useSuggestedContext({
 }
 
 ==================================================
-FILE PATH: src\utils\diffParser.ts
+FILE PATH: src\features\prompt-builder\utils\diffParser.ts
 ==================================================
-import { DiffBlock } from "../types";
+import { DiffBlock } from "../../../types";
 
 export function parseDiffBlocks(rawText: string): DiffBlock[] {
   console.log("[Parser] Starting parse. Input length:", rawText?.length);
@@ -4285,7 +4427,7 @@ export function parseDiffBlocks(rawText: string): DiffBlock[] {
 
 
 ==================================================
-FILE PATH: src\utils\fuzzySearch.ts
+FILE PATH: src\features\prompt-builder\utils\fuzzySearch.ts
 ==================================================
 export interface FuzzyResult {
   filePath: string;
@@ -4362,7 +4504,7 @@ export function fuzzySearchFiles(files: string[], query: string): FuzzyResult[] 
 }
 
 ==================================================
-FILE PATH: src\utils\promptTemplates.ts
+FILE PATH: src\features\prompt-builder\utils\promptTemplates.ts
 ==================================================
 export function formatActiveFilesContext(
   selectedFiles: Set<string> | string[],
@@ -4407,6 +4549,33 @@ FILE SIZE ADVISORY:
 - As a rough guideline, a single-responsibility file should rarely exceed ~300-400 lines. Treat this as a heuristic, not a hard rule — a dense logic file and a long-but-simple types/config file don't carry the same weight.
 - If a file you are editing (in ACTIVE FILES CONTEXT) is already at or beyond that size after your change, do NOT split it automatically. Implement the requested change first, then add a brief closing note that the file is a good candidate for splitting, with a one-line suggestion of how (e.g. which functions/components would move where).
 - Only actually emit MOVE/CREATE blocks to perform a split when the user's request explicitly asks for restructuring — see the INTELLIGENT MODULARITY RULE below.
+
+LAYERING ADVISORY:
+- Before editing, check which layer the target file belongs to (infer from
+  its path in the REPO MAP: components/, hooks/, api/, services/, adapters/, utils/).
+- If the requested change would add logic that belongs in a different layer
+  (e.g. an API call inside a components/ file, a DB query inside routes/),
+  follow the ADVISORY PROTOCOL: implement the request as asked, but also
+  emit the correctly-layered file (new or existing, via CREATE or a
+  SEARCH/REPLACE block) and have the target file consume it, rather than
+  inlining the out-of-layer logic directly.
+- When CREATING a new file, place it in the folder and naming convention
+  matching its layer, per the existing structure shown in the REPO MAP
+  (e.g. use[Feature].ts under hooks/, [domain]Client.ts under api/) —
+  this is what lets the project's automated boundary linter actually
+  catch misplacement later.
+
+NEW FEATURE PLANNING RULE:
+- If the request requires creating more than one new file, before emitting
+  any FILE/CREATE/MOVE blocks, first output a short comment block listing
+  the proposed new files and each file's one-line responsibility:
+    // PLAN:
+    // - hooks/useSettingsPanel.ts — state + save/load logic
+    // - api/settingsClient.ts — fetch/save API calls
+    // - components/SettingsPanel.tsx — UI only, consumes the hook
+- Then proceed directly to the FILE/CREATE/MOVE blocks implementing that
+  plan in the same response. Do not wait for confirmation — this is a
+  visible commitment to structure, not an approval gate.
 
 OUTPUT FORMAT & GUARDRAILS:
 You must output code modifications using exact SEARCH/REPLACE blocks.
@@ -4469,7 +4638,7 @@ export function buildFilesAndPromptOnly({
 }
 
 ==================================================
-FILE PATH: src\utils\treeBuilder.ts
+FILE PATH: src\features\prompt-builder\utils\treeBuilder.ts
 ==================================================
 export interface TreeNode {
   name: string;
