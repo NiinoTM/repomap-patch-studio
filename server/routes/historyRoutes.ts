@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { repoState, getGitHistory } from "../services/gitService";
+import { repoState, getGitHistory } from "../adapters/gitAdapter";
 
 export const historyRouter = Router();
 

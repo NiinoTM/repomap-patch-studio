@@ -8,7 +8,7 @@ import {
   formatFile,
   gitCommit,
   gitUndo,
-} from "../services/gitService";
+} from "../adapters/gitAdapter";
 import {
   applyBlockToContent,
   validateSyntax,

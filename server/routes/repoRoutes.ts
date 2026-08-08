@@ -5,10 +5,10 @@ import {
   repoState,
   getAllFiles,
   getFileStats,
-} from "../services/gitService";
+} from "../adapters/gitAdapter";
 import { generateRepoMap } from "../services/repoMapService";
 import { getDependencyMap } from "../services/dependencyService";
-import { openNativeFolderDialog } from "../services/osService";
+import { openNativeFolderDialog } from "../adapters/osAdapter";
 
 export const repoRouter = Router();
 
