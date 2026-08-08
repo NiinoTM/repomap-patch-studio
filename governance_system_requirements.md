@@ -5,8 +5,8 @@
 AI coding assistants default to monolithic single-file output because it's the
 path of least token resistance. This document is a governance system —
 prompting patterns, project structure, and *automated enforcement* — for
-keeping AI-generated (and human-written) code aligned with the Single
-Responsibility Principle (SRP) from the start of a project.
+keeping AI-generated (and human-written) code aligned with the **Single
+Responsibility Principle (SRP)** from the start of a project.
 
 **Honest framing:** none of this *guarantees* compliance. An LLM can still
 violate every rule in a single long response, and no linter can fully

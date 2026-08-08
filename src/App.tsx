@@ -5,9 +5,8 @@ import { DiffPanel } from "./features/prompt-builder/components/DiffPanel";
 import { Footer } from "./features/prompt-builder/components/Footer";
 import { Toast } from "./features/prompt-builder/components/Toast";
 import { DiffBlock } from "./types/patch";
-import { parseDiffBlocks } from "./features/prompt-builder/utils/diffParser";
-import { filesApi } from "./api/repoApi";
 import { useRepoContext } from "./features/prompt-builder/hooks/useRepoContext";
+import { usePasteAndValidate } from "./features/prompt-builder/hooks/usePasteAndValidate";
 
 export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -34,6 +33,14 @@ export default function App() {
     refreshHistory,
   } = useRepoContext();
 
+  const { handlePaste } = usePasteAndValidate({
+    pastedContent,
+    setPastedContent,
+    setDiffBlocks,
+    setIgnoredBlockIds,
+    setToastMessage,
+  });
+
   const handleChangeRepo = async (newPath: string) => {
     const success = await changeRepo(newPath);
     if (success) {
@@ -51,7 +58,7 @@ export default function App() {
     setToastMessage("Raw Repo Map copied to clipboard!");
   };
 
- const handleClear = () => {
+  const handleClear = () => {
     setPastedContent("");
     setDiffBlocks([]);
     setIgnoredBlockIds(new Set());
@@ -74,105 +81,7 @@ export default function App() {
     refreshHistory();
   };
 
-  const handlePaste = async (append = false) => {
-    try {
-      const clipboardText = await navigator.clipboard.readText();
-      if (!clipboardText) return;
-
-      const newContent =
-        append && pastedContent
-          ? pastedContent + "\n\n" + clipboardText
-          : clipboardText;
-      setPastedContent(newContent);
-      if (!append) {
-        setIgnoredBlockIds(new Set());
-      }
-      const parsed = parseDiffBlocks(newContent);
-
-      if (parsed.length === 0) {
-        setDiffBlocks([]);
-        return;
-      }
-
-      const uniqueFiles = Array.from(
-        new Set(parsed.map((b) => b.file).filter((f) => f !== "Active File")),
-      );
-
-      let data = { success: false, contents: {} as Record<string, string> };
-
-      if (uniqueFiles.length > 0) {
-        data = await filesApi.fetchFiles(uniqueFiles);
-      } else {
-        data.success = true;
-      }
-
-      if (data.success) {
-        const validatedBlocks = parsed.map((block) => {
-          if (block.type === "move") {
-            const sourceExists = !!data.contents[block.file];
-            return {
-              ...block,
-              status: sourceExists ? ("match" as const) : ("no-match" as const),
-            };
-          }
-
-          if (!block.search.trim() || block.file === "Active File") {
-            return { ...block, status: "match" as const };
-          }
-
-          const content = data.contents[block.file];
-          if (!content) return { ...block, status: "no-match" as const };
-
-          const normContent = content.replace(/\r\n/g, "\n");
-          const normSearch = block.search.replace(/\r\n/g, "\n");
-          let isMatch = normContent.includes(normSearch);
-
-          if (!isMatch) {
-            const searchLines = normSearch
-              .split("\n")
-              .map((l) => l.trim())
-              .filter(Boolean);
-            const contentLines = normContent
-              .split("\n")
-              .map((l) => l.trim())
-              .filter(Boolean);
-            if (searchLines.length > 0) {
-              isMatch = contentLines
-                .join("\n")
-                .includes(searchLines.join("\n"));
-            }
-          }
-
-          if (!isMatch) {
-            const tokenize = (str: string) =>
-              str
-                .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
-                .replace(/\{\s*["']\s*["']\s*\}/g, "")
-                .replace(/[\s,'"`();]+/g, "");
-
-            const tokenSearch = tokenize(normSearch);
-            const tokenContent = tokenize(normContent);
-            if (tokenSearch.length > 0) {
-              isMatch = tokenContent.includes(tokenSearch);
-            }
-          }
-
-          return {
-            ...block,
-            status: isMatch ? ("match" as const) : ("no-match" as const),
-          };
-        });
-        setDiffBlocks(validatedBlocks);
-      } else {
-        setDiffBlocks(parsed);
-      }
-    } catch (err) {
-      console.error("Failed to parse pasted text: ", err);
-      setToastMessage("Error parsing clipboard text.");
-    }
-  };
-
-    const activeDiffBlocks = (diffBlocks || []).filter(
+  const activeDiffBlocks = (diffBlocks || []).filter(
     (b) => !ignoredBlockIds?.has?.(b.id),
   );
 

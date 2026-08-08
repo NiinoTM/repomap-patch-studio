@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Check, GitCommit, History } from "lucide-react";
 import { DiffBlock, HistoryLog } from "../../../types/patch";
-import { patchApi } from "../../../api/patchApi";
+import { useApplyChanges } from "../hooks/useApplyChanges";
 
 interface FooterProps {
   logs: HistoryLog[];
@@ -18,80 +18,19 @@ export function Footer({
 }: FooterProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [commitMessage, setCommitMessage] = useState("ai-edit: updated files");
-  const [isApplying, setIsApplying] = useState(false);
-  const [isValidating, setIsValidating] = useState(false);
   const [modalCommitMessage, setModalCommitMessage] = useState(
     "ai-edit: updated files",
   );
   const commitDialogRef = useRef<HTMLDialogElement>(null);
 
-  const handleApplyChanges = async (
-    shouldCommit = true,
-    messageOverride?: string,
-  ) => {
-    if (diffBlocks.length === 0) {
-      alert("No diff blocks detected to apply!");
-      return;
-    }
-
-    const finalCommitMessage = messageOverride ?? commitMessage;
-
-    setIsApplying(true);
-    try {
-      const data = await patchApi.apply({
-        blocks: diffBlocks,
-        commitMessage: shouldCommit ? finalCommitMessage : "",
-        skipCommit: !shouldCommit,
-        commit: shouldCommit,
-      });
-
-      if (data.success) {
-        alert(
-          shouldCommit
-            ? "✅ Edits written to disk & committed to Git!"
-            : "✅ Edits written to disk!",
-        );
-        if (onApplySuccess) onApplySuccess();
-      } else {
-        const errorDetails =
-          data.details && Array.isArray(data.details) && data.details.length > 0
-            ? `❌ Transaction Aborted (0 files modified on disk):\n\n` +
-              data.details.map((d: string) => `• ${d}`).join("\n")
-            : `❌ Error applying edits:\n${data.error || "Unknown error"}`;
-        alert(errorDetails);
-      }
-    } catch {
-      alert("❌ Failed to connect to local server. Ensure server is running!");
-    } finally {
-      setIsApplying(false);
-    }
-  };
+  const { isApplying, isValidating, applyChanges, validateDryRun } =
+    useApplyChanges({ diffBlocks, onApplySuccess });
 
   const handleCommitButtonClick = async () => {
-    if (diffBlocks.length === 0) {
-      alert("No diff blocks detected to apply!");
-      return;
-    }
-
-    setIsValidating(true);
-    try {
-      const data = await patchApi.apply({ blocks: diffBlocks, dryRun: true });
-
-      if (data.success) {
-        setModalCommitMessage(commitMessage);
-        commitDialogRef.current?.showModal();
-      } else {
-        const errorDetails =
-          data.details && Array.isArray(data.details) && data.details.length > 0
-            ? `❌ Validation failed (0 files modified on disk):\n\n` +
-              data.details.map((d: string) => `• ${d}`).join("\n")
-            : `❌ Error validating edits:\n${data.error || "Unknown error"}`;
-        alert(errorDetails);
-      }
-    } catch {
-      alert("❌ Failed to connect to local server. Ensure server is running!");
-    } finally {
-      setIsValidating(false);
+    const ok = await validateDryRun();
+    if (ok) {
+      setModalCommitMessage(commitMessage);
+      commitDialogRef.current?.showModal();
     }
   };
 
@@ -99,7 +38,7 @@ export function Footer({
     e.preventDefault();
     commitDialogRef.current?.close();
     setCommitMessage(modalCommitMessage);
-    await handleApplyChanges(true, modalCommitMessage);
+    await applyChanges(true, modalCommitMessage);
   };
 
   return (
@@ -161,7 +100,7 @@ export function Footer({
           </button>
 
           <button
-            onClick={() => handleApplyChanges(false)}
+            onClick={() => applyChanges(false, commitMessage)}
             disabled={!hasChanges || isApplying}
             className="bg-blue-600 hover:bg-blue-500 text-white px-6 h-12 rounded-lg font-bold shadow-lg shadow-blue-500/10 flex items-center space-x-2 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
