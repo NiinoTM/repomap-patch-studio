@@ -1,7 +1,0 @@
-#!/usr/bin/env sh
-. "$(dirname -- "$0")/_/h"
-
-echo "🚨 HUSKY IS ALIVE AND INTERCEPTED YOUR COMMIT! 🚨"
-exit 1
-
-npx lint-staged

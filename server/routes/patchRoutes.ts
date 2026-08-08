@@ -1,6 +1,12 @@
 import { Router, Request, Response } from "express";
-import fs from "fs";
-import path from "path";
+import {
+  fileExists,
+  readTextFile,
+  writeTextFile,
+  ensureDir,
+  resolvePath,
+  dirnamePath,
+} from "../adapters/fsAdapter";
 import {
   repoState,
   gitSnapshotPreEdit,
@@ -50,13 +56,13 @@ patchRouter.post("/apply", (req: Request, res: Response) => {
 
     for (const block of editBlocks) {
       if (!block.file || block.file === "Active File") continue;
-      const fullPath = path.resolve(targetRepoPath, block.file);
+      const fullPath = resolvePath(targetRepoPath, block.file);
 
       let currentContent = pendingWrites.get(block.file);
-      const fileExists = fs.existsSync(fullPath);
+      const exists = fileExists(fullPath);
 
       if (currentContent === undefined) {
-        currentContent = fileExists ? fs.readFileSync(fullPath, "utf-8") : "";
+        currentContent = exists ? readTextFile(fullPath) : "";
       }
 
       const result = applyBlockToContent(currentContent, block);
@@ -81,14 +87,14 @@ patchRouter.post("/apply", (req: Request, res: Response) => {
         );
         continue;
       }
-      const sourcePath = path.resolve(targetRepoPath, block.file);
-      const destPath = path.resolve(targetRepoPath, block.moveTo);
+      const sourcePath = resolvePath(targetRepoPath, block.file);
+      const destPath = resolvePath(targetRepoPath, block.moveTo);
 
-      if (!fs.existsSync(sourcePath)) {
+      if (!fileExists(sourcePath)) {
         validationErrors.push(
           `MOVE failed: source file not found: ${block.file}`,
         );
-      } else if (fs.existsSync(destPath) && sourcePath !== destPath) {
+      } else if (fileExists(destPath) && sourcePath !== destPath) {
         validationErrors.push(
           `MOVE failed: destination already exists: ${block.moveTo}`,
         );
@@ -135,14 +141,12 @@ patchRouter.post("/apply", (req: Request, res: Response) => {
     });
 
     for (const file of filesToCommit) {
-      const fullPath = path.resolve(targetRepoPath, file);
-      const dirPath = path.dirname(fullPath);
-      if (!fs.existsSync(dirPath)) {
-        fs.mkdirSync(dirPath, { recursive: true });
-      }
+      const fullPath = resolvePath(targetRepoPath, file);
+      const dirPath = dirnamePath(fullPath);
+      ensureDir(dirPath);
       const contentToWrite = pendingWrites.get(file);
       if (contentToWrite !== undefined) {
-        fs.writeFileSync(fullPath, contentToWrite, "utf-8");
+        writeTextFile(fullPath, contentToWrite);
       }
     }
 
@@ -174,8 +178,9 @@ patchRouter.post("/apply", (req: Request, res: Response) => {
         : "✅ Transaction complete: Edits applied to disk!",
       appliedFiles: allChangedFiles,
     });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: message });
   }
 });
 

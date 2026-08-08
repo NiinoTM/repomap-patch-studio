@@ -1,25 +1,21 @@
-import fs from "fs";
-import path from "path";
+import { readTextFile, joinPath, extnamePath } from "../adapters/fsAdapter";
 
-/**
- * Generates a symbol map of the repository files.
- */
 export function generateRepoMap(basePath: string, filesList: string[]): string {
   let mapOutput = "";
   for (const file of filesList) {
-    const fullPath = path.join(basePath, file);
-    const ext = path.extname(file).toLowerCase();
+    const fullPath = joinPath(basePath, file);
+    const ext = extnamePath(file).toLowerCase();
     let content: string;
     try {
-      content = fs.readFileSync(fullPath, "utf-8");
-    } catch (e) {
+      content = readTextFile(fullPath);
+    } catch {
       continue;
     }
 
-    let symbols: string[] = [];
+    const symbols: string[] = [];
     const lines = content.split("\n");
 
-    for (let line of lines) {
+    for (const line of lines) {
       const trimmed = line.trim();
       if ([".js", ".jsx", ".ts", ".tsx"].includes(ext)) {
         let match = trimmed.match(

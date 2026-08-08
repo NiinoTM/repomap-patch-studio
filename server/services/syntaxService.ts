@@ -1,13 +1,10 @@
-import path from "path";
 import { transformSync } from "esbuild";
+import { extnamePath } from "../adapters/fsAdapter";
 
-/**
- * Validates JS/TS/JSX/TSX syntax in memory before writing to disk.
- */
 export function validateSyntax(content: string, filePath: string): string | null {
-  const ext = path.extname(filePath).toLowerCase();
+  const ext = extnamePath(filePath).toLowerCase();
   if (![".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"].includes(ext)) {
-    return null; // Skip non-code files (JSON, CSS, Markdown, etc.)
+    return null;
   }
 
   try {
@@ -19,12 +16,15 @@ export function validateSyntax(content: string, filePath: string): string | null
       jsx: "transform",
       format: "esm",
     });
-    return null; // Valid syntax!
-  } catch (err: any) {
+    return null;
+  } catch (err: unknown) {
+    const esbuildErr = err as { errors?: { text: string; location?: { line?: number } }[] };
     const errorMsg =
-      err.errors && err.errors[0]
-        ? `${err.errors[0].text} (line ${err.errors[0].location?.line || "?"})`
-        : err.message;
+      esbuildErr.errors && esbuildErr.errors[0]
+        ? `${esbuildErr.errors[0].text} (line ${esbuildErr.errors[0].location?.line || "?"})`
+        : err instanceof Error
+          ? err.message
+          : String(err);
     return `Pre-flight SyntaxError in ${filePath}: ${errorMsg}`;
   }
 }

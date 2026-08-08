@@ -1,6 +1,5 @@
 import { Router, Request, Response } from "express";
-import fs from "fs";
-import path from "path";
+import { fileExists, isDirectory, readTextFile, joinPath } from "../adapters/fsAdapter";
 import {
   repoState,
   getAllFiles,
@@ -27,8 +26,9 @@ repoRouter.get("/repo", (_req: Request, res: Response) => {
       fileStats,
       dependencyMap,
     });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: message });
   }
 });
 
@@ -36,8 +36,8 @@ repoRouter.post("/repo", (req: Request, res: Response) => {
   const { newPath } = req.body;
   if (
     typeof newPath === "string" &&
-    fs.existsSync(newPath) &&
-    fs.statSync(newPath).isDirectory()
+    fileExists(newPath) &&
+    isDirectory(newPath)
   ) {
     repoState.setRepoPath(newPath);
     const targetRepoPath = repoState.getRepoPath();
@@ -67,8 +67,10 @@ repoRouter.post("/files", (req: Request, res: Response) => {
   if (Array.isArray(files)) {
     files.forEach((f: string) => {
       try {
-        contents[f] = fs.readFileSync(path.join(targetRepoPath, f), "utf-8");
-      } catch (e) {}
+        contents[f] = readTextFile(joinPath(targetRepoPath, f));
+      } catch {
+        // unreadable file — skip it, contents[f] stays unset
+      }
     });
   }
   res.json({ success: true, contents });
@@ -78,7 +80,7 @@ repoRouter.post("/native-folder-dialog", (_req: Request, res: Response) => {
   try {
     const selectedPath = openNativeFolderDialog();
     res.json({ success: true, path: selectedPath });
-  } catch (err) {
+  } catch {
     res.json({ success: true, path: "" });
   }
 });

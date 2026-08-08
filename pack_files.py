@@ -9,7 +9,7 @@ OUTPUT_FILENAME = 'codebase_context.txt'
 # You can add extensions like '*.png' or specific filenames here.
 IGNORE_PATTERNS = [
     # System / Version Control
-    '.git', '.svn', '.hg', '.DS_Store', 'package-lock.json',
+    '.git', '.svn', '.hg', '.DS_Store', 'package-lock.json', '.eslintcache',
     
     # Dependencies
     'node_modules', 'venv', '.venv', 'env', '__pycache__',

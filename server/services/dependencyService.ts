@@ -1,5 +1,4 @@
-import fs from "fs";
-import path from "path";
+import { readTextFile, joinPath, dirnamePath, extnamePath, normalizePath } from "../adapters/fsAdapter";
 
 export interface DependencyMap {
   outbound: Record<string, string[]>;
@@ -8,9 +7,6 @@ export interface DependencyMap {
   apiInbound: Record<string, string[]>;
 }
 
-/**
- * Generates inbound, outbound, and API dependency maps for repository files.
- */
 export function getDependencyMap(basePath: string, filesList: string[]): DependencyMap {
   const outbound: Record<string, string[]> = {};
   const inboundMap: Record<string, Set<string>> = {};
@@ -19,12 +15,12 @@ export function getDependencyMap(basePath: string, filesList: string[]): Depende
   const fileSet = new Set(filesList);
 
   for (const file of filesList) {
-    const ext = path.extname(file).toLowerCase();
+    const ext = extnamePath(file).toLowerCase();
     if (![".js", ".jsx", ".ts", ".tsx"].includes(ext)) continue;
 
     try {
-      const fullPath = path.join(basePath, file);
-      const content = fs.readFileSync(fullPath, "utf-8");
+      const fullPath = joinPath(basePath, file);
+      const content = readTextFile(fullPath);
       const imports = new Set<string>();
 
       const importRegex =
@@ -40,10 +36,8 @@ export function getDependencyMap(basePath: string, filesList: string[]): Depende
         }
 
         if (importPath.startsWith(".")) {
-          const fileDir = path.dirname(file);
-          const rawResolved = path
-            .normalize(path.join(fileDir, importPath))
-            .replace(/\\/g, "/");
+          const fileDir = dirnamePath(file);
+          const rawResolved = normalizePath(joinPath(fileDir, importPath)).replace(/\\/g, "/");
 
           const candidates = [
             rawResolved,
@@ -73,7 +67,9 @@ export function getDependencyMap(basePath: string, filesList: string[]): Depende
           inboundMap[imp].add(file);
         }
       }
-    } catch (e) {}
+    } catch {
+  // unreadable or unparsable file — skip it
+}
   }
 
   const routeHandlers: Record<string, Set<string>> = {};
@@ -82,12 +78,12 @@ export function getDependencyMap(basePath: string, filesList: string[]): Depende
     /(?:app|router|server)\s*\.\s*(?:get|post|put|delete|patch|all|use)\s*\(\s*[`'"]([^`'"]+)[`'"]/gi;
 
   for (const file of filesList) {
-    const ext = path.extname(file).toLowerCase();
+    const ext = extnamePath(file).toLowerCase();
     if (![".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs"].includes(ext)) continue;
 
     try {
-      const fullPath = path.join(basePath, file);
-      const content = fs.readFileSync(fullPath, "utf-8");
+      const fullPath = joinPath(basePath, file);
+      const content = readTextFile(fullPath);
       let match: RegExpExecArray | null;
       while ((match = apiRouteHandlerRegex.exec(content)) !== null) {
         const route = match[1];
@@ -96,19 +92,21 @@ export function getDependencyMap(basePath: string, filesList: string[]): Depende
           routeHandlers[route].add(file);
         }
       }
-    } catch (e) {}
+    } catch {
+  // unreadable or unparsable file — skip it
+}
   }
 
   const apiClientRegex =
     /(?:fetch|axios\.(?:get|post|put|delete|patch)|apiCall)\s*\(\s*[`'"]([^`'"${}\n]+)[`'"]/gi;
 
   for (const file of filesList) {
-    const ext = path.extname(file).toLowerCase();
+    const ext = extnamePath(file).toLowerCase();
     if (![".js", ".jsx", ".ts", ".tsx"].includes(ext)) continue;
 
     try {
-      const fullPath = path.join(basePath, file);
-      const content = fs.readFileSync(fullPath, "utf-8");
+      const fullPath = joinPath(basePath, file);
+      const content = readTextFile(fullPath);
       let match: RegExpExecArray | null;
       while ((match = apiClientRegex.exec(content)) !== null) {
         const rawRoute = match[1];
@@ -129,7 +127,9 @@ export function getDependencyMap(basePath: string, filesList: string[]): Depende
           }
         }
       }
-    } catch (e) {}
+    } catch {
+  // unreadable or unparsable file — skip it
+}
   }
 
   const inbound: Record<string, string[]> = {};
