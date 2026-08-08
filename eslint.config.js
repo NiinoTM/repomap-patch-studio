@@ -83,6 +83,41 @@ export default tseslint.config(
     },
   },
 
+  // Presentational components: max-lines-per-function/complexity default
+  // to 50/10, which is tuned for logic-heavy functions, not JSX — a
+  // component with a handful of conditionally-styled elements blows past
+  // 50 lines on markup alone. Audited on 2026-08-08 before raising this:
+  // DiffBlockCard.tsx (266 lines / complexity 34), DiffPanel.tsx (262 /
+  // 18), Header.tsx (146), PromptPanel.tsx (199), ClipboardDebugger.tsx
+  // (60) were all confirmed props-in/JSX-out with no fetch calls and no
+  // business logic hiding in the render — same standard as the max-lines
+  // override above. Ceiling set just above today's worst case (266/34),
+  // not thrown open — a genuinely new violation still gets flagged.
+  // If a component needs a higher ceiling than this to pass, that's the
+  // signal to actually look at it, not to raise the number again.
+  {
+    files: ["src/features/*/components/**/*.tsx"],
+    rules: {
+      "max-lines-per-function": ["warn", { max: 280, skipBlankLines: true }],
+      complexity: ["warn", { max: 35 }],
+    },
+  },
+
+  // Hooks/utils are logic, not markup, so they stay much closer to the
+  // strict default — this is deliberately a smaller ceiling than the one
+  // above. Audited 2026-08-08: useFileSelection.ts (114 lines) and
+  // diffParser.ts (105 lines / complexity 15) are legitimately-scoped —
+  // a multi-field selection hook and a SEARCH/REPLACE state-machine
+  // parser respectively — not files with mixed responsibilities. Set
+  // just above today's worst case (114/15).
+  {
+    files: ["src/features/*/hooks/*.ts", "src/features/*/utils/*.{ts,tsx}"],
+    rules: {
+      "max-lines-per-function": ["warn", { max: 130, skipBlankLines: true }],
+      complexity: ["warn", { max: 16 }],
+    },
+  },
+
   // --- 4b: zero current violations — enforced as "error". ---
   {
     files: [
