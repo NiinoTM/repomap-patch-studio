@@ -1,45 +1,23 @@
 import { DiffBlock } from "../../../types/patch";
+import { applyBlockToContent } from "../../../utils/patchMatcher";
 
 /**
  * Determines whether a SEARCH block can be located inside a file's current
- * contents. Tries three progressively looser strategies:
- *  1. Exact match after normalizing line endings.
- *  2. Match after trimming each line (tolerates whitespace/indentation drift).
- *  3. Match after stripping comments/whitespace entirely (tolerates minor
- *     formatting changes made to the file since the AI generated the diff).
+ * contents.
+ *
+ * Uses the exact same underlying applyBlockToContent engine as the server
+ * (Exact, Fuzzy Indentation, and Condensed Token Stream matchers) to guarantee
+ * the UI badge accurately reflects whether the block will actually apply.
  *
  * Pure function: no React, no network calls — safe to unit test directly.
  */
 export function matchesFileContent(search: string, content: string): boolean {
-  const normContent = content.replace(/\r\n/g, "\n");
-  const normSearch = search.replace(/\r\n/g, "\n");
-
-  if (normContent.includes(normSearch)) return true;
-
-  const searchLines = normSearch
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-  const contentLines = normContent
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-  if (
-    searchLines.length > 0 &&
-    contentLines.join("\n").includes(searchLines.join("\n"))
-  ) {
-    return true;
-  }
-
-  const tokenize = (str: string) =>
-    str
-      .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
-      .replace(/\{\s*["']\s*["']\s*\}/g, "")
-      .replace(/[\s,'"`();]+/g, "");
-
-  const tokenSearch = tokenize(normSearch);
-  const tokenContent = tokenize(normContent);
-  return tokenSearch.length > 0 && tokenContent.includes(tokenSearch);
+  const result = applyBlockToContent(content, {
+    file: "match-test", // Dummy filename to bypass "Active File" skip checks
+    search,
+    replace: "", // Replacement string doesn't matter for matching
+  });
+  return result.success;
 }
 
 /**
