@@ -11,6 +11,7 @@ import {
 import { DiffBlock } from "../../../types/patch";
 import { ClipboardDebugger } from "./diff/ClipboardDebugger";
 import { DiffBlockCard } from "./diff/DiffBlockCard";
+import { useApplyChanges } from "../hooks/useApplyChanges";
 
 interface DiffPanelProps {
   parsedBlocks: DiffBlock[];
@@ -126,6 +127,12 @@ export function DiffPanel({
   const activeBlocks = parsedBlocks.filter(
     (b) => !effectiveIgnoredBlocks?.has?.(b.id),
   );
+
+  const { validationErrors = [], isValidating } = useApplyChanges({
+    diffBlocks: activeBlocks,
+    autoValidate: true,
+  });
+
   const matchCount = activeBlocks.filter((b) => b.status === "match").length;
   const noMatchCount = activeBlocks.filter(
     (b) => b.status === "no-match",
@@ -166,6 +173,18 @@ export function DiffPanel({
               {ignoredCount > 0 && (
                 <div className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[10px] font-bold">
                   {ignoredCount} IGNORED
+                </div>
+              )}
+              {isValidating && (
+                <div className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded text-[10px] font-bold flex items-center space-x-1">
+                  <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                  <span>VALIDATING...</span>
+                </div>
+              )}
+              {validationErrors.length > 0 && !isValidating && (
+                <div className="bg-rose-500/10 text-rose-400 border border-rose-500/20 px-2 py-0.5 rounded text-[10px] font-bold flex items-center space-x-1">
+                  <AlertTriangle className="w-3 h-3 text-rose-400" />
+                  <span>{validationErrors.length} ERRORS</span>
                 </div>
               )}
             </>
@@ -261,25 +280,34 @@ export function DiffPanel({
         ) : (
           <>
             <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4">
-              {parsedBlocks.map((block) => (
-                <DiffBlockCard
-                  key={block.id}
-                  block={block}
-                  isIgnored={Boolean(effectiveIgnoredBlocks?.has?.(block.id))}
-                  isCollapsed={Boolean(collapsedBlocks?.has?.(block.id))}
-                  isEditing={editingBlockId === block.id}
-                  editSearch={editSearch}
-                  editReplace={editReplace}
-                  copiedId={copiedId}
-                  onToggleBlock={toggleBlock}
-                  onToggleCollapse={toggleCollapse}
-                  onCopyBlock={handleCopyBlock}
-                  onStartEditing={startEditing}
-                  onSaveEdit={saveEdit}
-                  onEditSearchChange={setEditSearch}
-                  onEditReplaceChange={setEditReplace}
-                />
-              ))}
+              {parsedBlocks.map((block) => {
+                const blockErrors = validationErrors.filter(
+                  (err) =>
+                    err.includes(block.file) ||
+                    (block.moveTo && err.includes(block.moveTo)),
+                );
+
+                return (
+                  <DiffBlockCard
+                    key={block.id}
+                    block={block}
+                    validationErrors={blockErrors}
+                    isIgnored={Boolean(effectiveIgnoredBlocks?.has?.(block.id))}
+                    isCollapsed={Boolean(collapsedBlocks?.has?.(block.id))}
+                    isEditing={editingBlockId === block.id}
+                    editSearch={editSearch}
+                    editReplace={editReplace}
+                    copiedId={copiedId}
+                    onToggleBlock={toggleBlock}
+                    onToggleCollapse={toggleCollapse}
+                    onCopyBlock={handleCopyBlock}
+                    onStartEditing={startEditing}
+                    onSaveEdit={saveEdit}
+                    onEditSearchChange={setEditSearch}
+                    onEditReplaceChange={setEditReplace}
+                  />
+                );
+              })}
             </div>
 
             <div

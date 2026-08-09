@@ -5,11 +5,13 @@ import {
   Copy,
   Edit2,
   Save,
+  AlertTriangle,
 } from "lucide-react";
 import { DiffBlock } from "../../../../types/patch";
 
 interface DiffBlockCardProps {
   block: DiffBlock;
+  validationErrors?: string[];
   isIgnored: boolean;
   isCollapsed: boolean;
   isEditing: boolean;
@@ -44,60 +46,75 @@ export function DiffBlockCard({
   if (block.type === "move") {
     return (
       <div
-        className={`bg-zinc-900/30 border border-zinc-800 rounded-xl flex items-center justify-between px-4 py-3 transition-all ${
+        className={`bg-zinc-900/30 border border-zinc-800 rounded-xl flex flex-col transition-all ${
           isIgnored ? "opacity-50 grayscale" : ""
         }`}
       >
-        <div className="flex items-center space-x-3 min-w-0">
-          <span className="bg-violet-500/20 text-violet-400 text-[10px] px-1.5 py-0.5 rounded border border-violet-500/20 font-bold uppercase shrink-0">
-            Move
-          </span>
-          <span className="text-xs font-mono text-zinc-400 truncate">
-            {block.file}
-          </span>
-          <span className="text-zinc-600 shrink-0">→</span>
-          <span className="text-xs font-mono text-zinc-100 font-medium truncate">
-            {block.moveTo}
-          </span>
-          {block.status === "match" ? (
-            <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase shrink-0">
-              Source Found
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center space-x-3 min-w-0">
+            <span className="bg-violet-500/20 text-violet-400 text-[10px] px-1.5 py-0.5 rounded border border-violet-500/20 font-bold uppercase shrink-0">
+              Move
             </span>
-          ) : (
-            <span className="bg-rose-500/20 text-rose-400 text-[10px] px-1.5 py-0.5 rounded border border-rose-500/20 font-bold uppercase shrink-0">
-              Source Missing
+            <span className="text-xs font-mono text-zinc-400 truncate">
+              {block.file}
             </span>
-          )}
-        </div>
-        <label
-          className="flex items-center space-x-2 cursor-pointer shrink-0"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <span
-            className={`text-[10px] font-bold uppercase ${
-              !isIgnored ? "text-cyan-500" : "text-zinc-500"
-            }`}
-          >
-            {isIgnored ? "Ignored" : "Accepted"}
-          </span>
-          <div
-            className={`w-8 h-4 rounded-full flex items-center transition-colors p-0.5 ${
-              !isIgnored ? "bg-cyan-500" : "bg-zinc-700"
-            }`}
-          >
-            <div
-              className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${
-                !isIgnored ? "translate-x-4" : "translate-x-0"
-              }`}
-            />
+            <span className="text-zinc-600 shrink-0">→</span>
+            <span className="text-xs font-mono text-zinc-100 font-medium truncate">
+              {block.moveTo}
+            </span>
+            {block.status === "match" ? (
+              <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase shrink-0">
+                Source Found
+              </span>
+            ) : (
+              <span className="bg-rose-500/20 text-rose-400 text-[10px] px-1.5 py-0.5 rounded border border-rose-500/20 font-bold uppercase shrink-0">
+                Source Missing
+              </span>
+            )}
           </div>
-          <input
-            type="checkbox"
-            className="hidden"
-            checked={!isIgnored}
-            onChange={() => onToggleBlock(block.id)}
-          />
-        </label>
+          <label
+            className="flex items-center space-x-2 cursor-pointer shrink-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span
+              className={`text-[10px] font-bold uppercase ${
+                !isIgnored ? "text-cyan-500" : "text-zinc-500"
+              }`}
+            >
+              {isIgnored ? "Ignored" : "Accepted"}
+            </span>
+            <div
+              className={`w-8 h-4 rounded-full flex items-center transition-colors p-0.5 ${
+                !isIgnored ? "bg-cyan-500" : "bg-zinc-700"
+              }`}
+            >
+              <div
+                className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${
+                  !isIgnored ? "translate-x-4" : "translate-x-0"
+                }`}
+              />
+            </div>
+            <input
+              type="checkbox"
+              className="hidden"
+              checked={!isIgnored}
+              onChange={() => onToggleBlock(block.id)}
+            />
+          </label>
+        </div>
+        {validationErrors.length > 0 && !isIgnored && (
+          <div className="bg-rose-950/40 border-t border-rose-900/50 px-4 py-2 flex flex-col space-y-1.5">
+            {validationErrors.map((err, i) => (
+              <div
+                key={i}
+                className="flex items-start text-[11px] text-rose-400/90 leading-tight"
+              >
+                <AlertTriangle className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                <span className="font-mono">{err}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -149,8 +166,8 @@ export function DiffBlockCard({
           )}
           {isCollapsed && (
             <span className="text-[10px] text-zinc-500 font-mono hidden sm:inline truncate">
-              ({searchLines.length} search / {replaceLines.length}{" "}
-              replace lines)
+              ({searchLines.length} search / {replaceLines.length} replace
+              lines)
             </span>
           )}
         </div>
@@ -231,6 +248,20 @@ export function DiffBlockCard({
         </div>
       </div>
 
+      {validationErrors.length > 0 && !isIgnored && (
+        <div className="bg-rose-950/40 border-b border-rose-900/50 px-4 py-2 flex flex-col space-y-1.5">
+          {validationErrors.map((err, i) => (
+            <div
+              key={i}
+              className="flex items-start text-[11px] text-rose-400/90 leading-tight"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+              <span className="font-mono">{err}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {isCollapsed ? (
         <div
           onClick={() => onToggleCollapse(block.id)}
@@ -251,9 +282,7 @@ export function DiffBlockCard({
         <div className="p-4 bg-zinc-950/50 flex flex-col space-y-4 border-t border-zinc-800/50">
           <div className="flex flex-col space-y-1.5">
             <label className="text-[10px] text-rose-400/80 uppercase font-bold tracking-wider flex items-center">
-              <span className="text-rose-500/50 mr-2">
-                {"<<<<<<< SEARCH"}
-              </span>
+              <span className="text-rose-500/50 mr-2">{"<<<<<<< SEARCH"}</span>
             </label>
             <textarea
               value={editSearch}

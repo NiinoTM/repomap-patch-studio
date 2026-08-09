@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DiffBlock } from "../../../types/patch";
 import { patchApi } from "../../../api/patchApi";
 
 interface UseApplyChangesParams {
   diffBlocks: DiffBlock[];
   onApplySuccess?: () => void;
+  autoValidate?: boolean;
 }
 
 interface ApplyResult {
@@ -23,17 +24,48 @@ function formatErrorDetails(
     : `${genericLabel}\n${data.error || "Unknown error"}`;
 }
 
-/**
- * Owns all communication with the patch-apply backend for the Footer.
- * Components using this hook stay presentation-only — no fetch calls,
- * no business rules about what counts as success.
- */
 export function useApplyChanges({
   diffBlocks,
   onApplySuccess,
+  autoValidate = false,
 }: UseApplyChangesParams) {
   const [isApplying, setIsApplying] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
+  const blocksJson = JSON.stringify(diffBlocks);
+
+  useEffect(() => {
+    if (!autoValidate) return;
+
+    const blocks = JSON.parse(blocksJson) as DiffBlock[];
+    if (blocks.length === 0) {
+      setValidationErrors([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsValidating(true);
+      try {
+        const data = await patchApi.apply({ blocks, dryRun: true });
+        if (data.success) {
+          setValidationErrors([]);
+        } else if (data.details) {
+          setValidationErrors(data.details);
+        } else {
+          setValidationErrors([data.error || "Unknown validation error"]);
+        }
+      } catch {
+        setValidationErrors([
+          "Failed to connect to local server for validation.",
+        ]);
+      } finally {
+        setIsValidating(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [blocksJson, autoValidate]);
 
   const applyChanges = async (shouldCommit: boolean, commitMessage: string) => {
     if (diffBlocks.length === 0) {
@@ -85,7 +117,13 @@ export function useApplyChanges({
     setIsValidating(true);
     try {
       const data = await patchApi.apply({ blocks: diffBlocks, dryRun: true });
-      if (data.success) return true;
+      if (data.success) {
+        setValidationErrors([]);
+        return true;
+      }
+
+      const errors = data.details || [data.error || "Unknown error"];
+      setValidationErrors(errors);
 
       alert(
         formatErrorDetails(
@@ -103,5 +141,11 @@ export function useApplyChanges({
     }
   };
 
-  return { isApplying, isValidating, applyChanges, validateDryRun };
+  return {
+    isApplying,
+    isValidating,
+    validationErrors,
+    applyChanges,
+    validateDryRun,
+  };
 }
