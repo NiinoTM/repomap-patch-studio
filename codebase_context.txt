@@ -13,6 +13,7 @@ coverage/
 .env*
 !.env.example
 .eslintcache
+codebase_context.txt
 
 ==================================================
 FILE PATH: eslint.config.js
@@ -2396,6 +2397,8 @@ export default function App() {
     files: 0,
     selectedCount: 0,
   });
+  const [discoveryMode, setDiscoveryMode] = useState(false);
+  const [discoveredFiles, setDiscoveredFiles] = useState<string[]>([]);
 
   const {
     repoPath,
@@ -2414,6 +2417,9 @@ export default function App() {
     setDiffBlocks,
     setIgnoredBlockIds,
     setToastMessage,
+    discoveryMode,
+    setDiscoveryMode,
+    setDiscoveredFiles,
   });
 
   const handleChangeRepo = async (newPath: string) => {
@@ -2479,6 +2485,10 @@ export default function App() {
             fileStats={fileStats}
             dependencyMap={dependencyMap}
             onTokenStatsChange={setTokenStats}
+            discoveryMode={discoveryMode}
+            onDiscoveryModeChange={setDiscoveryMode}
+            discoveredFiles={discoveredFiles}
+            onDiscoveredFilesConsumed={() => setDiscoveredFiles([])}
           />
         </aside>
 
@@ -2701,14 +2711,13 @@ import {
   ClipboardPaste,
   AlertTriangle,
   Bug,
+  Copy,
   CheckCircle2,
-  XCircle,
-  FoldVertical,
-  UnfoldVertical,
 } from "lucide-react";
 import { DiffBlock } from "../../../types/patch";
 import { ClipboardDebugger } from "./diff/ClipboardDebugger";
 import { DiffBlockCard } from "./diff/DiffBlockCard";
+import { DiffFilterToolbar, type FilterMode } from "./diff/DiffFilterToolbar";
 import { useApplyChanges } from "../hooks/useApplyChanges";
 
 interface DiffPanelProps {
@@ -2736,6 +2745,7 @@ export function DiffPanel({
   const effectiveIgnoredBlocks =
     ignoredBlocks ?? internalIgnoredBlocks ?? new Set<string>();
 
+  const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [showDebug, setShowDebug] = useState(false);
   const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(
     new Set(),
@@ -2745,6 +2755,10 @@ export function DiffPanel({
   const [editSearch, setEditSearch] = useState("");
   const [editReplace, setEditReplace] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [copiedAllErrors, setCopiedAllErrors] = useState(false);
+  const [copiedErrorBlockId, setCopiedErrorBlockId] = useState<string | null>(
+    null,
+  );
 
   const handleCopyBlock = (block: DiffBlock) => {
     const text = `FILE: ${block.file}\n<<<<<<< SEARCH\n${block.search}\n=======\n${block.replace}\n>>>>>>> REPLACE`;
@@ -2753,21 +2767,54 @@ export function DiffPanel({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const handleCopyAllErrors = () => {
+    if (validationErrors.length === 0) return;
+    const text = [
+      "### Patch Validation Errors for AI Resolution\n",
+      "The following validation errors were encountered when checking diff blocks:\n",
+      ...validationErrors.map((err, idx) => `${idx + 1}. ${err}`),
+      "\nPlease analyze these errors and provide updated diff blocks that fix these issues.",
+    ].join("\n");
+
+    navigator.clipboard.writeText(text);
+    setCopiedAllErrors(true);
+    setTimeout(() => setCopiedAllErrors(false), 2000);
+  };
+
+  const handleCopyBlockWithError = (block: DiffBlock, errors: string[]) => {
+    const blockContent =
+      block.type === "move"
+        ? `MOVE '${block.file}' -> '${block.moveTo}'`
+        : `FILE: ${block.file}\n<<<<<<< SEARCH\n${block.search}\n=======\n${block.replace}\n>>>>>>> REPLACE`;
+
+    const formattedErrors =
+      errors.length > 0
+        ? errors.map((err) => `- ${err}`).join("\n")
+        : "- No specific validation error provided.";
+
+    const text = `### Error Report for Block: ${block.file}\n\nValidation Errors:\n${formattedErrors}\n\nBlock Content:\n${blockContent}\n\nPlease fix this patch block so that SEARCH matches the current file content.`;
+
+    navigator.clipboard.writeText(text);
+    setCopiedErrorBlockId(block.id);
+    setTimeout(() => setCopiedErrorBlockId(null), 2000);
+  };
+
   const startEditing = (block: DiffBlock) => {
     setEditingBlockId(block.id);
     setEditSearch(block.search || "");
     setEditReplace(block.replace || "");
-    if (collapsedBlocks.has(block.id)) {
-      toggleCollapse(block.id);
-    }
+    if (collapsedBlocks.has(block.id)) toggleCollapse(block.id);
   };
 
   const saveEdit = () => {
-    if (editingBlockId && onBlockEdit) {
+    if (editingBlockId && onBlockEdit)
       onBlockEdit(editingBlockId, editSearch, editReplace);
-    }
     setEditingBlockId(null);
   };
+
+  useEffect(() => {
+    if (parsedBlocks.length === 0) setFilterMode("all");
+  }, [parsedBlocks]);
 
   useEffect(() => {
     if (parsedBlocks.length > 1) {
@@ -2776,11 +2823,9 @@ export function DiffPanel({
       const totalLines = (
         (parsedBlocks[0].search || "") + (parsedBlocks[0].replace || "")
       ).split("\n").length;
-      if (totalLines > 25) {
-        setCollapsedBlocks(new Set([parsedBlocks[0].id]));
-      } else {
-        setCollapsedBlocks(new Set());
-      }
+      setCollapsedBlocks(
+        totalLines > 25 ? new Set([parsedBlocks[0].id]) : new Set(),
+      );
     } else {
       setCollapsedBlocks(new Set());
     }
@@ -2792,11 +2837,8 @@ export function DiffPanel({
     } else {
       setInternalIgnoredBlocks((prev) => {
         const next = new Set(prev);
-        if (next.has(id)) {
-          next.delete(id);
-        } else {
-          next.add(id);
-        }
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
         return next;
       });
     }
@@ -2805,21 +2847,18 @@ export function DiffPanel({
   const toggleCollapse = (id: string) => {
     setCollapsedBlocks((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
 
   const toggleAllCollapse = () => {
-    if (collapsedBlocks.size === parsedBlocks.length) {
-      setCollapsedBlocks(new Set());
-    } else {
-      setCollapsedBlocks(new Set(parsedBlocks.map((b) => b.id)));
-    }
+    setCollapsedBlocks(
+      collapsedBlocks.size === parsedBlocks.length
+        ? new Set()
+        : new Set(parsedBlocks.map((b) => b.id)),
+    );
   };
 
   const activeBlocks = parsedBlocks.filter(
@@ -2831,6 +2870,13 @@ export function DiffPanel({
     autoValidate: true,
   });
 
+  const getBlockErrors = (block: DiffBlock) =>
+    validationErrors.filter(
+      (err) =>
+        err.includes(block.file) ||
+        (block.moveTo && err.includes(block.moveTo)),
+    );
+
   const matchCount = activeBlocks.filter((b) => b.status === "match").length;
   const noMatchCount = activeBlocks.filter(
     (b) => b.status === "no-match",
@@ -2841,91 +2887,73 @@ export function DiffPanel({
   const allCollapsed =
     parsedBlocks.length > 0 && collapsedBlocks.size === parsedBlocks.length;
 
+  const filteredBlocks = parsedBlocks.filter((block) => {
+    const isIgnored = Boolean(effectiveIgnoredBlocks?.has?.(block.id));
+    const hasError = getBlockErrors(block).length > 0;
+    switch (filterMode) {
+      case "active":
+        return !isIgnored;
+      case "matched":
+        return !isIgnored && block.status === "match";
+      case "not-matched":
+        return !isIgnored && block.status === "no-match";
+      case "errors":
+        return !isIgnored && hasError;
+      case "ignored":
+        return isIgnored;
+      case "all":
+      default:
+        return true;
+    }
+  });
+
   return (
     <div className="flex flex-col h-full w-full min-w-0 bg-zinc-950 p-4 space-y-4 overflow-hidden">
-      <div className="flex items-center justify-between bg-zinc-900 p-2 rounded-lg border border-zinc-800 flex-wrap gap-2">
-        <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-          {parsedBlocks.length > 0 && (
-            <>
-              <div className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-2 py-0.5 rounded text-[10px] font-bold">
-                {parsedBlocks.length} DETECTED
-              </div>
-              <div className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[10px] font-bold flex items-center space-x-1">
-                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                <span>{matchCount} MATCHED</span>
-              </div>
-              <div
-                className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center space-x-1 border ${
-                  noMatchCount > 0
-                    ? "bg-rose-500/10 text-rose-400 border-rose-500/20"
-                    : "bg-zinc-800/80 text-zinc-500 border-zinc-700/50"
-                }`}
-              >
-                <XCircle
-                  className={`w-3 h-3 ${
-                    noMatchCount > 0 ? "text-rose-400" : "text-zinc-500"
-                  }`}
-                />
-                <span>{noMatchCount} NOT FOUND</span>
-              </div>
-              {ignoredCount > 0 && (
-                <div className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[10px] font-bold">
-                  {ignoredCount} IGNORED
-                </div>
-              )}
-              {isValidating && (
-                <div className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded text-[10px] font-bold flex items-center space-x-1">
-                  <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
-                  <span>VALIDATING...</span>
-                </div>
-              )}
-              {validationErrors.length > 0 && !isValidating && (
-                <div className="bg-rose-500/10 text-rose-400 border border-rose-500/20 px-2 py-0.5 rounded text-[10px] font-bold flex items-center space-x-1">
-                  <AlertTriangle className="w-3 h-3 text-rose-400" />
-                  <span>{validationErrors.length} ERRORS</span>
-                </div>
-              )}
-            </>
-          )}
-          <span className="text-xs text-zinc-400">
-            Paste AI response below to review diffs
-          </span>
-        </div>
+      <DiffFilterToolbar
+        parsedBlocksCount={parsedBlocks.length}
+        activeCount={activeBlocks.length}
+        matchCount={matchCount}
+        noMatchCount={noMatchCount}
+        ignoredCount={ignoredCount}
+        validationErrorCount={validationErrors.length}
+        isValidating={isValidating}
+        filterMode={filterMode}
+        onSelectFilter={setFilterMode}
+        allCollapsed={allCollapsed}
+        onToggleAllCollapse={toggleAllCollapse}
+        pastedContent={pastedContent}
+        onClear={onClear}
+      />
 
-        <div className="flex items-center space-x-2 shrink-0">
-          {parsedBlocks.length > 0 && (
-            <button
-              onClick={toggleAllCollapse}
-              className="text-xs bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1 rounded text-zinc-300 hover:text-white transition-colors cursor-pointer flex items-center space-x-1 border border-zinc-700/50"
-              title={
-                allCollapsed
-                  ? "Expand all diff blocks"
-                  : "Retract all diff blocks"
-              }
-            >
-              {allCollapsed ? (
-                <>
-                  <UnfoldVertical className="w-3.5 h-3.5" />
-                  <span>Expand All</span>
-                </>
-              ) : (
-                <>
-                  <FoldVertical className="w-3.5 h-3.5" />
-                  <span>Retract All</span>
-                </>
-              )}
-            </button>
-          )}
-          {pastedContent && (
-            <button
-              onClick={onClear}
-              className="text-xs bg-zinc-800 px-3 py-1 rounded text-zinc-200 hover:bg-zinc-700 transition-colors cursor-pointer border border-zinc-700/50"
-            >
-              Clear
-            </button>
-          )}
+      {validationErrors.length > 0 && (
+        <div className="bg-rose-950/40 border border-rose-900/60 rounded-xl p-3 flex items-center justify-between shrink-0 shadow-sm">
+          <div className="flex items-center space-x-2.5 text-rose-300 text-xs font-medium min-w-0 pr-2">
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span className="truncate">
+              {validationErrors.length} validation{" "}
+              {validationErrors.length === 1 ? "error" : "errors"} detected in
+              diff blocks
+            </span>
+          </div>
+          <button
+            onClick={handleCopyAllErrors}
+            className="px-3 py-1.5 bg-rose-900/60 hover:bg-rose-800/80 text-rose-100 text-xs font-medium rounded-lg transition-colors shrink-0 flex items-center space-x-1.5 cursor-pointer border border-rose-700/50"
+            title="Copy all validation errors to clipboard for AI resolution"
+          >
+            {copiedAllErrors ? (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Copied All Errors!</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-3.5 h-3.5 text-rose-300" />
+                <span>Copy All Errors</span>
+              </>
+            )}
+          </button>
         </div>
-      </div>
+      )}
 
       <div className="flex-1 flex flex-col space-y-4 overflow-hidden">
         {!pastedContent ? (
@@ -2947,12 +2975,12 @@ export function DiffPanel({
               No Diff Blocks Detected
             </p>
             <p className="text-xs text-zinc-400 max-w-md">
-              The pasted clipboard text does not contain valid
+              The pasted clipboard text does not contain valid{" "}
               <code className="text-cyan-400">
                 &lt;&lt;&lt;&lt;&lt;&lt;&lt; SEARCH
               </code>
-              , <code className="text-cyan-400">Create 'file'</code>, or
-              <code className="text-cyan-400">MOVE 'old' -&gt; 'new'</code>
+              , <code className="text-cyan-400">Create 'file'</code>, or{" "}
+              <code className="text-cyan-400">MOVE 'old' -&gt; 'new'</code>{" "}
               blocks.
             </p>
             <div className="flex items-center space-x-3 pt-2">
@@ -2972,40 +3000,51 @@ export function DiffPanel({
                 </span>
               </button>
             </div>
-
             {showDebug && <ClipboardDebugger pastedContent={pastedContent} />}
           </div>
         ) : (
           <>
             <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4">
-              {parsedBlocks.map((block) => {
-                const blockErrors = validationErrors.filter(
-                  (err) =>
-                    err.includes(block.file) ||
-                    (block.moveTo && err.includes(block.moveTo)),
-                );
-
-                return (
+              {filteredBlocks.length === 0 ? (
+                <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-zinc-500 space-y-2 border border-zinc-800/60 rounded-xl bg-zinc-900/20">
+                  <p className="text-xs font-semibold text-zinc-400">
+                    No diff blocks match current filter (
+                    <span className="text-cyan-400 font-bold uppercase">
+                      {filterMode}
+                    </span>
+                    )
+                  </p>
+                  <button
+                    onClick={() => setFilterMode("all")}
+                    className="text-xs text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
+                  >
+                    Show all blocks
+                  </button>
+                </div>
+              ) : (
+                filteredBlocks.map((block) => (
                   <DiffBlockCard
                     key={block.id}
                     block={block}
-                    validationErrors={blockErrors}
+                    validationErrors={getBlockErrors(block)}
                     isIgnored={Boolean(effectiveIgnoredBlocks?.has?.(block.id))}
                     isCollapsed={Boolean(collapsedBlocks?.has?.(block.id))}
                     isEditing={editingBlockId === block.id}
                     editSearch={editSearch}
                     editReplace={editReplace}
                     copiedId={copiedId}
+                    copiedErrorId={copiedErrorBlockId}
                     onToggleBlock={toggleBlock}
                     onToggleCollapse={toggleCollapse}
                     onCopyBlock={handleCopyBlock}
+                    onCopyBlockWithError={handleCopyBlockWithError}
                     onStartEditing={startEditing}
                     onSaveEdit={saveEdit}
                     onEditSearchChange={setEditSearch}
                     onEditReplaceChange={setEditReplace}
                   />
-                );
-              })}
+                ))
+              )}
             </div>
 
             <div
@@ -3420,6 +3459,10 @@ interface PromptPanelProps {
     files: number;
     selectedCount: number;
   }) => void;
+  discoveryMode: boolean;
+  onDiscoveryModeChange: (value: boolean) => void;
+  discoveredFiles: string[];
+  onDiscoveredFilesConsumed: () => void;
 }
 
 export function PromptPanel({
@@ -3430,6 +3473,10 @@ export function PromptPanel({
   fileStats,
   dependencyMap,
   onTokenStatsChange,
+  discoveryMode,
+  onDiscoveryModeChange,
+  discoveredFiles,
+  onDiscoveredFilesConsumed,
 }: PromptPanelProps) {
   const [request, setRequest] = useState("");
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
@@ -3487,7 +3534,7 @@ export function PromptPanel({
   });
 
   const { isCopying, isCopyingFiles, copyFullContext, copyFilesAndPrompt } =
-    useCopyPrompt({ selectedFiles, repoMap, request, onCopy });
+    useCopyPrompt({ selectedFiles, repoMap, request, discoveryMode, onCopy });
 
   // Runs after selectedFiles updates (post acceptAllSuggestions) so the
   // copy actions below read the freshly-added files, not a stale closure.
@@ -3503,7 +3550,21 @@ export function PromptPanel({
     setMissingDependencies([]);
   }, [selectedFiles]);
 
+  // Discovery mode round-trip: when the parent hands back a file list
+  // parsed from the AI's "what do you need" response, fold it into the
+  // normal selection set (same mechanism as accepting a suggestion) and
+  // tell the parent it's been consumed so it doesn't get re-applied.
+  useEffect(() => {
+    if (!discoveredFiles || discoveredFiles.length === 0) return;
+    acceptAllSuggestions(discoveredFiles);
+    onDiscoveredFilesConsumed();
+  }, [discoveredFiles]);
+
   const handleCopyClick = (action: "full" | "files") => {
+    if (discoveryMode) {
+      copyFullContext();
+      return;
+    }
     const missing = findMissingDependencies(selectedFiles, dependencyMap);
     if (missing.length > 0) {
       setMissingDependencies(missing);
@@ -3618,25 +3679,51 @@ export function PromptPanel({
           <input type="checkbox" defaultChecked className="accent-cyan-500" />
           <span>Enforce SEARCH/REPLACE blocks</span>
         </label>
+        <label className="flex items-center space-x-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={discoveryMode}
+            onChange={(e) => onDiscoveryModeChange(e.target.checked)}
+            className="accent-indigo-500"
+          />
+          <span>
+            Discovery Mode
+            <span className="text-zinc-500">
+              {" "}
+              — ask the AI which files it needs before sending any code
+            </span>
+          </span>
+        </label>
       </div>
 
       <div className="flex space-x-2 shrink-0">
         <button
           onClick={() => handleCopyClick("full")}
           disabled={isCopying || isCopyingFiles}
-          className="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold py-2.5 rounded-lg shadow-lg shadow-cyan-500/10 flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer text-[11px]"
+          className={`flex-1 font-semibold py-2.5 rounded-lg shadow-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer text-[11px] ${
+            discoveryMode
+              ? "bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-indigo-500/10"
+              : "bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-cyan-500/10"
+          }`}
         >
           <Copy className="w-3.5 h-3.5 shrink-0" />
           <span className="truncate">
             {isCopying
               ? "Assembling..."
-              : `Full Context (${selectedFiles.size})`}
+              : discoveryMode
+                ? "Ask AI What's Needed"
+                : `Full Context (${selectedFiles.size})`}
           </span>
         </button>
 
         <button
           onClick={() => handleCopyClick("files")}
-          disabled={isCopying || isCopyingFiles || selectedFiles.size === 0}
+          disabled={
+            isCopying ||
+            isCopyingFiles ||
+            selectedFiles.size === 0 ||
+            discoveryMode
+          }
           className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold py-2.5 rounded-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer border border-zinc-700 text-[11px]"
         >
           <FileText className="w-3.5 h-3.5 shrink-0" />
@@ -3883,9 +3970,11 @@ interface DiffBlockCardProps {
   editSearch: string;
   editReplace: string;
   copiedId: string | null;
+  copiedErrorId?: string | null;
   onToggleBlock: (id: string) => void;
   onToggleCollapse: (id: string) => void;
   onCopyBlock: (block: DiffBlock) => void;
+  onCopyBlockWithError?: (block: DiffBlock, errors: string[]) => void;
   onStartEditing: (block: DiffBlock) => void;
   onSaveEdit: () => void;
   onEditSearchChange: (value: string) => void;
@@ -3901,9 +3990,11 @@ export function DiffBlockCard({
   editSearch = "",
   editReplace = "",
   copiedId,
+  copiedErrorId,
   onToggleBlock,
   onToggleCollapse,
   onCopyBlock,
+  onCopyBlockWithError,
   onStartEditing,
   onSaveEdit,
   onEditSearchChange,
@@ -3940,16 +4031,40 @@ export function DiffBlockCard({
           />
         </div>
         {validationErrors.length > 0 && !isIgnored && (
-          <div className="bg-rose-950/40 border-t border-rose-900/50 px-4 py-2 flex flex-col space-y-1.5">
-            {validationErrors.map((err, i) => (
-              <div
-                key={i}
-                className="flex items-start text-[11px] text-rose-400/90 leading-tight"
+          <div className="bg-rose-950/40 border-t border-rose-900/50 px-4 py-2 flex items-center justify-between">
+            <div className="flex flex-col space-y-1.5 min-w-0 pr-2">
+              {validationErrors.map((err, i) => (
+                <div
+                  key={i}
+                  className="flex items-start text-[11px] text-rose-400/90 leading-tight"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                  <span className="font-mono">{err}</span>
+                </div>
+              ))}
+            </div>
+            {onCopyBlockWithError && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCopyBlockWithError(block, validationErrors);
+                }}
+                className="px-2 py-1 bg-rose-900/50 hover:bg-rose-800/60 text-rose-200 text-[10px] rounded font-medium transition-colors shrink-0 flex items-center space-x-1 border border-rose-700/40 cursor-pointer"
+                title="Copy move block with error for AI resolution"
               >
-                <AlertTriangle className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-                <span className="font-mono">{err}</span>
-              </div>
-            ))}
+                {copiedErrorId === block.id ? (
+                  <>
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    <span>Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3 h-3" />
+                    <span>Copy with Error</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -4018,6 +4133,23 @@ export function DiffBlockCard({
               )}
             </button>
 
+            {onCopyBlockWithError && validationErrors.length > 0 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCopyBlockWithError(block, validationErrors);
+                }}
+                className="text-rose-400 hover:text-rose-300 p-1.5 rounded hover:bg-rose-950/50 transition-colors"
+                title="Copy block with error for AI resolution"
+              >
+                {copiedErrorId === block.id ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                ) : (
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                )}
+              </button>
+            )}
+
             {isEditing ? (
               <button
                 onClick={(e) => {
@@ -4053,16 +4185,40 @@ export function DiffBlockCard({
       </div>
 
       {validationErrors.length > 0 && !isIgnored && (
-        <div className="bg-rose-950/40 border-b border-rose-900/50 px-4 py-2 flex flex-col space-y-1.5">
-          {validationErrors.map((err, i) => (
-            <div
-              key={i}
-              className="flex items-start text-[11px] text-rose-400/90 leading-tight"
+        <div className="bg-rose-950/40 border-b border-rose-900/50 px-4 py-2 flex items-center justify-between">
+          <div className="flex flex-col space-y-1.5 min-w-0 pr-2">
+            {validationErrors.map((err, i) => (
+              <div
+                key={i}
+                className="flex items-start text-[11px] text-rose-400/90 leading-tight"
+              >
+                <AlertTriangle className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                <span className="font-mono">{err}</span>
+              </div>
+            ))}
+          </div>
+          {onCopyBlockWithError && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onCopyBlockWithError(block, validationErrors);
+              }}
+              className="px-2 py-1 bg-rose-900/50 hover:bg-rose-800/60 text-rose-200 text-[10px] rounded font-medium transition-colors shrink-0 flex items-center space-x-1 border border-rose-700/40 cursor-pointer"
+              title="Copy block with error for AI resolution"
             >
-              <AlertTriangle className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-              <span className="font-mono">{err}</span>
-            </div>
-          ))}
+              {copiedErrorId === block.id ? (
+                <>
+                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                  <span>Copied!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3 h-3" />
+                  <span>Copy with Error</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       )}
 
@@ -4128,6 +4284,210 @@ export function DiffBlockCard({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+
+==================================================
+FILE PATH: src\features\prompt-builder\components\diff\DiffFilterToolbar.tsx
+==================================================
+import {
+  AlertTriangle,
+  CheckCircle2,
+  FoldVertical,
+  UnfoldVertical,
+  XCircle,
+} from "lucide-react";
+
+export type FilterMode =
+  "all" | "active" | "matched" | "not-matched" | "errors" | "ignored";
+
+interface DiffFilterToolbarProps {
+  parsedBlocksCount: number;
+  activeCount: number;
+  matchCount: number;
+  noMatchCount: number;
+  ignoredCount: number;
+  validationErrorCount: number;
+  isValidating: boolean;
+  filterMode: FilterMode;
+  onSelectFilter: (mode: FilterMode) => void;
+  allCollapsed: boolean;
+  onToggleAllCollapse: () => void;
+  pastedContent: string;
+  onClear: () => void;
+}
+
+export function DiffFilterToolbar({
+  parsedBlocksCount,
+  activeCount,
+  matchCount,
+  noMatchCount,
+  ignoredCount,
+  validationErrorCount,
+  isValidating,
+  filterMode,
+  onSelectFilter,
+  allCollapsed,
+  onToggleAllCollapse,
+  pastedContent,
+  onClear,
+}: DiffFilterToolbarProps) {
+  return (
+    <div className="flex items-center justify-between bg-zinc-900 p-2 rounded-lg border border-zinc-800 flex-wrap gap-2">
+      <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+        {parsedBlocksCount > 0 && (
+          <>
+            <button
+              type="button"
+              onClick={() => onSelectFilter("all")}
+              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors cursor-pointer ${
+                filterMode === "all"
+                  ? "bg-cyan-500/20 text-cyan-300 border-cyan-400 ring-1 ring-cyan-400/50"
+                  : "bg-cyan-500/10 text-cyan-400 border-cyan-500/20 hover:bg-cyan-500/20"
+              }`}
+              title="Show all detected diff blocks"
+            >
+              {parsedBlocksCount} DETECTED
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                onSelectFilter(filterMode === "active" ? "all" : "active")
+              }
+              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors cursor-pointer ${
+                filterMode === "active"
+                  ? "bg-blue-500/20 text-blue-300 border-blue-400 ring-1 ring-blue-400/50"
+                  : "bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20"
+              }`}
+              title="Show active (non-ignored) diff blocks"
+            >
+              {activeCount} ACTIVE
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                onSelectFilter(filterMode === "matched" ? "all" : "matched")
+              }
+              className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center space-x-1 border transition-colors cursor-pointer ${
+                filterMode === "matched"
+                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-400 ring-1 ring-emerald-400/50"
+                  : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20"
+              }`}
+              title="Show matched diff blocks"
+            >
+              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+              <span>{matchCount} MATCHED</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                onSelectFilter(
+                  filterMode === "not-matched" ? "all" : "not-matched",
+                )
+              }
+              className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center space-x-1 border transition-colors cursor-pointer ${
+                filterMode === "not-matched"
+                  ? "bg-rose-500/20 text-rose-300 border-rose-400 ring-1 ring-rose-400/50"
+                  : noMatchCount > 0
+                    ? "bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20"
+                    : "bg-zinc-800/80 text-zinc-500 border-zinc-700/50 hover:bg-zinc-800"
+              }`}
+              title="Show unmatched diff blocks"
+            >
+              <XCircle
+                className={`w-3 h-3 ${
+                  noMatchCount > 0 ? "text-rose-400" : "text-zinc-500"
+                }`}
+              />
+              <span>{noMatchCount} NOT FOUND</span>
+            </button>
+
+            {ignoredCount > 0 && (
+              <button
+                type="button"
+                onClick={() =>
+                  onSelectFilter(filterMode === "ignored" ? "all" : "ignored")
+                }
+                className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors cursor-pointer ${
+                  filterMode === "ignored"
+                    ? "bg-amber-500/20 text-amber-300 border-amber-400 ring-1 ring-amber-400/50"
+                    : "bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20"
+                }`}
+                title="Show ignored diff blocks"
+              >
+                {ignoredCount} IGNORED
+              </button>
+            )}
+
+            {isValidating && (
+              <div className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded text-[10px] font-bold flex items-center space-x-1">
+                <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                <span>VALIDATING...</span>
+              </div>
+            )}
+
+            {validationErrorCount > 0 && !isValidating && (
+              <button
+                type="button"
+                onClick={() =>
+                  onSelectFilter(filterMode === "errors" ? "all" : "errors")
+                }
+                className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center space-x-1 border transition-colors cursor-pointer ${
+                  filterMode === "errors"
+                    ? "bg-rose-500/20 text-rose-300 border-rose-400 ring-1 ring-rose-400/50"
+                    : "bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20"
+                }`}
+                title="Show diff blocks with errors"
+              >
+                <AlertTriangle className="w-3 h-3 text-rose-400" />
+                <span>{validationErrorCount} ERRORS</span>
+              </button>
+            )}
+          </>
+        )}
+        <span className="text-xs text-zinc-400">
+          Paste AI response below to review diffs
+        </span>
+      </div>
+
+      <div className="flex items-center space-x-2 shrink-0">
+        {parsedBlocksCount > 0 && (
+          <button
+            onClick={onToggleAllCollapse}
+            className="text-xs bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1 rounded text-zinc-300 hover:text-white transition-colors cursor-pointer flex items-center space-x-1 border border-zinc-700/50"
+            title={
+              allCollapsed
+                ? "Expand all diff blocks"
+                : "Retract all diff blocks"
+            }
+          >
+            {allCollapsed ? (
+              <>
+                <UnfoldVertical className="w-3.5 h-3.5" />
+                <span>Expand All</span>
+              </>
+            ) : (
+              <>
+                <FoldVertical className="w-3.5 h-3.5" />
+                <span>Retract All</span>
+              </>
+            )}
+          </button>
+        )}
+        {pastedContent && (
+          <button
+            onClick={onClear}
+            className="text-xs bg-zinc-800 px-3 py-1 rounded text-zinc-200 hover:bg-zinc-700 transition-colors cursor-pointer border border-zinc-700/50"
+          >
+            Clear
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -4922,12 +5282,14 @@ import {
   formatActiveFilesContext,
   buildFullContextPrompt,
   buildFilesAndPromptOnly,
+  buildDiscoveryPrompt,
 } from "../utils/promptTemplates";
 
 interface UseCopyPromptParams {
   selectedFiles: Set<string>;
   repoMap: string;
   request: string;
+  discoveryMode: boolean;
   onCopy: (promptText: string) => void;
 }
 
@@ -4940,6 +5302,7 @@ export function useCopyPrompt({
   selectedFiles,
   repoMap,
   request,
+  discoveryMode,
   onCopy,
 }: UseCopyPromptParams) {
   const [isCopying, setIsCopying] = useState(false);
@@ -4953,6 +5316,14 @@ export function useCopyPrompt({
   const copyFullContext = async () => {
     setIsCopying(true);
     try {
+      if (discoveryMode) {
+        const discoveryPrompt = buildDiscoveryPrompt({
+          repoMap,
+          userRequest: request,
+        });
+        onCopy(discoveryPrompt);
+        return;
+      }
       const activeFilesText = await fetchActiveFilesText();
       const finalPrompt = buildFullContextPrompt({
         repoMap,
@@ -5321,7 +5692,7 @@ FILE PATH: src\features\prompt-builder\hooks\usePasteAndValidate.ts
 ==================================================
 import { useCallback } from "react";
 import { DiffBlock } from "../../../types/patch";
-import { parseDiffBlocks } from "../utils/diffParser";
+import { parseDiffBlocks, parseFileList } from "../utils/diffParser";
 import { validateBlocks } from "../utils/blockMatcher";
 import { filesApi } from "../../../api/repoApi";
 
@@ -5331,6 +5702,9 @@ interface UsePasteAndValidateParams {
   setDiffBlocks: (blocks: DiffBlock[]) => void;
   setIgnoredBlockIds: (ids: Set<string>) => void;
   setToastMessage: (message: string | null) => void;
+  discoveryMode: boolean;
+  setDiscoveryMode: (value: boolean) => void;
+  setDiscoveredFiles: (files: string[]) => void;
 }
 
 /**
@@ -5345,12 +5719,27 @@ export function usePasteAndValidate({
   setDiffBlocks,
   setIgnoredBlockIds,
   setToastMessage,
+  discoveryMode,
+  setDiscoveryMode,
+  setDiscoveredFiles,
 }: UsePasteAndValidateParams) {
   const handlePaste = useCallback(
     async (append = false) => {
       try {
         const clipboardText = await navigator.clipboard.readText();
         if (!clipboardText) return;
+
+        if (discoveryMode) {
+          const discovered = parseFileList(clipboardText);
+          setDiscoveredFiles(discovered);
+          setDiscoveryMode(false);
+          setToastMessage(
+            discovered.length > 0
+              ? `Discovered ${discovered.length} file(s) — added to context.`
+              : "AI reported no additional files needed.",
+          );
+          return;
+        }
 
         const newContent =
           append && pastedContent
@@ -5394,6 +5783,9 @@ export function usePasteAndValidate({
       setDiffBlocks,
       setIgnoredBlockIds,
       setToastMessage,
+      discoveryMode,
+      setDiscoveryMode,
+      setDiscoveredFiles,
     ],
   );
 
@@ -5988,6 +6380,33 @@ export function parseDiffBlocks(rawText: string): DiffBlock[] {
   return blocks;
 }
 
+/**
+ * Parses a Discovery Mode response: a plain list of file paths the AI says
+ * it needs to see, one per line, formatted "- path/to/file.ext — reason".
+ * Only the path is extracted; the reason is for the human reading the
+ * response, not for the app. Deliberately much simpler than
+ * parseDiffBlocks — no state machine needed for a flat list.
+ */
+export function parseFileList(rawText: string): string[] {
+  if (!rawText || !rawText.trim()) return [];
+
+  const lines = rawText.split(/\r\n|\n|\r/);
+  const lineRegex = /^-\s*[`"']?([^\s`"']+\.[a-zA-Z0-9]+)[`"']?/;
+  const files: string[] = [];
+
+  for (const line of lines) {
+    const match = line.trim().match(lineRegex);
+    if (match) {
+      const filePath = match[1].replace(/[,:]$/, "");
+      if (!files.includes(filePath)) {
+        files.push(filePath);
+      }
+    }
+  }
+
+  return files;
+}
+
 
 ==================================================
 FILE PATH: src\features\prompt-builder\utils\fuzzySearch.ts
@@ -6123,7 +6542,7 @@ FILE PATH: src\features\prompt-builder\utils\promptTemplates.ts
 ==================================================
 export function formatActiveFilesContext(
   selectedFiles: Set<string> | string[],
-  contents: Record<string, string>
+  contents: Record<string, string>,
 ): string {
   const filesArray = Array.from(selectedFiles);
   if (filesArray.length === 0) {
@@ -6159,6 +6578,14 @@ ADVISORY PROTOCOL:
 If the user requests a code change that is unoptimized or violates best practices:
 1. Fully comply with and implement the exact requested change.
 2. At the end of your response, briefly suggest the industry-standard alternative and why it is better, without being preachy or refusing the request.
+
+CONTEXT SUFFICIENCY RULE:
+- ACTIVE FILES CONTEXT and the REPO MAP together define everything you can see of this repository. Do not assume the existence, shape, or contents of any file, type, prop, or export that is not shown to you — even if its name is implied by an import statement or a REPO MAP entry.
+- If completing this request safely requires seeing a file that is not in ACTIVE FILES CONTEXT (e.g. a type it depends on, a sibling component whose props you'd be guessing at, a shared util whose exact signature matters), do NOT guess its contents. Instead, stop and list every such file by exact path before writing any SEARCH/REPLACE blocks, e.g.:
+  MISSING CONTEXT:
+  - src/types/patch.ts — need current shape of DiffBlock to safely extend it
+  - src/features/prompt-builder/utils/treeBuilder.ts — need TreeNode shape referenced in this edit
+- This does not apply to files you can reasonably infer are unaffected by the change — only to files whose actual content would change how you write the edit. When in doubt, ask rather than assume.
 
 FILE SIZE ADVISORY:
 - As a rough guideline, a single-responsibility file should rarely exceed ~300-400 lines. Treat this as a heuristic, not a hard rule — a dense logic file and a long-but-simple types/config file don't carry the same weight.
@@ -6240,6 +6667,43 @@ USER REQUEST:
 ${userRequest}`;
 }
 
+interface DiscoveryPromptParams {
+  repoMap: string;
+  userRequest: string;
+}
+
+// Strategy 2 (governance_system_requirements.md) applied to context
+// selection instead of code generation: don't make the model pick files
+// AND write code under the same pressure. This prompt shows only the
+// REPO MAP — no file contents — and asks the model to name what it needs
+// before any implementation happens.
+export function buildDiscoveryPrompt({
+  repoMap,
+  userRequest,
+}: DiscoveryPromptParams): string {
+  return `ROLE: Senior Software Architect
+You are being shown ONLY a symbol-level map of this repository, not any file contents. Your job is to identify which files you would need to actually SEE the contents of in order to implement the request below safely — without hallucinating types, props, or logic you can't currently verify.
+
+RULES:
+1. Base your answer only on the REPO MAP below (file paths and their exported symbols) and the USER REQUEST. Do not invent files that aren't listed in the REPO MAP.
+2. List every file whose actual content would change how you write the edit — files you'd be editing directly, plus files whose types/props/exports the edit depends on (e.g. a shared type definition, a hook a component consumes, a sibling file with a signature you'd need to match).
+3. Do not list files that are merely "related" but wouldn't change your implementation.
+4. If the request is simple enough that no additional context is needed, output "FILES NEEDED:" followed by nothing.
+
+OUTPUT FORMAT (nothing else — no preamble, no code):
+FILES NEEDED:
+- path/to/file.ext — one-line reason you need to see it
+- path/to/other/file.ext — one-line reason you need to see it
+
+==================================================
+REPO MAP (Project Blueprint):
+${repoMap || "No map generated."}
+
+==================================================
+USER REQUEST:
+${userRequest}`;
+}
+
 interface FilesAndPromptParams {
   activeFilesText: string;
   userRequest: string;
@@ -6251,6 +6715,7 @@ export function buildFilesAndPromptOnly({
 }: FilesAndPromptParams): string {
   return `==================================================\nACTIVE FILES CONTEXT:\n${activeFilesText}==================================================\nUSER REQUEST:\n${userRequest}`;
 }
+
 
 ==================================================
 FILE PATH: src\features\prompt-builder\utils\treeBuilder.ts
