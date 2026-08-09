@@ -14,7 +14,7 @@ interface MentionDropdownProps {
   } | null;
   activeMentionIndex: number;
   selectedFiles: Set<string>;
-  mentionPopupRef: RefObject<HTMLDivElement>;
+  mentionPopupRef: RefObject<HTMLDivElement | null>;
   onInsertMention: (filePath: string) => void;
   onHoverMention: (index: number) => void;
 }

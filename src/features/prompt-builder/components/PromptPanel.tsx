@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Copy, Map, Eye, X, FileText, AtSign } from "lucide-react";
 import { MentionDropdown } from "./prompt/MentionDropdown";
 import { SuggestedContextBar } from "./prompt/SuggestedContextBar";
@@ -8,6 +8,11 @@ import { useSuggestedContext } from "../hooks/useSuggestedContext";
 import { useFileSelection } from "../hooks/useFileSelection";
 import { useTokenEstimate } from "../hooks/useTokenEstimate";
 import { useCopyPrompt } from "../hooks/useCopyPrompt";
+import {
+  findMissingDependencies,
+  MissingDependency,
+} from "../utils/completenessCheck";
+import { CompletenessWarningModal } from "./prompt/CompletenessWarningModal";
 
 interface PromptPanelProps {
   onCopy: (promptText: string) => void;
@@ -41,6 +46,13 @@ export function PromptPanel({
   const [request, setRequest] = useState("");
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [missingDependencies, setMissingDependencies] = useState<
+    MissingDependency[]
+  >([]);
+  const [pendingCopyAction, setPendingCopyAction] = useState<
+    "full" | "files" | null
+  >(null);
+  const [autoConfirmCopy, setAutoConfirmCopy] = useState(false);
 
   const {
     seedFiles,
@@ -88,6 +100,54 @@ export function PromptPanel({
 
   const { isCopying, isCopyingFiles, copyFullContext, copyFilesAndPrompt } =
     useCopyPrompt({ selectedFiles, repoMap, request, onCopy });
+
+  // Runs after selectedFiles updates (post acceptAllSuggestions) so the
+  // copy actions below read the freshly-added files, not a stale closure.
+  useEffect(() => {
+    if (!pendingCopyAction || !autoConfirmCopy) return;
+    if (pendingCopyAction === "full") {
+      copyFullContext();
+    } else {
+      copyFilesAndPrompt();
+    }
+    setPendingCopyAction(null);
+    setAutoConfirmCopy(false);
+    setMissingDependencies([]);
+  }, [selectedFiles]);
+
+  const handleCopyClick = (action: "full" | "files") => {
+    const missing = findMissingDependencies(selectedFiles, dependencyMap);
+    if (missing.length > 0) {
+      setMissingDependencies(missing);
+      setPendingCopyAction(action);
+      return;
+    }
+    if (action === "full") {
+      copyFullContext();
+    } else {
+      copyFilesAndPrompt();
+    }
+  };
+
+  const handleAddMissingAndCopy = () => {
+    acceptAllSuggestions(missingDependencies.map((dep) => dep.filePath));
+    setAutoConfirmCopy(true);
+  };
+
+  const handleCopyAnyway = () => {
+    if (pendingCopyAction === "full") {
+      copyFullContext();
+    } else if (pendingCopyAction === "files") {
+      copyFilesAndPrompt();
+    }
+    setPendingCopyAction(null);
+    setMissingDependencies([]);
+  };
+
+  const handleCancelCompletenessWarning = () => {
+    setPendingCopyAction(null);
+    setMissingDependencies([]);
+  };
 
   return (
     <div className="border-r border-zinc-800 flex flex-col h-full p-4 space-y-4 bg-zinc-950/50">
@@ -174,7 +234,7 @@ export function PromptPanel({
 
       <div className="flex space-x-2 shrink-0">
         <button
-          onClick={copyFullContext}
+          onClick={() => handleCopyClick("full")}
           disabled={isCopying || isCopyingFiles}
           className="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold py-2.5 rounded-lg shadow-lg shadow-cyan-500/10 flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer text-[11px]"
         >
@@ -187,7 +247,7 @@ export function PromptPanel({
         </button>
 
         <button
-          onClick={copyFilesAndPrompt}
+          onClick={() => handleCopyClick("files")}
           disabled={isCopying || isCopyingFiles || selectedFiles.size === 0}
           className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold py-2.5 rounded-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer border border-zinc-700 text-[11px]"
         >
@@ -241,6 +301,15 @@ export function PromptPanel({
             </div>
           </div>
         </div>
+      )}
+
+      {missingDependencies.length > 0 && pendingCopyAction && (
+        <CompletenessWarningModal
+          missingDependencies={missingDependencies}
+          onAddMissingAndCopy={handleAddMissingAndCopy}
+          onCopyAnyway={handleCopyAnyway}
+          onCancel={handleCancelCompletenessWarning}
+        />
       )}
     </div>
   );
