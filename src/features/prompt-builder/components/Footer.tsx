@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Check,
   GitCommit,
@@ -24,14 +24,37 @@ export function Footer({
   onApplySuccess,
 }: FooterProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [showProgressBanner, setShowProgressBanner] = useState(false);
   const [commitMessage, setCommitMessage] = useState("ai-edit: updated files");
   const [modalCommitMessage, setModalCommitMessage] = useState(
     "ai-edit: updated files",
   );
   const commitDialogRef = useRef<HTMLDialogElement>(null);
+  const prevRunningRef = useRef(false);
 
   const { isApplying, isValidating, stages, applyChanges, validateDryRun } =
     useApplyChanges({ diffBlocks, onApplySuccess });
+
+  useEffect(() => {
+    const isRunning = isApplying || isValidating;
+
+    if (isRunning) {
+      setShowProgressBanner(true);
+      setDrawerOpen(false);
+      prevRunningRef.current = true;
+      return;
+    }
+
+    if (prevRunningRef.current && !isRunning) {
+      prevRunningRef.current = false;
+      const timer = setTimeout(() => {
+        setShowProgressBanner(false);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [isApplying, isValidating]);
+
+  const hasErrors = stages.some((s) => s.status === "error");
 
   const handleCommitButtonClick = async () => {
     const ok = await validateDryRun();
@@ -81,7 +104,7 @@ export function Footer({
         </div>
       )}
 
-      {stages.length > 0 && (
+      {showProgressBanner && stages.length > 0 && (
         <div className="absolute bottom-full left-0 right-0 bg-zinc-950 border-t border-zinc-800 z-0 px-6 py-3">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-mono">
             {stages.map((s) => (
@@ -124,8 +147,31 @@ export function Footer({
           />
         </div>
         <div className="flex items-center space-x-4">
+          {stages.length > 0 && (
+            <button
+              onClick={() => {
+                setShowProgressBanner((prev) => !prev);
+                if (!showProgressBanner) setDrawerOpen(false);
+              }}
+              className="flex flex-col items-center justify-center px-4 py-2 hover:bg-zinc-900 rounded-md transition-colors"
+              title="Toggle progress details"
+            >
+              {isApplying || isValidating ? (
+                <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
+              ) : hasErrors ? (
+                <XCircle className="w-4 h-4 text-rose-400" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              )}
+              <span className="text-[10px] mt-1 text-zinc-500">Progress</span>
+            </button>
+          )}
+
           <button
-            onClick={() => setDrawerOpen(!drawerOpen)}
+            onClick={() => {
+              setDrawerOpen((prev) => !prev);
+              if (!drawerOpen) setShowProgressBanner(false);
+            }}
             className="flex flex-col items-center justify-center px-4 py-2 hover:bg-zinc-900 rounded-md transition-colors"
           >
             <History className="w-4 h-4 text-zinc-500" />
