@@ -92,8 +92,8 @@ export function useSuggestedContext({
       const isParent = importedSeed.length > 0;
       const isChild = importingSeed.length > 0;
 
-      let type: "parent" | "child" | "hub" = "child";
-      let tooltip = "";
+      let type: "parent" | "child" | "hub";
+      let tooltip: string;
 
       if (isParent && isChild) {
         type = "hub";

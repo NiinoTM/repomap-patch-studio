@@ -93,9 +93,7 @@ export function useMentionPopup({
     const cursorPos = e.target.selectionStart;
     setRequest(value);
 
-    const textBeforeCursor = value.slice(0, cursorPos);
-    const match = textBeforeCursor.match(/@([a-zA-Z0-9_\-./]*)$/);
-
+    const match = value.slice(0, cursorPos).match(/@([a-zA-Z0-9_\-./]*)$/);
     if (match) {
       setMentionQuery(match[1]);
       setMentionStartIndex(cursorPos - match[0].length);
@@ -112,9 +110,7 @@ export function useMentionPopup({
     const before = request.slice(0, mentionStartIndex);
     const after = request.slice(cursorPos);
 
-    const newText = `${before}@${filePath} ${after}`;
-    setRequest(newText);
-
+    setRequest(`${before}@${filePath} ${after}`);
     onAddSeedFile(filePath);
     setMentionQuery(null);
 

@@ -65,31 +65,8 @@ export function findCondensedRange(content: string, search: string): CondensedRa
   return null;
 }
 
-/**
- * Pure In-Memory Block Application Engine (Exact, Fuzzy Indentation & Condensed Token Stream).
- */
-export function applyBlockToContent(content: string, block: DiffBlockInput): ApplyBlockResult {
-  if (!block.search || !block.search.trim() || block.file === "Active File") {
-    return { success: true, newContent: block.replace };
-  }
-
-  const normContent = content.replace(/\r\n/g, "\n");
-  const normSearch = block.search.replace(/\r\n/g, "\n");
-  const normReplace = block.replace.replace(/\r\n/g, "\n");
-
-  // 1. Exact Match
-  if (normContent.includes(normSearch)) {
-    return {
-      success: true,
-      newContent: normContent.replace(normSearch, normReplace),
-    };
-  }
-
-  // 2. Smart Fuzzy Indentation Match
-  const searchLines = normSearch
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
+function applyFuzzyIndentationMatch(normContent: string, normSearch: string, normReplace: string): string | null {
+  const searchLines = normSearch.split("\n").map((l) => l.trim()).filter(Boolean);
   const contentLines = normContent.split("\n");
 
   let matchIndex = -1;
@@ -115,7 +92,36 @@ export function applyBlockToContent(content: string, block: DiffBlockInput): App
     });
 
     contentLines.splice(matchIndex, searchLines.length, ...replaceLines);
-    return { success: true, newContent: contentLines.join("\n") };
+    return contentLines.join("\n");
+  }
+
+  return null;
+}
+
+/**
+ * Pure In-Memory Block Application Engine (Exact, Fuzzy Indentation & Condensed Token Stream).
+ */
+export function applyBlockToContent(content: string, block: DiffBlockInput): ApplyBlockResult {
+  if (!block.search || !block.search.trim() || block.file === "Active File") {
+    return { success: true, newContent: block.replace };
+  }
+
+  const normContent = content.replace(/\r\n/g, "\n");
+  const normSearch = block.search.replace(/\r\n/g, "\n");
+  const normReplace = block.replace.replace(/\r\n/g, "\n");
+
+  // 1. Exact Match
+  if (normContent.includes(normSearch)) {
+    return {
+      success: true,
+      newContent: normContent.replace(normSearch, normReplace),
+    };
+  }
+
+  // 2. Smart Fuzzy Indentation Match
+  const fuzzyMatch = applyFuzzyIndentationMatch(normContent, normSearch, normReplace);
+  if (fuzzyMatch !== null) {
+    return { success: true, newContent: fuzzyMatch };
   }
 
   // 3. Condensed Token Stream Replacement

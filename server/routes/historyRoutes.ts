@@ -8,7 +8,7 @@ historyRouter.get("/history", (_req: Request, res: Response) => {
     const targetRepoPath = repoState.getRepoPath();
     const logs = getGitHistory(targetRepoPath);
     res.json({ success: true, logs });
-  } catch (err: any) {
+  } catch {
     res.json({ success: true, logs: [] });
   }
 });
