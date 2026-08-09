@@ -7,83 +7,107 @@ export interface DependencyMap {
   apiInbound: Record<string, string[]>;
 }
 
-export function getDependencyMap(basePath: string, filesList: string[]): DependencyMap {
+const CODE_EXTENSIONS = [".js", ".jsx", ".ts", ".tsx"];
+
+function toArrayMap(setMap: Record<string, Set<string>>): Record<string, string[]> {
+  const result: Record<string, string[]> = {};
+  for (const key in setMap) {
+    result[key] = Array.from(setMap[key]);
+  }
+  return result;
+}
+
+function resolveLocalImportCandidates(fileDir: string, importPath: string): string[] {
+  const rawResolved = normalizePath(joinPath(fileDir, importPath)).replace(/\\/g, "/");
+  return [
+    rawResolved,
+    `${rawResolved}.tsx`,
+    `${rawResolved}.ts`,
+    `${rawResolved}.jsx`,
+    `${rawResolved}.js`,
+    `${rawResolved}/index.tsx`,
+    `${rawResolved}/index.ts`,
+    `${rawResolved}/index.jsx`,
+    `${rawResolved}/index.js`,
+  ];
+}
+
+function extractLocalImportsFromFile(basePath: string, file: string, fileSet: Set<string>): Set<string> {
+  const imports = new Set<string>();
+  const importRegex =
+    /(?:import|export)\s+[\s\S]*?\s+from\s+['"]([^'"]+)['"]|require\(['"]([^'"]+)['"]\)/g;
+
+  try {
+    const content = readTextFile(joinPath(basePath, file));
+    let match: RegExpExecArray | null;
+
+    while ((match = importRegex.exec(content)) !== null) {
+      let importPath = match[1] || match[2];
+      if (!importPath) continue;
+      if (importPath.startsWith("@/")) importPath = "./" + importPath.slice(2);
+      if (!importPath.startsWith(".")) continue;
+
+      const candidates = resolveLocalImportCandidates(dirnamePath(file), importPath);
+      for (const cand of candidates) {
+        if (fileSet.has(cand) && cand !== file) {
+          imports.add(cand);
+          break;
+        }
+      }
+    }
+  } catch {
+    // unreadable or unparsable file — skip it
+  }
+
+  return imports;
+}
+
+function recordImportEdges(
+  outbound: Record<string, string[]>,
+  inboundMap: Record<string, Set<string>>,
+  file: string,
+  imports: Set<string>,
+): void {
+  if (imports.size === 0) return;
+  outbound[file] = Array.from(imports);
+  for (const imp of imports) {
+    if (!inboundMap[imp]) inboundMap[imp] = new Set();
+    inboundMap[imp].add(file);
+  }
+}
+
+function buildLocalImportGraph(
+  basePath: string,
+  filesList: string[],
+): { outbound: Record<string, string[]>; inboundMap: Record<string, Set<string>> } {
   const outbound: Record<string, string[]> = {};
   const inboundMap: Record<string, Set<string>> = {};
-  const apiOutbound: Record<string, string[]> = {};
-  const apiInboundMap: Record<string, Set<string>> = {};
   const fileSet = new Set(filesList);
 
   for (const file of filesList) {
-    const ext = extnamePath(file).toLowerCase();
-    if (![".js", ".jsx", ".ts", ".tsx"].includes(ext)) continue;
-
-    try {
-      const fullPath = joinPath(basePath, file);
-      const content = readTextFile(fullPath);
-      const imports = new Set<string>();
-
-      const importRegex =
-        /(?:import|export)\s+[\s\S]*?\s+from\s+['"]([^'"]+)['"]|require\(['"]([^'"]+)['"]\)/g;
-      let match: RegExpExecArray | null;
-
-      while ((match = importRegex.exec(content)) !== null) {
-        let importPath = match[1] || match[2];
-        if (!importPath) continue;
-
-        if (importPath.startsWith("@/")) {
-          importPath = "./" + importPath.slice(2);
-        }
-
-        if (importPath.startsWith(".")) {
-          const fileDir = dirnamePath(file);
-          const rawResolved = normalizePath(joinPath(fileDir, importPath)).replace(/\\/g, "/");
-
-          const candidates = [
-            rawResolved,
-            `${rawResolved}.tsx`,
-            `${rawResolved}.ts`,
-            `${rawResolved}.jsx`,
-            `${rawResolved}.js`,
-            `${rawResolved}/index.tsx`,
-            `${rawResolved}/index.ts`,
-            `${rawResolved}/index.jsx`,
-            `${rawResolved}/index.js`,
-          ];
-
-          for (const cand of candidates) {
-            if (fileSet.has(cand) && cand !== file) {
-              imports.add(cand);
-              break;
-            }
-          }
-        }
-      }
-
-      if (imports.size > 0) {
-        outbound[file] = Array.from(imports);
-        for (const imp of imports) {
-          if (!inboundMap[imp]) inboundMap[imp] = new Set();
-          inboundMap[imp].add(file);
-        }
-      }
-    } catch {
-  // unreadable or unparsable file — skip it
-}
+    if (!CODE_EXTENSIONS.includes(extnamePath(file).toLowerCase())) continue;
+    const imports = extractLocalImportsFromFile(basePath, file, fileSet);
+    recordImportEdges(outbound, inboundMap, file, imports);
   }
 
-  const routeHandlers: Record<string, Set<string>> = {};
+  return { outbound, inboundMap };
+}
 
+/**
+ * Scans backend files for registered Express-style route handlers
+ * (app.get, router.post, etc.) and maps route -> defining file(s).
+ */
+function collectApiRouteHandlers(basePath: string, filesList: string[]): Record<string, Set<string>> {
+  const routeHandlers: Record<string, Set<string>> = {};
   const apiRouteHandlerRegex =
     /(?:app|router|server)\s*\.\s*(?:get|post|put|delete|patch|all|use)\s*\(\s*[`'"]([^`'"]+)[`'"]/gi;
+  const routeFileExtensions = [...CODE_EXTENSIONS, ".mjs", ".cjs"];
 
   for (const file of filesList) {
-    const ext = extnamePath(file).toLowerCase();
-    if (![".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs"].includes(ext)) continue;
+    if (!routeFileExtensions.includes(extnamePath(file).toLowerCase())) continue;
 
     try {
-      const fullPath = joinPath(basePath, file);
-      const content = readTextFile(fullPath);
+      const content = readTextFile(joinPath(basePath, file));
       let match: RegExpExecArray | null;
       while ((match = apiRouteHandlerRegex.exec(content)) !== null) {
         const route = match[1];
@@ -93,54 +117,82 @@ export function getDependencyMap(basePath: string, filesList: string[]): Depende
         }
       }
     } catch {
-  // unreadable or unparsable file — skip it
-}
+      // unreadable or unparsable file — skip it
+    }
   }
 
+  return routeHandlers;
+}
+
+function recordApiCallEdge(
+  apiOutbound: Record<string, string[]>,
+  apiInboundMap: Record<string, Set<string>>,
+  file: string,
+  backendFile: string,
+): void {
+  if (backendFile === file) return;
+  if (!apiOutbound[file]) apiOutbound[file] = [];
+  if (!apiOutbound[file].includes(backendFile)) apiOutbound[file].push(backendFile);
+
+  if (!apiInboundMap[backendFile]) apiInboundMap[backendFile] = new Set();
+  apiInboundMap[backendFile].add(file);
+}
+
+function extractApiCallEdgesFromFile(
+  basePath: string,
+  file: string,
+  routeHandlers: Record<string, Set<string>>,
+  apiOutbound: Record<string, string[]>,
+  apiInboundMap: Record<string, Set<string>>,
+): void {
   const apiClientRegex =
     /(?:fetch|axios\.(?:get|post|put|delete|patch)|apiCall)\s*\(\s*[`'"]([^`'"${}\n]+)[`'"]/gi;
 
-  for (const file of filesList) {
-    const ext = extnamePath(file).toLowerCase();
-    if (![".js", ".jsx", ".ts", ".tsx"].includes(ext)) continue;
+  try {
+    const content = readTextFile(joinPath(basePath, file));
+    let match: RegExpExecArray | null;
+    while ((match = apiClientRegex.exec(content)) !== null) {
+      const cleanRoute = match[1].split("?")[0].split("#")[0];
+      const backendFiles = routeHandlers[cleanRoute];
+      if (!backendFiles) continue;
 
-    try {
-      const fullPath = joinPath(basePath, file);
-      const content = readTextFile(fullPath);
-      let match: RegExpExecArray | null;
-      while ((match = apiClientRegex.exec(content)) !== null) {
-        const rawRoute = match[1];
-        const cleanRoute = rawRoute.split("?")[0].split("#")[0];
-
-        if (routeHandlers[cleanRoute]) {
-          for (const backendFile of routeHandlers[cleanRoute]) {
-            if (backendFile !== file) {
-              if (!apiOutbound[file]) apiOutbound[file] = [];
-              if (!apiOutbound[file].includes(backendFile)) {
-                apiOutbound[file].push(backendFile);
-              }
-
-              if (!apiInboundMap[backendFile])
-                apiInboundMap[backendFile] = new Set();
-              apiInboundMap[backendFile].add(file);
-            }
-          }
-        }
+      for (const backendFile of backendFiles) {
+        recordApiCallEdge(apiOutbound, apiInboundMap, file, backendFile);
       }
-    } catch {
-  // unreadable or unparsable file — skip it
+    }
+  } catch {
+    // unreadable or unparsable file — skip it
+  }
 }
+
+function resolveApiCallGraph(
+  basePath: string,
+  filesList: string[],
+  routeHandlers: Record<string, Set<string>>,
+): { apiOutbound: Record<string, string[]>; apiInboundMap: Record<string, Set<string>> } {
+  const apiOutbound: Record<string, string[]> = {};
+  const apiInboundMap: Record<string, Set<string>> = {};
+
+  for (const file of filesList) {
+    if (!CODE_EXTENSIONS.includes(extnamePath(file).toLowerCase())) continue;
+    extractApiCallEdgesFromFile(basePath, file, routeHandlers, apiOutbound, apiInboundMap);
   }
 
-  const inbound: Record<string, string[]> = {};
-  for (const key in inboundMap) {
-    inbound[key] = Array.from(inboundMap[key]);
-  }
+  return { apiOutbound, apiInboundMap };
+}
 
-  const apiInbound: Record<string, string[]> = {};
-  for (const key in apiInboundMap) {
-    apiInbound[key] = Array.from(apiInboundMap[key]);
-  }
+/**
+ * Generates inbound, outbound, and API dependency maps for repository files.
+ */
+export function getDependencyMap(basePath: string, filesList: string[]): DependencyMap {
+  const { outbound, inboundMap } = buildLocalImportGraph(basePath, filesList);
+  const routeHandlers = collectApiRouteHandlers(basePath, filesList);
+  const { apiOutbound, apiInboundMap } = resolveApiCallGraph(basePath, filesList, routeHandlers);
 
-  return { outbound, inbound, apiOutbound, apiInbound };
+  return {
+    outbound,
+    inbound: toArrayMap(inboundMap),
+    apiOutbound,
+    apiInbound: toArrayMap(apiInboundMap),
+  };
 }

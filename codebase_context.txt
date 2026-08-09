@@ -2,17 +2,6 @@
 # Generated from: C:\Users\Niino\Desktop\repomap-patch-studio
 
 ==================================================
-FILE PATH:  .husky
-==================================================
-#!/usr/bin/env sh
-. "$(dirname -- "$0")/_/h"
-
-echo "🚨 HUSKY IS ALIVE AND INTERCEPTED YOUR COMMIT! 🚨"
-exit 1
-
-npx lint-staged
-
-==================================================
 FILE PATH: .gitignore
 ==================================================
 node_modules/
@@ -960,6 +949,41 @@ app.listen(PORT, () =>
 );
 
 ==================================================
+FILE PATH: server\adapters\fsAdapter.ts
+==================================================
+import fs from "fs";
+import path from "path";
+
+export const readTextFile = (fullPath: string): string =>
+  fs.readFileSync(fullPath, "utf-8");
+
+export const writeTextFile = (fullPath: string, content: string): void => {
+  fs.writeFileSync(fullPath, content, "utf-8");
+};
+
+export const fileExists = (fullPath: string): boolean => fs.existsSync(fullPath);
+
+export const isDirectory = (fullPath: string): boolean => {
+  try {
+    return fs.statSync(fullPath).isDirectory();
+  } catch {
+    return false;
+  }
+};
+
+export const ensureDir = (dirPath: string): void => {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+};
+
+export const joinPath = (...segments: string[]): string => path.join(...segments);
+export const resolvePath = (...segments: string[]): string => path.resolve(...segments);
+export const dirnamePath = (p: string): string => path.dirname(p);
+export const extnamePath = (p: string): string => path.extname(p);
+export const normalizePath = (p: string): string => path.normalize(p);
+
+==================================================
 FILE PATH: server\adapters\gitAdapter.ts
 ==================================================
 import fs from "fs";
@@ -1205,21 +1229,20 @@ historyRouter.get("/history", (_req: Request, res: Response) => {
 FILE PATH: server\routes\patchRoutes.ts
 ==================================================
 import { Router, Request, Response } from "express";
-import fs from "fs";
-import path from "path";
+import { gitSnapshotPreEdit, repoState, gitUndo } from "../adapters/gitAdapter";
+import { DiffBlockInput } from "../services/patchEngine";
 import {
-  repoState,
-  gitSnapshotPreEdit,
-  gitMoveFile,
-  formatFile,
-  gitCommit,
-  gitUndo,
-} from "../adapters/gitAdapter";
-import {
-  applyBlockToContent,
-  validateSyntax,
-  DiffBlockInput,
-} from "../services/patchEngine";
+  resolveEditWrites,
+  validateMoveBlocks,
+  sortFilesForCommit,
+  writeFilesToDisk,
+  applyMoveBlocks,
+  formatChangedFiles,
+  commitChanges,
+  buildValidationErrorResponse,
+  buildApplySuccessMessage,
+  resolveShouldCommit
+} from "../services/applyPatchService";
 
 export const patchRouter = Router();
 
@@ -1233,14 +1256,12 @@ interface ApplyRequestBody {
 
 patchRouter.post("/apply", (req: Request, res: Response) => {
   const { blocks, commitMessage, skipCommit, commit, dryRun }: ApplyRequestBody = req.body;
-  const shouldCommit = commit === true || (commit !== false && !skipCommit);
+  const shouldCommit = resolveShouldCommit(commit, skipCommit);
   const isDryRun = dryRun === true;
   const targetRepoPath = repoState.getRepoPath();
 
   if (!blocks || !Array.isArray(blocks) || blocks.length === 0) {
-    return res
-      .status(400)
-      .json({ success: false, error: "No diff blocks provided." });
+    return res.status(400).json({ success: false, error: "No diff blocks provided." });
   }
 
   const moveBlocks = blocks.filter((b) => b.type === "move");
@@ -1251,67 +1272,12 @@ patchRouter.post("/apply", (req: Request, res: Response) => {
       gitSnapshotPreEdit(targetRepoPath);
     }
 
-    const pendingWrites = new Map<string, string>();
-    const validationErrors: string[] = [];
-
-    for (const block of editBlocks) {
-      if (!block.file || block.file === "Active File") continue;
-      const fullPath = path.resolve(targetRepoPath, block.file);
-
-      let currentContent = pendingWrites.get(block.file);
-      const fileExists = fs.existsSync(fullPath);
-
-      if (currentContent === undefined) {
-        currentContent = fileExists ? fs.readFileSync(fullPath, "utf-8") : "";
-      }
-
-      const result = applyBlockToContent(currentContent, block);
-      if (result.success && result.newContent !== undefined) {
-        const syntaxError = validateSyntax(result.newContent, block.file);
-        if (syntaxError) {
-          validationErrors.push(syntaxError);
-        } else {
-          pendingWrites.set(block.file, result.newContent);
-        }
-      } else {
-        if (result.error) {
-          validationErrors.push(result.error);
-        }
-      }
-    }
-
-    for (const block of moveBlocks) {
-      if (!block.file || !block.moveTo) {
-        validationErrors.push(
-          "Invalid MOVE block: missing source or destination path.",
-        );
-        continue;
-      }
-      const sourcePath = path.resolve(targetRepoPath, block.file);
-      const destPath = path.resolve(targetRepoPath, block.moveTo);
-
-      if (!fs.existsSync(sourcePath)) {
-        validationErrors.push(
-          `MOVE failed: source file not found: ${block.file}`,
-        );
-      } else if (fs.existsSync(destPath) && sourcePath !== destPath) {
-        validationErrors.push(
-          `MOVE failed: destination already exists: ${block.moveTo}`,
-        );
-      }
-    }
+    const { pendingWrites, validationErrors: editErrors } = resolveEditWrites(targetRepoPath, editBlocks);
+    const moveErrors = validateMoveBlocks(targetRepoPath, moveBlocks);
+    const validationErrors = [...editErrors, ...moveErrors];
 
     if (validationErrors.length > 0) {
-      const detailedMsg =
-        `Transaction aborted. ${validationErrors.length} validation/syntax error(s) detected:\n` +
-        validationErrors.map((err) => `• ${err}`).join("\n") +
-        "\n\n0 files were modified on disk.";
-
-      return res.status(422).json({
-        success: false,
-        error: detailedMsg,
-        details: validationErrors,
-      });
+      return res.status(422).json({ success: false, ...buildValidationErrorResponse(validationErrors) });
     }
 
     if (isDryRun) {
@@ -1324,64 +1290,23 @@ patchRouter.post("/apply", (req: Request, res: Response) => {
       });
     }
 
-    const CRITICAL_FILES = [
-      "server/index.ts",
-      "server.ts",
-      "server.js",
-      "package.json",
-      "vite.config.ts",
-      "tsconfig.json",
-    ];
-    const filesToCommit = Array.from(pendingWrites.keys()).sort((a, b) => {
-      const isACritical = CRITICAL_FILES.some((f) => a.endsWith(f));
-      const isBCritical = CRITICAL_FILES.some((f) => b.endsWith(f));
-      if (isACritical && !isBCritical) return 1;
-      if (!isACritical && isBCritical) return -1;
-      return 0;
-    });
+    const filesToCommit = sortFilesForCommit(Array.from(pendingWrites.keys()));
+    writeFilesToDisk(targetRepoPath, filesToCommit, pendingWrites);
 
-    for (const file of filesToCommit) {
-      const fullPath = path.resolve(targetRepoPath, file);
-      const dirPath = path.dirname(fullPath);
-      if (!fs.existsSync(dirPath)) {
-        fs.mkdirSync(dirPath, { recursive: true });
-      }
-      const contentToWrite = pendingWrites.get(file);
-      if (contentToWrite !== undefined) {
-        fs.writeFileSync(fullPath, contentToWrite, "utf-8");
-      }
-    }
-
-    const movedFiles: string[] = [];
-    for (const block of moveBlocks) {
-      if (!block.moveTo) continue;
-      gitMoveFile(targetRepoPath, block.file, block.moveTo);
-      movedFiles.push(block.moveTo);
-    }
-
+    const movedFiles = applyMoveBlocks(targetRepoPath, moveBlocks);
     const allChangedFiles = [...filesToCommit, ...movedFiles];
 
-    for (const file of allChangedFiles) {
-      formatFile(targetRepoPath, file);
-    }
-
-    if (shouldCommit) {
-      const msg =
-        commitMessage && commitMessage.trim()
-          ? commitMessage.trim()
-          : "ai-edit: updated files";
-      gitCommit(targetRepoPath, msg);
-    }
+    formatChangedFiles(targetRepoPath, allChangedFiles);
+    commitChanges(targetRepoPath, shouldCommit, commitMessage);
 
     res.json({
       success: true,
-      message: shouldCommit
-        ? "✅ Transaction complete: Edits applied, formatted & committed to Git!"
-        : "✅ Transaction complete: Edits applied to disk!",
+      message: buildApplySuccessMessage(shouldCommit),
       appliedFiles: allChangedFiles,
     });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: message });
   }
 });
 
@@ -1389,12 +1314,21 @@ patchRouter.post("/undo", (_req: Request, res: Response) => {
   try {
     const targetRepoPath = repoState.getRepoPath();
     gitUndo(targetRepoPath);
-    res.json({
-      success: true,
-      message: "Hard reset to previous commit successful!",
-    });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    res.json({ success: true, message: "Hard reset to previous commit successful!" });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+patchRouter.post("/undo", (_req: Request, res: Response) => {
+  try {
+    const targetRepoPath = repoState.getRepoPath();
+    gitUndo(targetRepoPath);
+    res.json({ success: true, message: "Hard reset to previous commit successful!" });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: message });
   }
 });
 
@@ -1402,8 +1336,7 @@ patchRouter.post("/undo", (_req: Request, res: Response) => {
 FILE PATH: server\routes\repoRoutes.ts
 ==================================================
 import { Router, Request, Response } from "express";
-import fs from "fs";
-import path from "path";
+import { fileExists, isDirectory, readTextFile, joinPath } from "../adapters/fsAdapter";
 import {
   repoState,
   getAllFiles,
@@ -1430,8 +1363,9 @@ repoRouter.get("/repo", (_req: Request, res: Response) => {
       fileStats,
       dependencyMap,
     });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: message });
   }
 });
 
@@ -1439,8 +1373,8 @@ repoRouter.post("/repo", (req: Request, res: Response) => {
   const { newPath } = req.body;
   if (
     typeof newPath === "string" &&
-    fs.existsSync(newPath) &&
-    fs.statSync(newPath).isDirectory()
+    fileExists(newPath) &&
+    isDirectory(newPath)
   ) {
     repoState.setRepoPath(newPath);
     const targetRepoPath = repoState.getRepoPath();
@@ -1470,8 +1404,10 @@ repoRouter.post("/files", (req: Request, res: Response) => {
   if (Array.isArray(files)) {
     files.forEach((f: string) => {
       try {
-        contents[f] = fs.readFileSync(path.join(targetRepoPath, f), "utf-8");
-      } catch (e) {}
+        contents[f] = readTextFile(joinPath(targetRepoPath, f));
+      } catch {
+        // unreadable file — skip it, contents[f] stays unset
+      }
     });
   }
   res.json({ success: true, contents });
@@ -1481,16 +1417,174 @@ repoRouter.post("/native-folder-dialog", (_req: Request, res: Response) => {
   try {
     const selectedPath = openNativeFolderDialog();
     res.json({ success: true, path: selectedPath });
-  } catch (err) {
+  } catch {
     res.json({ success: true, path: "" });
   }
 });
 
 ==================================================
+FILE PATH: server\services\applyPatchService.ts
+==================================================
+import {
+  fileExists,
+  readTextFile,
+  writeTextFile,
+  ensureDir,
+  resolvePath,
+  dirnamePath,
+} from "../adapters/fsAdapter";
+import { gitMoveFile, formatFile, gitCommit } from "../adapters/gitAdapter";
+import { applyBlockToContent, validateSyntax, DiffBlockInput } from "./patchEngine";
+
+const CRITICAL_FILES = [
+  "server/index.ts",
+  "server.ts",
+  "server.js",
+  "package.json",
+  "vite.config.ts",
+  "tsconfig.json",
+];
+
+export interface ApplyEditsResult {
+  pendingWrites: Map<string, string>;
+  validationErrors: string[];
+}
+
+export function resolveEditWrites(
+  targetRepoPath: string,
+  editBlocks: DiffBlockInput[],
+): ApplyEditsResult {
+  const pendingWrites = new Map<string, string>();
+  const validationErrors: string[] = [];
+
+  for (const block of editBlocks) {
+    if (!block.file || block.file === "Active File") continue;
+    const fullPath = resolvePath(targetRepoPath, block.file);
+
+    let currentContent = pendingWrites.get(block.file);
+    const exists = fileExists(fullPath);
+    if (currentContent === undefined) {
+      currentContent = exists ? readTextFile(fullPath) : "";
+    }
+
+    const result = applyBlockToContent(currentContent, block);
+    if (result.success && result.newContent !== undefined) {
+      const syntaxError = validateSyntax(result.newContent, block.file);
+      if (syntaxError) {
+        validationErrors.push(syntaxError);
+      } else {
+        pendingWrites.set(block.file, result.newContent);
+      }
+    } else if (result.error) {
+      validationErrors.push(result.error);
+    }
+  }
+
+  return { pendingWrites, validationErrors };
+}
+
+export function validateMoveBlocks(
+  targetRepoPath: string,
+  moveBlocks: DiffBlockInput[],
+): string[] {
+  const errors: string[] = [];
+
+  for (const block of moveBlocks) {
+    if (!block.file || !block.moveTo) {
+      errors.push("Invalid MOVE block: missing source or destination path.");
+      continue;
+    }
+    const sourcePath = resolvePath(targetRepoPath, block.file);
+    const destPath = resolvePath(targetRepoPath, block.moveTo);
+
+    if (!fileExists(sourcePath)) {
+      errors.push(`MOVE failed: source file not found: ${block.file}`);
+    } else if (fileExists(destPath) && sourcePath !== destPath) {
+      errors.push(`MOVE failed: destination already exists: ${block.moveTo}`);
+    }
+  }
+
+  return errors;
+}
+
+export function sortFilesForCommit(files: string[]): string[] {
+  return [...files].sort((a, b) => {
+    const isACritical = CRITICAL_FILES.some((f) => a.endsWith(f));
+    const isBCritical = CRITICAL_FILES.some((f) => b.endsWith(f));
+    if (isACritical && !isBCritical) return 1;
+    if (!isACritical && isBCritical) return -1;
+    return 0;
+  });
+}
+
+export function writeFilesToDisk(
+  targetRepoPath: string,
+  filesToCommit: string[],
+  pendingWrites: Map<string, string>,
+): void {
+  for (const file of filesToCommit) {
+    const fullPath = resolvePath(targetRepoPath, file);
+    ensureDir(dirnamePath(fullPath));
+    const contentToWrite = pendingWrites.get(file);
+    if (contentToWrite !== undefined) {
+      writeTextFile(fullPath, contentToWrite);
+    }
+  }
+}
+
+export function applyMoveBlocks(targetRepoPath: string, moveBlocks: DiffBlockInput[]): string[] {
+  const movedFiles: string[] = [];
+  for (const block of moveBlocks) {
+    if (!block.moveTo) continue;
+    gitMoveFile(targetRepoPath, block.file, block.moveTo);
+    movedFiles.push(block.moveTo);
+  }
+  return movedFiles;
+}
+
+export function formatChangedFiles(targetRepoPath: string, files: string[]): void {
+  for (const file of files) {
+    formatFile(targetRepoPath, file);
+  }
+}
+
+export function commitChanges(
+  targetRepoPath: string,
+  shouldCommit: boolean,
+  commitMessage: string | undefined,
+): void {
+  if (!shouldCommit) return;
+  const msg = commitMessage && commitMessage.trim() ? commitMessage.trim() : "ai-edit: updated files";
+  gitCommit(targetRepoPath, msg);
+}
+
+export interface ValidationErrorResponse {
+  error: string;
+  details: string[];
+}
+
+export function buildValidationErrorResponse(validationErrors: string[]): ValidationErrorResponse {
+  const detailedMsg =
+    `Transaction aborted. ${validationErrors.length} validation/syntax error(s) detected:\n` +
+    validationErrors.map((err) => `• ${err}`).join("\n") +
+    "\n\n0 files were modified on disk.";
+  return { error: detailedMsg, details: validationErrors };
+}
+
+export function buildApplySuccessMessage(shouldCommit: boolean): string {
+  return shouldCommit
+    ? "✅ Transaction complete: Edits applied, formatted & committed to Git!"
+    : "✅ Transaction complete: Edits applied to disk!";
+}
+
+export function resolveShouldCommit(commit: boolean | undefined, skipCommit: boolean | undefined): boolean {
+  return commit === true || (commit !== false && !skipCommit);
+}
+
+==================================================
 FILE PATH: server\services\dependencyService.ts
 ==================================================
-import fs from "fs";
-import path from "path";
+import { readTextFile, joinPath, dirnamePath, extnamePath, normalizePath } from "../adapters/fsAdapter";
 
 export interface DependencyMap {
   outbound: Record<string, string[]>;
@@ -1499,86 +1593,107 @@ export interface DependencyMap {
   apiInbound: Record<string, string[]>;
 }
 
-/**
- * Generates inbound, outbound, and API dependency maps for repository files.
- */
-export function getDependencyMap(basePath: string, filesList: string[]): DependencyMap {
+const CODE_EXTENSIONS = [".js", ".jsx", ".ts", ".tsx"];
+
+function toArrayMap(setMap: Record<string, Set<string>>): Record<string, string[]> {
+  const result: Record<string, string[]> = {};
+  for (const key in setMap) {
+    result[key] = Array.from(setMap[key]);
+  }
+  return result;
+}
+
+function resolveLocalImportCandidates(fileDir: string, importPath: string): string[] {
+  const rawResolved = normalizePath(joinPath(fileDir, importPath)).replace(/\\/g, "/");
+  return [
+    rawResolved,
+    `${rawResolved}.tsx`,
+    `${rawResolved}.ts`,
+    `${rawResolved}.jsx`,
+    `${rawResolved}.js`,
+    `${rawResolved}/index.tsx`,
+    `${rawResolved}/index.ts`,
+    `${rawResolved}/index.jsx`,
+    `${rawResolved}/index.js`,
+  ];
+}
+
+function extractLocalImportsFromFile(basePath: string, file: string, fileSet: Set<string>): Set<string> {
+  const imports = new Set<string>();
+  const importRegex =
+    /(?:import|export)\s+[\s\S]*?\s+from\s+['"]([^'"]+)['"]|require\(['"]([^'"]+)['"]\)/g;
+
+  try {
+    const content = readTextFile(joinPath(basePath, file));
+    let match: RegExpExecArray | null;
+
+    while ((match = importRegex.exec(content)) !== null) {
+      let importPath = match[1] || match[2];
+      if (!importPath) continue;
+      if (importPath.startsWith("@/")) importPath = "./" + importPath.slice(2);
+      if (!importPath.startsWith(".")) continue;
+
+      const candidates = resolveLocalImportCandidates(dirnamePath(file), importPath);
+      for (const cand of candidates) {
+        if (fileSet.has(cand) && cand !== file) {
+          imports.add(cand);
+          break;
+        }
+      }
+    }
+  } catch {
+    // unreadable or unparsable file — skip it
+  }
+
+  return imports;
+}
+
+function recordImportEdges(
+  outbound: Record<string, string[]>,
+  inboundMap: Record<string, Set<string>>,
+  file: string,
+  imports: Set<string>,
+): void {
+  if (imports.size === 0) return;
+  outbound[file] = Array.from(imports);
+  for (const imp of imports) {
+    if (!inboundMap[imp]) inboundMap[imp] = new Set();
+    inboundMap[imp].add(file);
+  }
+}
+
+function buildLocalImportGraph(
+  basePath: string,
+  filesList: string[],
+): { outbound: Record<string, string[]>; inboundMap: Record<string, Set<string>> } {
   const outbound: Record<string, string[]> = {};
   const inboundMap: Record<string, Set<string>> = {};
-  const apiOutbound: Record<string, string[]> = {};
-  const apiInboundMap: Record<string, Set<string>> = {};
   const fileSet = new Set(filesList);
 
   for (const file of filesList) {
-    const ext = path.extname(file).toLowerCase();
-    if (![".js", ".jsx", ".ts", ".tsx"].includes(ext)) continue;
-
-    try {
-      const fullPath = path.join(basePath, file);
-      const content = fs.readFileSync(fullPath, "utf-8");
-      const imports = new Set<string>();
-
-      const importRegex =
-        /(?:import|export)\s+[\s\S]*?\s+from\s+['"]([^'"]+)['"]|require\(['"]([^'"]+)['"]\)/g;
-      let match: RegExpExecArray | null;
-
-      while ((match = importRegex.exec(content)) !== null) {
-        let importPath = match[1] || match[2];
-        if (!importPath) continue;
-
-        if (importPath.startsWith("@/")) {
-          importPath = "./" + importPath.slice(2);
-        }
-
-        if (importPath.startsWith(".")) {
-          const fileDir = path.dirname(file);
-          const rawResolved = path
-            .normalize(path.join(fileDir, importPath))
-            .replace(/\\/g, "/");
-
-          const candidates = [
-            rawResolved,
-            `${rawResolved}.tsx`,
-            `${rawResolved}.ts`,
-            `${rawResolved}.jsx`,
-            `${rawResolved}.js`,
-            `${rawResolved}/index.tsx`,
-            `${rawResolved}/index.ts`,
-            `${rawResolved}/index.jsx`,
-            `${rawResolved}/index.js`,
-          ];
-
-          for (const cand of candidates) {
-            if (fileSet.has(cand) && cand !== file) {
-              imports.add(cand);
-              break;
-            }
-          }
-        }
-      }
-
-      if (imports.size > 0) {
-        outbound[file] = Array.from(imports);
-        for (const imp of imports) {
-          if (!inboundMap[imp]) inboundMap[imp] = new Set();
-          inboundMap[imp].add(file);
-        }
-      }
-    } catch (e) {}
+    if (!CODE_EXTENSIONS.includes(extnamePath(file).toLowerCase())) continue;
+    const imports = extractLocalImportsFromFile(basePath, file, fileSet);
+    recordImportEdges(outbound, inboundMap, file, imports);
   }
 
-  const routeHandlers: Record<string, Set<string>> = {};
+  return { outbound, inboundMap };
+}
 
+/**
+ * Scans backend files for registered Express-style route handlers
+ * (app.get, router.post, etc.) and maps route -> defining file(s).
+ */
+function collectApiRouteHandlers(basePath: string, filesList: string[]): Record<string, Set<string>> {
+  const routeHandlers: Record<string, Set<string>> = {};
   const apiRouteHandlerRegex =
     /(?:app|router|server)\s*\.\s*(?:get|post|put|delete|patch|all|use)\s*\(\s*[`'"]([^`'"]+)[`'"]/gi;
+  const routeFileExtensions = [...CODE_EXTENSIONS, ".mjs", ".cjs"];
 
   for (const file of filesList) {
-    const ext = path.extname(file).toLowerCase();
-    if (![".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs"].includes(ext)) continue;
+    if (!routeFileExtensions.includes(extnamePath(file).toLowerCase())) continue;
 
     try {
-      const fullPath = path.join(basePath, file);
-      const content = fs.readFileSync(fullPath, "utf-8");
+      const content = readTextFile(joinPath(basePath, file));
       let match: RegExpExecArray | null;
       while ((match = apiRouteHandlerRegex.exec(content)) !== null) {
         const route = match[1];
@@ -1587,53 +1702,85 @@ export function getDependencyMap(basePath: string, filesList: string[]): Depende
           routeHandlers[route].add(file);
         }
       }
-    } catch (e) {}
+    } catch {
+      // unreadable or unparsable file — skip it
+    }
   }
 
+  return routeHandlers;
+}
+
+function recordApiCallEdge(
+  apiOutbound: Record<string, string[]>,
+  apiInboundMap: Record<string, Set<string>>,
+  file: string,
+  backendFile: string,
+): void {
+  if (backendFile === file) return;
+  if (!apiOutbound[file]) apiOutbound[file] = [];
+  if (!apiOutbound[file].includes(backendFile)) apiOutbound[file].push(backendFile);
+
+  if (!apiInboundMap[backendFile]) apiInboundMap[backendFile] = new Set();
+  apiInboundMap[backendFile].add(file);
+}
+
+function extractApiCallEdgesFromFile(
+  basePath: string,
+  file: string,
+  routeHandlers: Record<string, Set<string>>,
+  apiOutbound: Record<string, string[]>,
+  apiInboundMap: Record<string, Set<string>>,
+): void {
   const apiClientRegex =
     /(?:fetch|axios\.(?:get|post|put|delete|patch)|apiCall)\s*\(\s*[`'"]([^`'"${}\n]+)[`'"]/gi;
 
-  for (const file of filesList) {
-    const ext = path.extname(file).toLowerCase();
-    if (![".js", ".jsx", ".ts", ".tsx"].includes(ext)) continue;
+  try {
+    const content = readTextFile(joinPath(basePath, file));
+    let match: RegExpExecArray | null;
+    while ((match = apiClientRegex.exec(content)) !== null) {
+      const cleanRoute = match[1].split("?")[0].split("#")[0];
+      const backendFiles = routeHandlers[cleanRoute];
+      if (!backendFiles) continue;
 
-    try {
-      const fullPath = path.join(basePath, file);
-      const content = fs.readFileSync(fullPath, "utf-8");
-      let match: RegExpExecArray | null;
-      while ((match = apiClientRegex.exec(content)) !== null) {
-        const rawRoute = match[1];
-        const cleanRoute = rawRoute.split("?")[0].split("#")[0];
-
-        if (routeHandlers[cleanRoute]) {
-          for (const backendFile of routeHandlers[cleanRoute]) {
-            if (backendFile !== file) {
-              if (!apiOutbound[file]) apiOutbound[file] = [];
-              if (!apiOutbound[file].includes(backendFile)) {
-                apiOutbound[file].push(backendFile);
-              }
-
-              if (!apiInboundMap[backendFile])
-                apiInboundMap[backendFile] = new Set();
-              apiInboundMap[backendFile].add(file);
-            }
-          }
-        }
+      for (const backendFile of backendFiles) {
+        recordApiCallEdge(apiOutbound, apiInboundMap, file, backendFile);
       }
-    } catch (e) {}
+    }
+  } catch {
+    // unreadable or unparsable file — skip it
+  }
+}
+
+function resolveApiCallGraph(
+  basePath: string,
+  filesList: string[],
+  routeHandlers: Record<string, Set<string>>,
+): { apiOutbound: Record<string, string[]>; apiInboundMap: Record<string, Set<string>> } {
+  const apiOutbound: Record<string, string[]> = {};
+  const apiInboundMap: Record<string, Set<string>> = {};
+
+  for (const file of filesList) {
+    if (!CODE_EXTENSIONS.includes(extnamePath(file).toLowerCase())) continue;
+    extractApiCallEdgesFromFile(basePath, file, routeHandlers, apiOutbound, apiInboundMap);
   }
 
-  const inbound: Record<string, string[]> = {};
-  for (const key in inboundMap) {
-    inbound[key] = Array.from(inboundMap[key]);
-  }
+  return { apiOutbound, apiInboundMap };
+}
 
-  const apiInbound: Record<string, string[]> = {};
-  for (const key in apiInboundMap) {
-    apiInbound[key] = Array.from(apiInboundMap[key]);
-  }
+/**
+ * Generates inbound, outbound, and API dependency maps for repository files.
+ */
+export function getDependencyMap(basePath: string, filesList: string[]): DependencyMap {
+  const { outbound, inboundMap } = buildLocalImportGraph(basePath, filesList);
+  const routeHandlers = collectApiRouteHandlers(basePath, filesList);
+  const { apiOutbound, apiInboundMap } = resolveApiCallGraph(basePath, filesList, routeHandlers);
 
-  return { outbound, inbound, apiOutbound, apiInbound };
+  return {
+    outbound,
+    inbound: toArrayMap(inboundMap),
+    apiOutbound,
+    apiInbound: toArrayMap(apiInboundMap),
+  };
 }
 
 ==================================================
@@ -1783,82 +1930,93 @@ export { validateSyntax };
 ==================================================
 FILE PATH: server\services\repoMapService.ts
 ==================================================
-import fs from "fs";
-import path from "path";
+import { readTextFile, joinPath, extnamePath } from "../adapters/fsAdapter";
+
+const JS_LIKE_EXTENSIONS = [".js", ".jsx", ".ts", ".tsx"];
+
+function extractJsLikeSymbol(trimmedLine: string): string | null {
+  let match = trimmedLine.match(
+    /^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function|class|interface|type)\s+([A-Za-z0-9_]+)/,
+  );
+  if (match) return trimmedLine.replace(/\s*\{.*$/, "");
+
+  match = trimmedLine.match(
+    /^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_]+)\s*=>/,
+  );
+  if (match) return trimmedLine.replace(/\s*=>.*$/, "=> { ... }");
+
+  return null;
+}
+
+function extractPythonSymbol(trimmedLine: string): string | null {
+  if (/^(?:async\s+)?(?:def|class)\s+[A-Za-z0-9_]+/.test(trimmedLine)) {
+    return trimmedLine.replace(/:.*$/, "");
+  }
+  return null;
+}
+
+function extractGoSymbol(trimmedLine: string): string | null {
+  if (
+    /^func\s+[A-Za-z0-9_]+/.test(trimmedLine) ||
+    /^type\s+[A-Za-z0-9_]+\s+(?:struct|interface)/.test(trimmedLine)
+  ) {
+    return trimmedLine.replace(/\{.*$/, "");
+  }
+  return null;
+}
+
+function extractSymbolFromLine(trimmedLine: string, ext: string): string | null {
+  if (JS_LIKE_EXTENSIONS.includes(ext)) return extractJsLikeSymbol(trimmedLine);
+  if (ext === ".py") return extractPythonSymbol(trimmedLine);
+  if (ext === ".go") return extractGoSymbol(trimmedLine);
+  return null;
+}
+
+function extractSymbolsFromContent(content: string, ext: string): string[] {
+  const symbols: string[] = [];
+  for (const line of content.split("\n")) {
+    const symbol = extractSymbolFromLine(line.trim(), ext);
+    if (symbol) symbols.push(symbol);
+  }
+  return symbols;
+}
+
+function formatFileEntry(file: string, symbols: string[]): string {
+  if (symbols.length === 0) return file + "\n";
+  return file + ":\n" + symbols.map((s) => "│ " + s + "\n").join("");
+}
 
 /**
  * Generates a symbol map of the repository files.
  */
 export function generateRepoMap(basePath: string, filesList: string[]): string {
   let mapOutput = "";
+
   for (const file of filesList) {
-    const fullPath = path.join(basePath, file);
-    const ext = path.extname(file).toLowerCase();
     let content: string;
     try {
-      content = fs.readFileSync(fullPath, "utf-8");
-    } catch (e) {
+      content = readTextFile(joinPath(basePath, file));
+    } catch {
       continue;
     }
 
-    let symbols: string[] = [];
-    const lines = content.split("\n");
-
-    for (let line of lines) {
-      const trimmed = line.trim();
-      if ([".js", ".jsx", ".ts", ".tsx"].includes(ext)) {
-        let match = trimmed.match(
-          /^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function|class|interface|type)\s+([A-Za-z0-9_]+)/,
-        );
-        if (match) {
-          symbols.push(trimmed.replace(/\s*\{.*$/, ""));
-          continue;
-        }
-
-        match = trimmed.match(
-          /^(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_]+)\s*=>/,
-        );
-        if (match) {
-          symbols.push(trimmed.replace(/\s*=>.*$/, "=> { ... }"));
-          continue;
-        }
-      } else if ([".py"].includes(ext)) {
-        if (/^(?:async\s+)?(?:def|class)\s+[A-Za-z0-9_]+/.test(trimmed)) {
-          symbols.push(trimmed.replace(/:.*$/, ""));
-        }
-      } else if ([".go"].includes(ext)) {
-        if (
-          /^func\s+[A-Za-z0-9_]+/.test(trimmed) ||
-          /^type\s+[A-Za-z0-9_]+\s+(?:struct|interface)/.test(trimmed)
-        ) {
-          symbols.push(trimmed.replace(/\{.*$/, ""));
-        }
-      }
-    }
-
-    if (symbols.length > 0) {
-      mapOutput += file + ":\n";
-      symbols.forEach((s) => (mapOutput += "│ " + s + "\n"));
-    } else {
-      mapOutput += file + "\n";
-    }
+    const symbols = extractSymbolsFromContent(content, extnamePath(file).toLowerCase());
+    mapOutput += formatFileEntry(file, symbols);
   }
+
   return mapOutput.trim();
 }
 
 ==================================================
 FILE PATH: server\services\syntaxService.ts
 ==================================================
-import path from "path";
 import { transformSync } from "esbuild";
+import { extnamePath } from "../adapters/fsAdapter";
 
-/**
- * Validates JS/TS/JSX/TSX syntax in memory before writing to disk.
- */
 export function validateSyntax(content: string, filePath: string): string | null {
-  const ext = path.extname(filePath).toLowerCase();
+  const ext = extnamePath(filePath).toLowerCase();
   if (![".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"].includes(ext)) {
-    return null; // Skip non-code files (JSON, CSS, Markdown, etc.)
+    return null;
   }
 
   try {
@@ -1870,12 +2028,15 @@ export function validateSyntax(content: string, filePath: string): string | null
       jsx: "transform",
       format: "esm",
     });
-    return null; // Valid syntax!
-  } catch (err: any) {
+    return null;
+  } catch (err: unknown) {
+    const esbuildErr = err as { errors?: { text: string; location?: { line?: number } }[] };
     const errorMsg =
-      err.errors && err.errors[0]
-        ? `${err.errors[0].text} (line ${err.errors[0].location?.line || "?"})`
-        : err.message;
+      esbuildErr.errors && esbuildErr.errors[0]
+        ? `${esbuildErr.errors[0].text} (line ${esbuildErr.errors[0].location?.line || "?"})`
+        : err instanceof Error
+          ? err.message
+          : String(err);
     return `Pre-flight SyntaxError in ${filePath}: ${errorMsg}`;
   }
 }
