@@ -153,15 +153,12 @@ export const gitUndo = (basePath: string = targetRepoPath): void => {
 
 export const gitSnapshotPreEdit = (basePath: string = targetRepoPath): void => {
   try {
-    execSync(
-      'git add . && git commit --no-verify --no-gpg-sign -m "pre-ai-edit"',
-      {
-        cwd: basePath,
-        stdio: "ignore",
-      },
-    );
+    execSync('git add . && git commit -m "pre-ai-edit"', {
+      cwd: basePath,
+      encoding: "utf-8",
+    });
   } catch {
-    // ignore git error if nothing to commit
+    return;
   }
 };
 
@@ -193,7 +190,7 @@ export const formatFile = (basePath: string, fileRel: string): void => {
       stdio: "ignore",
     });
   } catch {
-    // ignore formatting errors
+    return;
   }
 };
 
@@ -201,11 +198,21 @@ export const gitCommit = (
   basePath: string,
   message: string = "ai-edit: updated files",
 ): void => {
-  execSync(
-    `git add . && git commit --no-verify --no-gpg-sign -m "${message}"`,
-    {
+  try {
+    execSync(`git add . && git commit -m "${message}"`, {
       cwd: basePath,
-      stdio: "ignore",
-    },
-  );
+      encoding: "utf-8",
+    });
+  } catch (error: any) {
+    // If Husky hooks fail, capture the linter output so it reaches the UI
+    const output = (
+      error.stdout ||
+      error.stderr ||
+      error.message ||
+      "Unknown Git error"
+    ).trim();
+    throw new Error(`Git commit rejected (Husky hooks failed):\n${output}`, {
+      cause: error,
+    });
+  }
 };
