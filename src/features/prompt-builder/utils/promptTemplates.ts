@@ -125,6 +125,43 @@ USER REQUEST:
 ${userRequest}`;
 }
 
+interface DiscoveryPromptParams {
+  repoMap: string;
+  userRequest: string;
+}
+
+// Strategy 2 (governance_system_requirements.md) applied to context
+// selection instead of code generation: don't make the model pick files
+// AND write code under the same pressure. This prompt shows only the
+// REPO MAP — no file contents — and asks the model to name what it needs
+// before any implementation happens.
+export function buildDiscoveryPrompt({
+  repoMap,
+  userRequest,
+}: DiscoveryPromptParams): string {
+  return `ROLE: Senior Software Architect
+You are being shown ONLY a symbol-level map of this repository, not any file contents. Your job is to identify which files you would need to actually SEE the contents of in order to implement the request below safely — without hallucinating types, props, or logic you can't currently verify.
+
+RULES:
+1. Base your answer only on the REPO MAP below (file paths and their exported symbols) and the USER REQUEST. Do not invent files that aren't listed in the REPO MAP.
+2. List every file whose actual content would change how you write the edit — files you'd be editing directly, plus files whose types/props/exports the edit depends on (e.g. a shared type definition, a hook a component consumes, a sibling file with a signature you'd need to match).
+3. Do not list files that are merely "related" but wouldn't change your implementation.
+4. If the request is simple enough that no additional context is needed, output "FILES NEEDED:" followed by nothing.
+
+OUTPUT FORMAT (nothing else — no preamble, no code):
+FILES NEEDED:
+- path/to/file.ext — one-line reason you need to see it
+- path/to/other/file.ext — one-line reason you need to see it
+
+==================================================
+REPO MAP (Project Blueprint):
+${repoMap || "No map generated."}
+
+==================================================
+USER REQUEST:
+${userRequest}`;
+}
+
 interface FilesAndPromptParams {
   activeFilesText: string;
   userRequest: string;

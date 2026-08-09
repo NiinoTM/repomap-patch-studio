@@ -21,6 +21,8 @@ export default function App() {
     files: 0,
     selectedCount: 0,
   });
+  const [discoveryMode, setDiscoveryMode] = useState(false);
+  const [discoveredFiles, setDiscoveredFiles] = useState<string[]>([]);
 
   const {
     repoPath,
@@ -39,6 +41,9 @@ export default function App() {
     setDiffBlocks,
     setIgnoredBlockIds,
     setToastMessage,
+    discoveryMode,
+    setDiscoveryMode,
+    setDiscoveredFiles,
   });
 
   const handleChangeRepo = async (newPath: string) => {
@@ -104,6 +109,10 @@ export default function App() {
             fileStats={fileStats}
             dependencyMap={dependencyMap}
             onTokenStatsChange={setTokenStats}
+            discoveryMode={discoveryMode}
+            onDiscoveryModeChange={setDiscoveryMode}
+            discoveredFiles={discoveredFiles}
+            onDiscoveredFilesConsumed={() => setDiscoveredFiles([])}
           />
         </aside>
 

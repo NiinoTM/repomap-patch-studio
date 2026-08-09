@@ -32,6 +32,10 @@ interface PromptPanelProps {
     files: number;
     selectedCount: number;
   }) => void;
+  discoveryMode: boolean;
+  onDiscoveryModeChange: (value: boolean) => void;
+  discoveredFiles: string[];
+  onDiscoveredFilesConsumed: () => void;
 }
 
 export function PromptPanel({
@@ -42,6 +46,10 @@ export function PromptPanel({
   fileStats,
   dependencyMap,
   onTokenStatsChange,
+  discoveryMode,
+  onDiscoveryModeChange,
+  discoveredFiles,
+  onDiscoveredFilesConsumed,
 }: PromptPanelProps) {
   const [request, setRequest] = useState("");
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
@@ -99,7 +107,7 @@ export function PromptPanel({
   });
 
   const { isCopying, isCopyingFiles, copyFullContext, copyFilesAndPrompt } =
-    useCopyPrompt({ selectedFiles, repoMap, request, onCopy });
+    useCopyPrompt({ selectedFiles, repoMap, request, discoveryMode, onCopy });
 
   // Runs after selectedFiles updates (post acceptAllSuggestions) so the
   // copy actions below read the freshly-added files, not a stale closure.
@@ -115,7 +123,21 @@ export function PromptPanel({
     setMissingDependencies([]);
   }, [selectedFiles]);
 
+  // Discovery mode round-trip: when the parent hands back a file list
+  // parsed from the AI's "what do you need" response, fold it into the
+  // normal selection set (same mechanism as accepting a suggestion) and
+  // tell the parent it's been consumed so it doesn't get re-applied.
+  useEffect(() => {
+    if (!discoveredFiles || discoveredFiles.length === 0) return;
+    acceptAllSuggestions(discoveredFiles);
+    onDiscoveredFilesConsumed();
+  }, [discoveredFiles]);
+
   const handleCopyClick = (action: "full" | "files") => {
+    if (discoveryMode) {
+      copyFullContext();
+      return;
+    }
     const missing = findMissingDependencies(selectedFiles, dependencyMap);
     if (missing.length > 0) {
       setMissingDependencies(missing);
@@ -230,25 +252,51 @@ export function PromptPanel({
           <input type="checkbox" defaultChecked className="accent-cyan-500" />
           <span>Enforce SEARCH/REPLACE blocks</span>
         </label>
+        <label className="flex items-center space-x-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={discoveryMode}
+            onChange={(e) => onDiscoveryModeChange(e.target.checked)}
+            className="accent-indigo-500"
+          />
+          <span>
+            Discovery Mode
+            <span className="text-zinc-500">
+              {" "}
+              — ask the AI which files it needs before sending any code
+            </span>
+          </span>
+        </label>
       </div>
 
       <div className="flex space-x-2 shrink-0">
         <button
           onClick={() => handleCopyClick("full")}
           disabled={isCopying || isCopyingFiles}
-          className="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold py-2.5 rounded-lg shadow-lg shadow-cyan-500/10 flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer text-[11px]"
+          className={`flex-1 font-semibold py-2.5 rounded-lg shadow-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer text-[11px] ${
+            discoveryMode
+              ? "bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-indigo-500/10"
+              : "bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-cyan-500/10"
+          }`}
         >
           <Copy className="w-3.5 h-3.5 shrink-0" />
           <span className="truncate">
             {isCopying
               ? "Assembling..."
-              : `Full Context (${selectedFiles.size})`}
+              : discoveryMode
+                ? "Ask AI What's Needed"
+                : `Full Context (${selectedFiles.size})`}
           </span>
         </button>
 
         <button
           onClick={() => handleCopyClick("files")}
-          disabled={isCopying || isCopyingFiles || selectedFiles.size === 0}
+          disabled={
+            isCopying ||
+            isCopyingFiles ||
+            selectedFiles.size === 0 ||
+            discoveryMode
+          }
           className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold py-2.5 rounded-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer border border-zinc-700 text-[11px]"
         >
           <FileText className="w-3.5 h-3.5 shrink-0" />

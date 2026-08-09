@@ -118,3 +118,30 @@ export function parseDiffBlocks(rawText: string): DiffBlock[] {
   console.log(`[Parser] Final returned blocks:`, blocks);
   return blocks;
 }
+
+/**
+ * Parses a Discovery Mode response: a plain list of file paths the AI says
+ * it needs to see, one per line, formatted "- path/to/file.ext — reason".
+ * Only the path is extracted; the reason is for the human reading the
+ * response, not for the app. Deliberately much simpler than
+ * parseDiffBlocks — no state machine needed for a flat list.
+ */
+export function parseFileList(rawText: string): string[] {
+  if (!rawText || !rawText.trim()) return [];
+
+  const lines = rawText.split(/\r\n|\n|\r/);
+  const lineRegex = /^-\s*[`"']?([^\s`"']+\.[a-zA-Z0-9]+)[`"']?/;
+  const files: string[] = [];
+
+  for (const line of lines) {
+    const match = line.trim().match(lineRegex);
+    if (match) {
+      const filePath = match[1].replace(/[,:]$/, "");
+      if (!files.includes(filePath)) {
+        files.push(filePath);
+      }
+    }
+  }
+
+  return files;
+}

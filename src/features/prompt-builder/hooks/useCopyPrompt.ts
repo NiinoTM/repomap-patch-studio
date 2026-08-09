@@ -4,12 +4,14 @@ import {
   formatActiveFilesContext,
   buildFullContextPrompt,
   buildFilesAndPromptOnly,
+  buildDiscoveryPrompt,
 } from "../utils/promptTemplates";
 
 interface UseCopyPromptParams {
   selectedFiles: Set<string>;
   repoMap: string;
   request: string;
+  discoveryMode: boolean;
   onCopy: (promptText: string) => void;
 }
 
@@ -22,6 +24,7 @@ export function useCopyPrompt({
   selectedFiles,
   repoMap,
   request,
+  discoveryMode,
   onCopy,
 }: UseCopyPromptParams) {
   const [isCopying, setIsCopying] = useState(false);
@@ -35,6 +38,14 @@ export function useCopyPrompt({
   const copyFullContext = async () => {
     setIsCopying(true);
     try {
+      if (discoveryMode) {
+        const discoveryPrompt = buildDiscoveryPrompt({
+          repoMap,
+          userRequest: request,
+        });
+        onCopy(discoveryPrompt);
+        return;
+      }
       const activeFilesText = await fetchActiveFilesText();
       const finalPrompt = buildFullContextPrompt({
         repoMap,

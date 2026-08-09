@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { DiffBlock } from "../../../types/patch";
-import { parseDiffBlocks } from "../utils/diffParser";
+import { parseDiffBlocks, parseFileList } from "../utils/diffParser";
 import { validateBlocks } from "../utils/blockMatcher";
 import { filesApi } from "../../../api/repoApi";
 
@@ -10,6 +10,9 @@ interface UsePasteAndValidateParams {
   setDiffBlocks: (blocks: DiffBlock[]) => void;
   setIgnoredBlockIds: (ids: Set<string>) => void;
   setToastMessage: (message: string | null) => void;
+  discoveryMode: boolean;
+  setDiscoveryMode: (value: boolean) => void;
+  setDiscoveredFiles: (files: string[]) => void;
 }
 
 /**
@@ -24,12 +27,27 @@ export function usePasteAndValidate({
   setDiffBlocks,
   setIgnoredBlockIds,
   setToastMessage,
+  discoveryMode,
+  setDiscoveryMode,
+  setDiscoveredFiles,
 }: UsePasteAndValidateParams) {
   const handlePaste = useCallback(
     async (append = false) => {
       try {
         const clipboardText = await navigator.clipboard.readText();
         if (!clipboardText) return;
+
+        if (discoveryMode) {
+          const discovered = parseFileList(clipboardText);
+          setDiscoveredFiles(discovered);
+          setDiscoveryMode(false);
+          setToastMessage(
+            discovered.length > 0
+              ? `Discovered ${discovered.length} file(s) — added to context.`
+              : "AI reported no additional files needed.",
+          );
+          return;
+        }
 
         const newContent =
           append && pastedContent
@@ -73,6 +91,9 @@ export function usePasteAndValidate({
       setDiffBlocks,
       setIgnoredBlockIds,
       setToastMessage,
+      discoveryMode,
+      setDiscoveryMode,
+      setDiscoveredFiles,
     ],
   );
 
