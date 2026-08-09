@@ -67,6 +67,17 @@ export async function resolveEditWrites(
       continue;
     }
 
+    if (
+      finalContent.includes("<<<<<<< SEARCH") ||
+      finalContent.includes("=======") ||
+      finalContent.includes(">>>>>>> REPLACE")
+    ) {
+      validationErrors.push(
+        `Leaked patch marker detected in generated content for ${file}. Application aborted to prevent corruption.`,
+      );
+      continue;
+    }
+
     const syntaxError = validateSyntax(finalContent, file);
     if (syntaxError) {
       validationErrors.push(syntaxError);
