@@ -1,5 +1,4 @@
-import React from "react";
-import { createPortal } from "react-dom";
+import { RefObject, useEffect, useRef } from "react";
 import { FileText } from "lucide-react";
 import { FuzzyResult } from "../../utils/fuzzySearch";
 
@@ -15,7 +14,7 @@ interface MentionDropdownProps {
   } | null;
   activeMentionIndex: number;
   selectedFiles: Set<string>;
-  mentionPopupRef: React.RefObject<HTMLDivElement | null>;
+  mentionPopupRef: RefObject<HTMLDivElement>;
   onInsertMention: (filePath: string) => void;
   onHoverMention: (index: number) => void;
 }
@@ -30,97 +29,125 @@ export function MentionDropdown({
   onInsertMention,
   onHoverMention,
 }: MentionDropdownProps) {
-  if (mentionQuery === null || mentionMatches.length === 0 || !mentionPos) {
+  const listRef = useRef<HTMLUListElement>(null);
+
+  useEffect(() => {
+    if (listRef.current) {
+      const activeEl = listRef.current.children[
+        activeMentionIndex
+      ] as HTMLElement;
+      if (activeEl) {
+        activeEl.scrollIntoView({ block: "nearest" });
+      }
+    }
+  }, [activeMentionIndex]);
+
+  if (mentionQuery === null || !mentionPos || mentionMatches.length === 0) {
     return null;
   }
 
-  const renderFuzzyPath = (result: FuzzyResult) => {
-    const dirLen = result.dirPath ? result.dirPath.length + 1 : 0;
-    const dirChars = result.filePath.slice(0, dirLen).split("");
-    const fileChars = result.filePath.slice(dirLen).split("");
+  const renderChars = (chars: string[], offset: number, matches: number[]) => {
+    return chars.map((char, i) => {
+      const globalIndex = offset + i;
+      const isMatched = matches.includes(globalIndex);
+      return isMatched ? (
+        <span
+          key={i}
+          className="text-cyan-400 font-bold bg-cyan-500/20 rounded-[2px]"
+        >
+          {char}
+        </span>
+      ) : (
+        <span key={i}>{char}</span>
+      );
+    });
+  };
 
-    const renderChars = (chars: string[], offset: number) =>
-      chars.map((char, i) => {
-        const idx = offset + i;
-        const isMatched = result.matchedIndices.has(idx);
-        return (
-          <span
-            key={idx}
-            className={
-              isMatched
-                ? "text-cyan-400 font-bold bg-cyan-950/60 rounded-[1px]"
-                : "text-zinc-400"
-            }
-          >
-            {char}
-          </span>
-        );
-      });
+  const renderFuzzyPath = (result: FuzzyResult) => {
+    const lastSlash = result.filePath.lastIndexOf("/");
+
+    let dir = "";
+    let file = result.filePath;
+    const dirOffset = 0;
+    let fileOffset = 0;
+
+    if (lastSlash !== -1) {
+      // By slicing up to lastSlash + 1, we INCLUDE the '/' character in the directory string.
+      // This fixes the bug where the slash was being omitted from the rendered results!
+      dir = result.filePath.slice(0, lastSlash + 1);
+      file = result.filePath.slice(lastSlash + 1);
+      fileOffset = lastSlash + 1;
+    }
 
     return (
-      <span className="font-mono text-xs flex items-center min-w-0">
-        {dirChars.length > 0 && (
-          <span
-            className="overflow-hidden whitespace-nowrap text-ellipsis shrink"
-            style={{ direction: "rtl", textAlign: "left" }}
-            title={result.dirPath}
-          >
-            {renderChars(dirChars, 0)}
+      <span className="flex truncate w-full text-left items-center">
+        {dir && (
+          <span className="opacity-50 truncate flex-shrink">
+            {renderChars(dir.split(""), dirOffset, result.matches)}
           </span>
         )}
-        <span className="whitespace-nowrap shrink-0">
-          {renderChars(fileChars, dirLen)}
+        <span className="font-medium text-zinc-300 flex-shrink-0">
+          {renderChars(file.split(""), fileOffset, result.matches)}
         </span>
       </span>
     );
   };
 
-  return createPortal(
+  return (
     <div
       ref={mentionPopupRef}
-      className="fixed bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-[100] flex flex-col"
+      className="fixed z-50 bg-zinc-900 border border-zinc-700 shadow-2xl rounded-lg overflow-hidden flex flex-col"
       style={{
+        top: mentionPos.top,
         left: mentionPos.left,
-        width: mentionPos.width,
+        width: Math.min(mentionPos.width, 600),
         maxHeight: mentionPos.maxHeight,
-        top: mentionPos.direction === "down" ? mentionPos.top : undefined,
-        bottom:
-          mentionPos.direction === "up"
-            ? window.innerHeight - mentionPos.top
-            : undefined,
+        transform: mentionPos.direction === "up" ? "translateY(-100%)" : "none",
       }}
     >
-      <div className="p-1.5 bg-zinc-950 border-b border-zinc-800 text-[10px] text-zinc-400 font-medium flex justify-between shrink-0">
-        <span>Fuzzy Matches for "@{mentionQuery}"</span>
-        <span className="text-zinc-600">
-          ↑↓ to navigate, Enter to select
+      <div className="px-3 py-2 border-b border-zinc-800 bg-zinc-900/50 flex items-center justify-between">
+        <span className="text-xs font-medium text-zinc-400">
+          Fuzzy Matches for{" "}
+          <span className="text-cyan-400">"@{mentionQuery}"</span>
+        </span>
+        <span className="text-[10px] text-zinc-500 flex items-center">
+          <span className="mr-1">↑↓</span> to navigate, Enter to select
         </span>
       </div>
-      <div className="overflow-y-auto custom-scrollbar">
-        {mentionMatches.map((res, idx) => (
-          <div
-            key={res.filePath}
-            onClick={() => onInsertMention(res.filePath)}
-            onMouseEnter={() => onHoverMention(idx)}
-            className={`px-3 py-1.5 text-xs flex items-center justify-between cursor-pointer transition-colors gap-2 ${
-              idx === activeMentionIndex
-                ? "bg-cyan-600/30 text-cyan-200 border-l-2 border-cyan-500"
-                : "text-zinc-300 hover:bg-zinc-800/50"
-            }`}
-          >
-            <div className="flex items-center min-w-0 flex-1">
-              <FileText className="w-3.5 h-3.5 mr-2 text-zinc-400 shrink-0" />
-              {renderFuzzyPath(res)}
-            </div>
-            {selectedFiles.has(res.filePath) && (
-              <span className="text-[9px] bg-cyan-500/20 text-cyan-400 font-mono px-1 py-0.5 rounded border border-cyan-500/30 shrink-0">
-                Added
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>,
-    document.body,
+      <ul
+        ref={listRef}
+        className="overflow-y-auto custom-scrollbar flex-1 py-1"
+      >
+        {mentionMatches.map((match, i) => {
+          const isActive = i === activeMentionIndex;
+          const isSelected = selectedFiles.has(match.filePath);
+
+          return (
+            <li
+              key={match.filePath}
+              className={`px-3 py-2 cursor-pointer flex items-center space-x-3 transition-colors ${
+                isActive ? "bg-cyan-500/10" : "hover:bg-zinc-800/50"
+              }`}
+              onMouseEnter={() => onHoverMention(i)}
+              onClick={() => onInsertMention(match.filePath)}
+            >
+              <FileText
+                className={`w-4 h-4 shrink-0 ${
+                  isActive ? "text-cyan-400" : "text-zinc-500"
+                }`}
+              />
+              <div className="flex-1 min-w-0 font-mono text-[13px] truncate flex items-center justify-between">
+                {renderFuzzyPath(match)}
+                {isSelected && (
+                  <span className="ml-3 text-[10px] px-1.5 py-0.5 rounded border border-cyan-500/30 text-cyan-400 bg-cyan-500/10 shrink-0 flex items-center space-x-1">
+                    <span>Added</span>
+                  </span>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
