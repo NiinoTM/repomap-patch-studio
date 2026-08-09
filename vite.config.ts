@@ -15,6 +15,9 @@ export default defineConfig(() => {
           lintCommand: 'eslint "./src/**/*.{ts,tsx}"',
           useFlatConfig: true,
         },
+        // Terminal output stays; the in-app popup overlay is disabled —
+        // it was blocking the UI on every warning, not just real errors.
+        overlay: false,
       }),
     ],
     resolve: {
