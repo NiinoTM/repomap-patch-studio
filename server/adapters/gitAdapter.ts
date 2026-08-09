@@ -76,7 +76,7 @@ export const getAllFiles = (dir: string = targetRepoPath, basePath: string = dir
       .filter(Boolean)
       .filter((f) => !isSecretFile(path.basename(f)))
       .filter((f) => !isHeavyOrJunkPath(f));
-  } catch (e) {
+  } catch {
     return getAllFilesFallback(dir, basePath);
   }
 };
@@ -96,7 +96,7 @@ export const getFileStats = (
       const fullPath = path.join(basePath, file);
       const size = fs.statSync(fullPath).size;
       stats[file] = { size, tokens: Math.ceil(size / 3.8) };
-    } catch (e) {
+    } catch {
       stats[file] = { size: 0, tokens: 0 };
     }
   }
@@ -133,7 +133,7 @@ export const getGitHistory = (basePath: string = targetRepoPath): HistoryLogItem
         };
       })
       .filter((log) => log.message !== "pre-ai-edit");
-  } catch (err) {
+  } catch {
     return [];
   }
 };
@@ -151,7 +151,9 @@ export const gitSnapshotPreEdit = (basePath: string = targetRepoPath): void => {
       cwd: basePath,
       stdio: "ignore",
     });
-  } catch (e) {}
+  } catch {
+    // ignore git error if nothing to commit
+  }
 };
 
 export const gitMoveFile = (
@@ -170,7 +172,7 @@ export const gitMoveFile = (
       cwd: basePath,
       stdio: "ignore",
     });
-  } catch (e) {
+  } catch {
     fs.renameSync(path.resolve(basePath, sourceRel), destFullPath);
   }
 };
@@ -181,7 +183,9 @@ export const formatFile = (basePath: string, fileRel: string): void => {
       cwd: basePath,
       stdio: "ignore",
     });
-  } catch (e) {}
+  } catch {
+    // ignore formatting errors
+  }
 };
 
 export const gitCommit = (
