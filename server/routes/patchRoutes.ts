@@ -48,6 +48,8 @@ patchRouter.post("/apply", async (req: Request, res: Response) => {
   // "result" line's `success` field, not the HTTP status.
   res.setHeader("Content-Type", "application/x-ndjson");
   res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
 
   const emit = (event: Record<string, unknown>) => {
     res.write(JSON.stringify(event) + "\n");
@@ -59,6 +61,9 @@ patchRouter.post("/apply", async (req: Request, res: Response) => {
     fn: () => T | Promise<T>,
   ): Promise<T> => {
     emit({ type: "progress", stage, label, status: "start" });
+    // Yield to the event loop so Node flushes the socket before execSync blocks it
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
     const startedAt = Date.now();
     try {
       const result = await fn();
@@ -69,6 +74,8 @@ patchRouter.post("/apply", async (req: Request, res: Response) => {
         status: "done",
         durationMs: Date.now() - startedAt,
       });
+      // Yield again to flush the 'done' state before the next stage starts
+      await new Promise((resolve) => setTimeout(resolve, 10));
       return result;
     } catch (err) {
       emit({
@@ -78,6 +85,7 @@ patchRouter.post("/apply", async (req: Request, res: Response) => {
         status: "error",
         durationMs: Date.now() - startedAt,
       });
+      await new Promise((resolve) => setTimeout(resolve, 10));
       throw err;
     }
   };
