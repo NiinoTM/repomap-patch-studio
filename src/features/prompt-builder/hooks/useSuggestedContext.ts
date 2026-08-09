@@ -12,6 +12,8 @@ interface UseSuggestedContextProps {
   };
 }
 
+const MAX_DEPTH = 2; // Configurable depth for multi-hop traversal
+
 export function useSuggestedContext({
   seedFiles,
   selectedFiles,
@@ -34,93 +36,108 @@ export function useSuggestedContext({
     const apiOutboundMap = dependencyMap.apiOutbound || {};
     const apiInboundMap = dependencyMap.apiInbound || {};
 
-    const candidates = new Set<string>();
+    const candidateDistances = new Map<string, number>();
+    const visited = new Set<string>(selectedFiles);
+    const queue: { path: string; depth: number }[] = [];
 
-    seedFiles.forEach((file) => {
-      const children = outboundMap[file] || [];
-      children.forEach((child) => {
-        if (!selectedFiles.has(child)) candidates.add(child);
-      });
-
-      const parents = inboundMap[file] || [];
-      parents.forEach((parent) => {
-        if (!selectedFiles.has(parent)) candidates.add(parent);
-      });
-
-      const apiTargets = apiOutboundMap[file] || [];
-      apiTargets.forEach((apiTarget) => {
-        if (!selectedFiles.has(apiTarget)) candidates.add(apiTarget);
-      });
-
-      const apiCallers = apiInboundMap[file] || [];
-      apiCallers.forEach((apiCaller) => {
-        if (!selectedFiles.has(apiCaller)) candidates.add(apiCaller);
-      });
+    // Initialize queue with all selected files at depth 0.
+    // This makes accepted suggestions act as new seeds automatically.
+    selectedFiles.forEach((file) => {
+      queue.push({ path: file, depth: 0 });
     });
+
+    while (queue.length > 0) {
+      const { path: currentFile, depth } = queue.shift()!;
+
+      if (depth >= MAX_DEPTH) continue;
+
+      const nextDepth = depth + 1;
+      const neighbors = new Set([
+        ...(outboundMap[currentFile] || []),
+        ...(inboundMap[currentFile] || []),
+        ...(apiOutboundMap[currentFile] || []),
+        ...(apiInboundMap[currentFile] || []),
+      ]);
+
+      neighbors.forEach((neighbor) => {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor);
+          candidateDistances.set(neighbor, nextDepth);
+          queue.push({ path: neighbor, depth: nextDepth });
+        }
+      });
+    }
 
     const results: SuggestedFile[] = [];
 
-    candidates.forEach((candPath) => {
+    candidateDistances.forEach((distance, candPath) => {
       const candOutbound = outboundMap[candPath] || [];
       const candInbound = inboundMap[candPath] || [];
       const candApiOutbound = apiOutboundMap[candPath] || [];
       const candApiInbound = apiInboundMap[candPath] || [];
 
-      const isApiHandler = candApiInbound.some((f) => seedFiles.has(f));
-      const isApiClient = candApiOutbound.some((f) => seedFiles.has(f));
+      // Determine relationship relative to nodes strictly closer to the seeds
+      const isCloser = (f: string) =>
+        selectedFiles.has(f) ||
+        (candidateDistances.get(f) ?? Infinity) < distance;
 
-      if (isApiHandler || isApiClient) {
-        const seedNames =
-          seedFiles.size > 0
-            ? Array.from(seedFiles)
-                .map((f) => f.split("/").pop() || f)
-                .join(", ")
-            : "";
+      const closerApiInbound = candApiInbound.filter(isCloser);
+      const closerApiOutbound = candApiOutbound.filter(isCloser);
+
+      if (closerApiInbound.length > 0 || closerApiOutbound.length > 0) {
+        const relNames = [...closerApiInbound, ...closerApiOutbound]
+          .map((f) => f.split("/").pop() || f)
+          .join(", ");
         results.push({
           filePath: candPath,
           type: "api",
+          distance,
           importedActiveFiles: [],
           importingActiveFiles: [],
-          tooltip: `API Endpoint Link: Handles network calls for ${seedNames}`,
+          tooltip: `[${distance} hop${distance > 1 ? "s" : ""}] API Endpoint Link: Handles network calls for ${relNames}`,
         });
         return;
       }
 
-      const importedSeed = candOutbound.filter((f) => seedFiles.has(f));
-      const importingSeed = candInbound.filter((f) => seedFiles.has(f));
+      const importedByCloser = candInbound.filter(isCloser);
+      const importsCloser = candOutbound.filter(isCloser);
 
-      const isParent = importedSeed.length > 0;
-      const isChild = importingSeed.length > 0;
+      const isParent = importsCloser.length > 0;
+      const isChild = importedByCloser.length > 0;
 
       let type: "parent" | "child" | "hub";
       let tooltip: string;
 
       if (isParent && isChild) {
         type = "hub";
-        tooltip = "Hub: Both a parent and child across active context";
+        tooltip = `[${distance} hop${distance > 1 ? "s" : ""}] Hub: Both a parent and child to active context`;
       } else if (isParent) {
         type = "parent";
-        const fileNames = importedSeed
+        const fileNames = importsCloser
           .map((f) => f.split("/").pop() || f)
           .join(", ");
-        tooltip = `Parent: Imports ${fileNames}`;
+        tooltip = `[${distance} hop${distance > 1 ? "s" : ""}] Parent: Imports ${fileNames}`;
       } else {
         type = "child";
-        const fileNames = importingSeed
+        const fileNames = importedByCloser
           .map((f) => f.split("/").pop() || f)
           .join(", ");
-        tooltip = `Child: Imported by ${fileNames}`;
+        tooltip = `[${distance} hop${distance > 1 ? "s" : ""}] Child: Imported by ${fileNames}`;
       }
 
       results.push({
         filePath: candPath,
         type,
-        importedActiveFiles: importedSeed,
-        importingActiveFiles: importingSeed,
+        distance,
+        importedActiveFiles: importsCloser,
+        importingActiveFiles: importedByCloser,
         tooltip,
       });
     });
 
-    return results;
+    return results.sort((a, b) => {
+      if (a.distance !== b.distance) return a.distance - b.distance;
+      return a.filePath.localeCompare(b.filePath);
+    });
   }, [seedFiles, selectedFiles, dependencyMap]);
 }

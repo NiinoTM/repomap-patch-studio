@@ -4,6 +4,7 @@ import { Sparkles, Globe, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 export interface SuggestedFile {
   filePath: string;
   type: "parent" | "child" | "hub" | "api";
+  distance: number;
   importedActiveFiles: string[];
   importingActiveFiles: string[];
   tooltip: string;
@@ -39,6 +40,10 @@ export function SuggestedContextBar({
       <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto custom-scrollbar">
         {suggestedFiles.map((item) => {
           const fileName = item.filePath.split("/").pop() || item.filePath;
+          const distanceStyles =
+            item.distance > 1
+              ? "opacity-60 hover:opacity-100 border-dashed"
+              : "";
 
           if (item.type === "api") {
             return (
@@ -46,7 +51,7 @@ export function SuggestedContextBar({
                 key={item.filePath}
                 onClick={() => onToggleSuggestion(item.filePath)}
                 title={item.tooltip}
-                className="text-[10px] bg-emerald-950/50 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/70 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors shadow-sm"
+                className={`text-[10px] bg-emerald-950/50 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/70 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-all shadow-sm ${distanceStyles}`}
               >
                 <Globe className="w-3 h-3 text-emerald-400 shrink-0" />
                 <span className="font-mono truncate max-w-[130px]">
@@ -62,7 +67,7 @@ export function SuggestedContextBar({
                 key={item.filePath}
                 onClick={() => onToggleSuggestion(item.filePath)}
                 title={item.tooltip}
-                className="text-[10px] bg-purple-950/40 border border-purple-500/40 text-purple-300 hover:bg-purple-900/60 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
+                className={`text-[10px] bg-purple-950/40 border border-purple-500/40 text-purple-300 hover:bg-purple-900/60 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-all ${distanceStyles}`}
               >
                 <ArrowUp className="w-3 h-3 text-purple-400 shrink-0" />
                 <span className="font-mono truncate max-w-[130px]">
@@ -78,7 +83,7 @@ export function SuggestedContextBar({
                 key={item.filePath}
                 onClick={() => onToggleSuggestion(item.filePath)}
                 title={item.tooltip}
-                className="text-[10px] bg-cyan-950/40 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-900/60 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
+                className={`text-[10px] bg-cyan-950/40 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-900/60 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-all ${distanceStyles}`}
               >
                 <ArrowDown className="w-3 h-3 text-cyan-400 shrink-0" />
                 <span className="font-mono truncate max-w-[130px]">
@@ -93,7 +98,7 @@ export function SuggestedContextBar({
               key={item.filePath}
               onClick={() => onToggleSuggestion(item.filePath)}
               title={item.tooltip}
-              className="text-[10px] bg-gradient-to-r from-purple-950/50 to-cyan-950/50 border border-indigo-500/50 text-indigo-200 hover:from-purple-900/70 hover:to-cyan-900/70 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
+              className={`text-[10px] bg-gradient-to-r from-purple-950/50 to-cyan-950/50 border border-indigo-500/50 text-indigo-200 hover:from-purple-900/70 hover:to-cyan-900/70 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-all ${distanceStyles}`}
             >
               <ArrowUpDown className="w-3 h-3 text-indigo-300 shrink-0" />
               <span className="font-mono truncate max-w-[130px]">
