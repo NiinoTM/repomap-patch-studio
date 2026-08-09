@@ -7,7 +7,12 @@ import {
   dirnamePath,
 } from "../adapters/fsAdapter";
 import { gitMoveFile, formatFile, gitCommit } from "../adapters/gitAdapter";
-import { applyBlockToContent, validateSyntax, DiffBlockInput } from "./patchEngine";
+import {
+  applyBlocksSequentially,
+  validateSyntax,
+  DiffBlockInput,
+} from "./patchEngine";
+import { validateLint } from "./lintService";
 
 const CRITICAL_FILES = [
   "server/index.ts",
@@ -23,34 +28,58 @@ export interface ApplyEditsResult {
   validationErrors: string[];
 }
 
-export function resolveEditWrites(
+export async function resolveEditWrites(
   targetRepoPath: string,
   editBlocks: DiffBlockInput[],
-): ApplyEditsResult {
+): Promise<ApplyEditsResult> {
   const pendingWrites = new Map<string, string>();
   const validationErrors: string[] = [];
 
+  // Group blocks by target file, preserving submission order, so every
+  // block for a file is folded onto one running buffer instead of each
+  // being matched independently against stale on-disk content.
+  const blocksByFile = new Map<string, DiffBlockInput[]>();
   for (const block of editBlocks) {
     if (!block.file || block.file === "Active File") continue;
-    const fullPath = resolvePath(targetRepoPath, block.file);
+    const existing = blocksByFile.get(block.file);
+    if (existing) {
+      existing.push(block);
+    } else {
+      blocksByFile.set(block.file, [block]);
+    }
+  }
 
-    let currentContent = pendingWrites.get(block.file);
-    const exists = fileExists(fullPath);
-    if (currentContent === undefined) {
-      currentContent = exists ? readTextFile(fullPath) : "";
+  // No short-circuiting across files: every file in the transaction gets
+  // fully checked (block application + syntax + lint) so one bad file
+  // never hides problems in another, and the caller gets every error in
+  // a single aggregated report instead of one-at-a-time round trips.
+  for (const [file, blocks] of blocksByFile) {
+    const fullPath = resolvePath(targetRepoPath, file);
+    const initialContent = fileExists(fullPath) ? readTextFile(fullPath) : "";
+
+    const { finalContent, blockErrors } = applyBlocksSequentially(
+      initialContent,
+      blocks,
+    );
+
+    if (blockErrors.length > 0) {
+      validationErrors.push(...blockErrors);
+      continue;
     }
 
-    const result = applyBlockToContent(currentContent, block);
-    if (result.success && result.newContent !== undefined) {
-      const syntaxError = validateSyntax(result.newContent, block.file);
-      if (syntaxError) {
-        validationErrors.push(syntaxError);
-      } else {
-        pendingWrites.set(block.file, result.newContent);
-      }
-    } else if (result.error) {
-      validationErrors.push(result.error);
+    const syntaxError = validateSyntax(finalContent, file);
+    if (syntaxError) {
+      validationErrors.push(syntaxError);
+      continue;
     }
+
+    const lintErrors = await validateLint(targetRepoPath, finalContent, file);
+    if (lintErrors.length > 0) {
+      validationErrors.push(...lintErrors);
+      continue;
+    }
+
+    pendingWrites.set(file, finalContent);
   }
 
   return { pendingWrites, validationErrors };
@@ -105,7 +134,10 @@ export function writeFilesToDisk(
   }
 }
 
-export function applyMoveBlocks(targetRepoPath: string, moveBlocks: DiffBlockInput[]): string[] {
+export function applyMoveBlocks(
+  targetRepoPath: string,
+  moveBlocks: DiffBlockInput[],
+): string[] {
   const movedFiles: string[] = [];
   for (const block of moveBlocks) {
     if (!block.moveTo) continue;
@@ -115,7 +147,10 @@ export function applyMoveBlocks(targetRepoPath: string, moveBlocks: DiffBlockInp
   return movedFiles;
 }
 
-export function formatChangedFiles(targetRepoPath: string, files: string[]): void {
+export function formatChangedFiles(
+  targetRepoPath: string,
+  files: string[],
+): void {
   for (const file of files) {
     formatFile(targetRepoPath, file);
   }
@@ -127,7 +162,10 @@ export function commitChanges(
   commitMessage: string | undefined,
 ): void {
   if (!shouldCommit) return;
-  const msg = commitMessage && commitMessage.trim() ? commitMessage.trim() : "ai-edit: updated files";
+  const msg =
+    commitMessage && commitMessage.trim()
+      ? commitMessage.trim()
+      : "ai-edit: updated files";
   gitCommit(targetRepoPath, msg);
 }
 
@@ -136,7 +174,9 @@ export interface ValidationErrorResponse {
   details: string[];
 }
 
-export function buildValidationErrorResponse(validationErrors: string[]): ValidationErrorResponse {
+export function buildValidationErrorResponse(
+  validationErrors: string[],
+): ValidationErrorResponse {
   const detailedMsg =
     `Transaction aborted. ${validationErrors.length} validation/syntax error(s) detected:\n` +
     validationErrors.map((err) => `• ${err}`).join("\n") +
@@ -150,6 +190,9 @@ export function buildApplySuccessMessage(shouldCommit: boolean): string {
     : "✅ Transaction complete: Edits applied to disk!";
 }
 
-export function resolveShouldCommit(commit: boolean | undefined, skipCommit: boolean | undefined): boolean {
+export function resolveShouldCommit(
+  commit: boolean | undefined,
+  skipCommit: boolean | undefined,
+): boolean {
   return commit === true || (commit !== false && !skipCommit);
 }

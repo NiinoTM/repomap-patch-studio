@@ -11,7 +11,7 @@ import {
   commitChanges,
   buildValidationErrorResponse,
   buildApplySuccessMessage,
-  resolveShouldCommit
+  resolveShouldCommit,
 } from "../services/applyPatchService";
 
 export const patchRouter = Router();
@@ -24,14 +24,22 @@ interface ApplyRequestBody {
   dryRun?: boolean;
 }
 
-patchRouter.post("/apply", (req: Request, res: Response) => {
-  const { blocks, commitMessage, skipCommit, commit, dryRun }: ApplyRequestBody = req.body;
+patchRouter.post("/apply", async (req: Request, res: Response) => {
+  const {
+    blocks,
+    commitMessage,
+    skipCommit,
+    commit,
+    dryRun,
+  }: ApplyRequestBody = req.body;
   const shouldCommit = resolveShouldCommit(commit, skipCommit);
   const isDryRun = dryRun === true;
   const targetRepoPath = repoState.getRepoPath();
 
   if (!blocks || !Array.isArray(blocks) || blocks.length === 0) {
-    return res.status(400).json({ success: false, error: "No diff blocks provided." });
+    return res
+      .status(400)
+      .json({ success: false, error: "No diff blocks provided." });
   }
 
   const moveBlocks = blocks.filter((b) => b.type === "move");
@@ -42,12 +50,18 @@ patchRouter.post("/apply", (req: Request, res: Response) => {
       gitSnapshotPreEdit(targetRepoPath);
     }
 
-    const { pendingWrites, validationErrors: editErrors } = resolveEditWrites(targetRepoPath, editBlocks);
+    const { pendingWrites, validationErrors: editErrors } =
+      await resolveEditWrites(targetRepoPath, editBlocks);
     const moveErrors = validateMoveBlocks(targetRepoPath, moveBlocks);
     const validationErrors = [...editErrors, ...moveErrors];
 
     if (validationErrors.length > 0) {
-      return res.status(422).json({ success: false, ...buildValidationErrorResponse(validationErrors) });
+      return res
+        .status(422)
+        .json({
+          success: false,
+          ...buildValidationErrorResponse(validationErrors),
+        });
     }
 
     if (isDryRun) {
@@ -84,7 +98,10 @@ patchRouter.post("/undo", (_req: Request, res: Response) => {
   try {
     const targetRepoPath = repoState.getRepoPath();
     gitUndo(targetRepoPath);
-    res.json({ success: true, message: "Hard reset to previous commit successful!" });
+    res.json({
+      success: true,
+      message: "Hard reset to previous commit successful!",
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ success: false, error: message });
@@ -95,7 +112,10 @@ patchRouter.post("/undo", (_req: Request, res: Response) => {
   try {
     const targetRepoPath = repoState.getRepoPath();
     gitUndo(targetRepoPath);
-    res.json({ success: true, message: "Hard reset to previous commit successful!" });
+    res.json({
+      success: true,
+      message: "Hard reset to previous commit successful!",
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ success: false, error: message });

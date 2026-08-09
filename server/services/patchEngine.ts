@@ -22,7 +22,10 @@ export interface CondensedRange {
 /**
  * Finds a condensed range match in content for search text.
  */
-export function findCondensedRange(content: string, search: string): CondensedRange | null {
+export function findCondensedRange(
+  content: string,
+  search: string,
+): CondensedRange | null {
   const preCleanContent = content
     .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
     .replace(/\{\s*["']\s*["']\s*\}/g, "");
@@ -65,8 +68,15 @@ export function findCondensedRange(content: string, search: string): CondensedRa
   return null;
 }
 
-function applyFuzzyIndentationMatch(normContent: string, normSearch: string, normReplace: string): string | null {
-  const searchLines = normSearch.split("\n").map((l) => l.trim()).filter(Boolean);
+function applyFuzzyIndentationMatch(
+  normContent: string,
+  normSearch: string,
+  normReplace: string,
+): string | null {
+  const searchLines = normSearch
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
   const contentLines = normContent.split("\n");
 
   let matchIndex = -1;
@@ -101,7 +111,10 @@ function applyFuzzyIndentationMatch(normContent: string, normSearch: string, nor
 /**
  * Pure In-Memory Block Application Engine (Exact, Fuzzy Indentation & Condensed Token Stream).
  */
-export function applyBlockToContent(content: string, block: DiffBlockInput): ApplyBlockResult {
+export function applyBlockToContent(
+  content: string,
+  block: DiffBlockInput,
+): ApplyBlockResult {
   if (!block.search || !block.search.trim() || block.file === "Active File") {
     return { success: true, newContent: block.replace };
   }
@@ -119,7 +132,11 @@ export function applyBlockToContent(content: string, block: DiffBlockInput): App
   }
 
   // 2. Smart Fuzzy Indentation Match
-  const fuzzyMatch = applyFuzzyIndentationMatch(normContent, normSearch, normReplace);
+  const fuzzyMatch = applyFuzzyIndentationMatch(
+    normContent,
+    normSearch,
+    normReplace,
+  );
   if (fuzzyMatch !== null) {
     return { success: true, newContent: fuzzyMatch };
   }
@@ -141,6 +158,41 @@ export function applyBlockToContent(content: string, block: DiffBlockInput): App
     success: false,
     error: `SEARCH block match failed for file: ${block.file}`,
   };
+}
+
+export interface BlockApplyOutcome {
+  finalContent: string;
+  blockErrors: string[];
+}
+
+/**
+ * Applies every block scoped to a single file against a running in-memory
+ * buffer, in order — so a later block in the same transaction can target
+ * text introduced by an earlier block in that same transaction, instead of
+ * every block being matched independently against the original on-disk
+ * content (which is what silently broke a two-block same-file fix earlier).
+ *
+ * A block that fails to match is recorded and skipped, and the buffer is
+ * left unchanged so later, unrelated blocks for the same file still get a
+ * fair shot — this maximizes how many real problems surface in one report.
+ */
+export function applyBlocksSequentially(
+  initialContent: string,
+  blocks: DiffBlockInput[],
+): BlockApplyOutcome {
+  let currentContent = initialContent;
+  const blockErrors: string[] = [];
+
+  for (const block of blocks) {
+    const result = applyBlockToContent(currentContent, block);
+    if (result.success && result.newContent !== undefined) {
+      currentContent = result.newContent;
+    } else if (result.error) {
+      blockErrors.push(result.error);
+    }
+  }
+
+  return { finalContent: currentContent, blockErrors };
 }
 
 export { validateSyntax };
