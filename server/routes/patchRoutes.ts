@@ -42,53 +42,119 @@ patchRouter.post("/apply", async (req: Request, res: Response) => {
       .json({ success: false, error: "No diff blocks provided." });
   }
 
+  // Streamed as newline-delimited JSON: one "progress" line per stage,
+  // then a final "result" line. Once res.write() is called the status
+  // code is locked at 200 — success/failure now lives entirely in the
+  // "result" line's `success` field, not the HTTP status.
+  res.setHeader("Content-Type", "application/x-ndjson");
+  res.setHeader("Cache-Control", "no-cache");
+
+  const emit = (event: Record<string, unknown>) => {
+    res.write(JSON.stringify(event) + "\n");
+  };
+
+  const runStage = async <T>(
+    stage: string,
+    label: string,
+    fn: () => T | Promise<T>,
+  ): Promise<T> => {
+    emit({ type: "progress", stage, label, status: "start" });
+    const startedAt = Date.now();
+    try {
+      const result = await fn();
+      emit({
+        type: "progress",
+        stage,
+        label,
+        status: "done",
+        durationMs: Date.now() - startedAt,
+      });
+      return result;
+    } catch (err) {
+      emit({
+        type: "progress",
+        stage,
+        label,
+        status: "error",
+        durationMs: Date.now() - startedAt,
+      });
+      throw err;
+    }
+  };
+
   const moveBlocks = blocks.filter((b) => b.type === "move");
   const editBlocks = blocks.filter((b) => b.type !== "move");
 
   try {
     if (!isDryRun) {
-      gitSnapshotPreEdit(targetRepoPath);
+      await runStage("snapshot", "Snapshotting repo state", () =>
+        gitSnapshotPreEdit(targetRepoPath),
+      );
     }
 
-    const { pendingWrites, validationErrors: editErrors } =
-      await resolveEditWrites(targetRepoPath, editBlocks);
-    const moveErrors = validateMoveBlocks(targetRepoPath, moveBlocks);
+    const { pendingWrites, validationErrors: editErrors } = await runStage(
+      "validate",
+      "Validating & linting changed files",
+      () => resolveEditWrites(targetRepoPath, editBlocks),
+    );
+    const moveErrors = await runStage(
+      "validate-moves",
+      "Checking move targets",
+      () => validateMoveBlocks(targetRepoPath, moveBlocks),
+    );
     const validationErrors = [...editErrors, ...moveErrors];
 
     if (validationErrors.length > 0) {
-      return res.status(422).json({
+      emit({
+        type: "result",
         success: false,
         ...buildValidationErrorResponse(validationErrors),
       });
+      return res.end();
     }
 
     if (isDryRun) {
-      return res.json({
+      emit({
+        type: "result",
         success: true,
         dryRun: true,
         message: "✅ Pre-flight validation passed. No files were modified.",
         validatedFiles: Array.from(pendingWrites.keys()),
         validatedMoves: moveBlocks.map((b) => `${b.file} -> ${b.moveTo}`),
       });
+      return res.end();
     }
 
     const filesToCommit = sortFilesForCommit(Array.from(pendingWrites.keys()));
-    writeFilesToDisk(targetRepoPath, filesToCommit, pendingWrites);
+    await runStage("write", "Writing files to disk", () =>
+      writeFilesToDisk(targetRepoPath, filesToCommit, pendingWrites),
+    );
 
-    const movedFiles = applyMoveBlocks(targetRepoPath, moveBlocks);
+    const movedFiles = await runStage("move", "Applying file moves", () =>
+      applyMoveBlocks(targetRepoPath, moveBlocks),
+    );
     const allChangedFiles = [...filesToCommit, ...movedFiles];
 
-    formatChangedFiles(targetRepoPath, allChangedFiles);
-    commitChanges(targetRepoPath, shouldCommit, commitMessage);
+    await runStage("format", "Formatting changed files", () =>
+      formatChangedFiles(targetRepoPath, allChangedFiles),
+    );
+    await runStage(
+      "commit",
+      shouldCommit ? "Committing to Git" : "Skipping commit",
+      () => commitChanges(targetRepoPath, shouldCommit, commitMessage),
+    );
 
-    res.json({
+    emit({
+      type: "result",
       success: true,
       message: buildApplySuccessMessage(shouldCommit),
       appliedFiles: allChangedFiles,
     });
+    res.end();
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ success: false, error: message });
+    emit({ type: "result", success: false, error: message });
+    res.end();
   }
 });
 

@@ -1,6 +1,14 @@
 import { useState, useEffect } from "react";
 import { DiffBlock } from "../../../types/patch";
+import { ApplyProgressEvent } from "../../../types/api";
 import { patchApi } from "../../../api/patchApi";
+
+interface ApplyStageState {
+  stage: string;
+  label: string;
+  status: "start" | "done" | "error";
+  durationMs?: number;
+}
 
 interface UseApplyChangesParams {
   diffBlocks: DiffBlock[];
@@ -32,6 +40,23 @@ export function useApplyChanges({
   const [isApplying, setIsApplying] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [stages, setStages] = useState<ApplyStageState[]>([]);
+
+  const handleProgress = (event: ApplyProgressEvent) => {
+    setStages((prev) => {
+      const idx = prev.findIndex((s) => s.stage === event.stage);
+      const updated: ApplyStageState = {
+        stage: event.stage,
+        label: event.label,
+        status: event.status,
+        durationMs: event.durationMs,
+      };
+      if (idx === -1) return [...prev, updated];
+      const next = [...prev];
+      next[idx] = updated;
+      return next;
+    });
+  };
 
   const blocksJson = JSON.stringify(diffBlocks);
 
@@ -74,13 +99,17 @@ export function useApplyChanges({
     }
 
     setIsApplying(true);
+    setStages([]);
     try {
-      const data = await patchApi.apply({
-        blocks: diffBlocks,
-        commitMessage: shouldCommit ? commitMessage : "",
-        skipCommit: !shouldCommit,
-        commit: shouldCommit,
-      });
+      const data = await patchApi.applyStream(
+        {
+          blocks: diffBlocks,
+          commitMessage: shouldCommit ? commitMessage : "",
+          skipCommit: !shouldCommit,
+          commit: shouldCommit,
+        },
+        handleProgress,
+      );
 
       if (data.success) {
         alert(
@@ -145,6 +174,7 @@ export function useApplyChanges({
     isApplying,
     isValidating,
     validationErrors,
+    stages,
     applyChanges,
     validateDryRun,
   };

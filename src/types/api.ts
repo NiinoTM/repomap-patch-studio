@@ -57,3 +57,11 @@ export interface ApplyResponse {
   validatedMoves?: string[];
   appliedFiles?: string[];
 }
+
+export interface ApplyProgressEvent {
+  type: "progress";
+  stage: string;
+  label: string;
+  status: "start" | "done" | "error";
+  durationMs?: number;
+}

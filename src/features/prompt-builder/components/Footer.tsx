@@ -1,5 +1,12 @@
 import { useRef, useState } from "react";
-import { Check, GitCommit, History } from "lucide-react";
+import {
+  Check,
+  GitCommit,
+  History,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+} from "lucide-react";
 import { DiffBlock, HistoryLog } from "../../../types/patch";
 import { useApplyChanges } from "../hooks/useApplyChanges";
 
@@ -23,7 +30,7 @@ export function Footer({
   );
   const commitDialogRef = useRef<HTMLDialogElement>(null);
 
-  const { isApplying, isValidating, applyChanges, validateDryRun } =
+  const { isApplying, isValidating, stages, applyChanges, validateDryRun } =
     useApplyChanges({ diffBlocks, onApplySuccess });
 
   const handleCommitButtonClick = async () => {
@@ -68,6 +75,34 @@ export function Footer({
                     {log.files.join(", ")}
                   </div>
                 </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {stages.length > 0 && (
+        <div className="absolute bottom-full left-0 right-0 bg-zinc-950 border-t border-zinc-800 z-0 px-6 py-3">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-mono">
+            {stages.map((s) => (
+              <div key={s.stage} className="flex items-center space-x-1.5">
+                {s.status === "done" ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                ) : s.status === "error" ? (
+                  <XCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                ) : (
+                  <Loader2 className="w-3.5 h-3.5 text-cyan-500 shrink-0 animate-spin" />
+                )}
+                <span
+                  className={
+                    s.status === "error" ? "text-rose-400" : "text-zinc-400"
+                  }
+                >
+                  {s.label}
+                  {s.durationMs !== undefined && (
+                    <span className="text-zinc-600"> ({s.durationMs}ms)</span>
+                  )}
+                </span>
               </div>
             ))}
           </div>
