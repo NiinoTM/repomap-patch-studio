@@ -56,12 +56,10 @@ patchRouter.post("/apply", async (req: Request, res: Response) => {
     const validationErrors = [...editErrors, ...moveErrors];
 
     if (validationErrors.length > 0) {
-      return res
-        .status(422)
-        .json({
-          success: false,
-          ...buildValidationErrorResponse(validationErrors),
-        });
+      return res.status(422).json({
+        success: false,
+        ...buildValidationErrorResponse(validationErrors),
+      });
     }
 
     if (isDryRun) {
@@ -87,20 +85,6 @@ patchRouter.post("/apply", async (req: Request, res: Response) => {
       success: true,
       message: buildApplySuccessMessage(shouldCommit),
       appliedFiles: allChangedFiles,
-    });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ success: false, error: message });
-  }
-});
-
-patchRouter.post("/undo", (_req: Request, res: Response) => {
-  try {
-    const targetRepoPath = repoState.getRepoPath();
-    gitUndo(targetRepoPath);
-    res.json({
-      success: true,
-      message: "Hard reset to previous commit successful!",
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
