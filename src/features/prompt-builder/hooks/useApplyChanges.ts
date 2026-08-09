@@ -72,7 +72,10 @@ export function useApplyChanges({
     const timer = setTimeout(async () => {
       setIsValidating(true);
       try {
-        const data = await patchApi.apply({ blocks, dryRun: true });
+        const data = await patchApi.applyStream(
+          { blocks, dryRun: true },
+          () => {},
+        );
         if (data.success) {
           setValidationErrors([]);
         } else if (data.details) {
@@ -145,7 +148,10 @@ export function useApplyChanges({
 
     setIsValidating(true);
     try {
-      const data = await patchApi.apply({ blocks: diffBlocks, dryRun: true });
+      const data = await patchApi.applyStream(
+        { blocks: diffBlocks, dryRun: true },
+        handleProgress,
+      );
       if (data.success) {
         setValidationErrors([]);
         return true;

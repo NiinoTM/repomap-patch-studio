@@ -46,7 +46,7 @@ patchRouter.post("/apply", async (req: Request, res: Response) => {
   // then a final "result" line. Once res.write() is called the status
   // code is locked at 200 — success/failure now lives entirely in the
   // "result" line's `success` field, not the HTTP status.
-  res.setHeader("Content-Type", "application/x-ndjson");
+  res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders();
