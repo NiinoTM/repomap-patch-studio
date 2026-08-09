@@ -999,7 +999,8 @@ export const repoState = {
   },
 };
 
-export const isSecretFile = (fileName: string): boolean => /^\.env(\..+)?$/.test(fileName);
+export const isSecretFile = (fileName: string): boolean =>
+  /^\.env(\..+)?$/.test(fileName);
 
 const HEAVY_DIR_SEGMENTS = new Set([
   "node_modules",
@@ -1024,7 +1025,7 @@ export const isHeavyOrJunkPath = (filePath: string): boolean => {
 export const getAllFilesFallback = (
   dir: string,
   basePath: string = dir,
-  fileList: string[] = []
+  fileList: string[] = [],
 ): string[] => {
   if (!fs.existsSync(dir)) return fileList;
   const files = fs.readdirSync(dir);
@@ -1052,7 +1053,10 @@ export const getAllFilesFallback = (
   return fileList;
 };
 
-export const getAllFiles = (dir: string = targetRepoPath, basePath: string = dir): string[] => {
+export const getAllFiles = (
+  dir: string = targetRepoPath,
+  basePath: string = dir,
+): string[] => {
   try {
     const raw = execSync("git ls-files --cached --others --exclude-standard", {
       cwd: basePath,
@@ -1076,7 +1080,7 @@ export interface FileStat {
 
 export const getFileStats = (
   basePath: string = targetRepoPath,
-  filesList: string[]
+  filesList: string[],
 ): Record<string, FileStat> => {
   const stats: Record<string, FileStat> = {};
   for (const file of filesList) {
@@ -1098,7 +1102,9 @@ export interface HistoryLogItem {
   files: string[];
 }
 
-export const getGitHistory = (basePath: string = targetRepoPath): HistoryLogItem[] => {
+export const getGitHistory = (
+  basePath: string = targetRepoPath,
+): HistoryLogItem[] => {
   try {
     const raw = execSync(
       `git log -n 30 --no-merges --pretty=format:%H%x09%ar%x09%s --name-only`,
@@ -1137,17 +1143,17 @@ export const gitSnapshotPreEdit = (basePath: string = targetRepoPath): void => {
   try {
     execSync('git add . && git commit -m "pre-ai-edit"', {
       cwd: basePath,
-      stdio: "ignore",
+      encoding: "utf-8",
     });
   } catch {
-    // ignore git error if nothing to commit
+    return;
   }
 };
 
 export const gitMoveFile = (
   basePath: string,
   sourceRel: string,
-  destRel: string
+  destRel: string,
 ): void => {
   const destFullPath = path.resolve(basePath, destRel);
   const destDir = path.dirname(destFullPath);
@@ -1172,19 +1178,33 @@ export const formatFile = (basePath: string, fileRel: string): void => {
       stdio: "ignore",
     });
   } catch {
-    // ignore formatting errors
+    return;
   }
 };
 
 export const gitCommit = (
   basePath: string,
-  message: string = "ai-edit: updated files"
+  message: string = "ai-edit: updated files",
 ): void => {
-  execSync(`git add . && git commit -m "${message}"`, {
-    cwd: basePath,
-    stdio: "ignore",
-  });
+  try {
+    execSync(`git add . && git commit -m "${message}"`, {
+      cwd: basePath,
+      encoding: "utf-8",
+    });
+  } catch (error: any) {
+    // If Husky hooks fail, capture the linter output so it reaches the UI
+    const output = (
+      error.stdout ||
+      error.stderr ||
+      error.message ||
+      "Unknown Git error"
+    ).trim();
+    throw new Error(`Git commit rejected (Husky hooks failed):\n${output}`, {
+      cause: error,
+    });
+  }
 };
+
 
 ==================================================
 FILE PATH: server\adapters\osAdapter.ts
@@ -1276,69 +1296,127 @@ patchRouter.post("/apply", async (req: Request, res: Response) => {
       .json({ success: false, error: "No diff blocks provided." });
   }
 
+  // Streamed as newline-delimited JSON: one "progress" line per stage,
+  // then a final "result" line. Once res.write() is called the status
+  // code is locked at 200 — success/failure now lives entirely in the
+  // "result" line's `success` field, not the HTTP status.
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  const emit = (event: Record<string, unknown>) => {
+    res.write(JSON.stringify(event) + "\n");
+  };
+
+  const runStage = async <T>(
+    stage: string,
+    label: string,
+    fn: () => T | Promise<T>,
+  ): Promise<T> => {
+    emit({ type: "progress", stage, label, status: "start" });
+    // Yield to the event loop so Node flushes the socket before execSync blocks it
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const startedAt = Date.now();
+    try {
+      const result = await fn();
+      emit({
+        type: "progress",
+        stage,
+        label,
+        status: "done",
+        durationMs: Date.now() - startedAt,
+      });
+      // Yield again to flush the 'done' state before the next stage starts
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return result;
+    } catch (err) {
+      emit({
+        type: "progress",
+        stage,
+        label,
+        status: "error",
+        durationMs: Date.now() - startedAt,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      throw err;
+    }
+  };
+
   const moveBlocks = blocks.filter((b) => b.type === "move");
   const editBlocks = blocks.filter((b) => b.type !== "move");
 
   try {
     if (!isDryRun) {
-      gitSnapshotPreEdit(targetRepoPath);
+      await runStage("snapshot", "Snapshotting repo state", () =>
+        gitSnapshotPreEdit(targetRepoPath),
+      );
     }
 
-    const { pendingWrites, validationErrors: editErrors } =
-      await resolveEditWrites(targetRepoPath, editBlocks);
-    const moveErrors = validateMoveBlocks(targetRepoPath, moveBlocks);
+    const { pendingWrites, validationErrors: editErrors } = await runStage(
+      "validate",
+      "Validating & linting changed files",
+      () => resolveEditWrites(targetRepoPath, editBlocks),
+    );
+    const moveErrors = await runStage(
+      "validate-moves",
+      "Checking move targets",
+      () => validateMoveBlocks(targetRepoPath, moveBlocks),
+    );
     const validationErrors = [...editErrors, ...moveErrors];
 
     if (validationErrors.length > 0) {
-      return res
-        .status(422)
-        .json({
-          success: false,
-          ...buildValidationErrorResponse(validationErrors),
-        });
+      emit({
+        type: "result",
+        success: false,
+        ...buildValidationErrorResponse(validationErrors),
+      });
+      return res.end();
     }
 
     if (isDryRun) {
-      return res.json({
+      emit({
+        type: "result",
         success: true,
         dryRun: true,
         message: "✅ Pre-flight validation passed. No files were modified.",
         validatedFiles: Array.from(pendingWrites.keys()),
         validatedMoves: moveBlocks.map((b) => `${b.file} -> ${b.moveTo}`),
       });
+      return res.end();
     }
 
     const filesToCommit = sortFilesForCommit(Array.from(pendingWrites.keys()));
-    writeFilesToDisk(targetRepoPath, filesToCommit, pendingWrites);
+    await runStage("write", "Writing files to disk", () =>
+      writeFilesToDisk(targetRepoPath, filesToCommit, pendingWrites),
+    );
 
-    const movedFiles = applyMoveBlocks(targetRepoPath, moveBlocks);
+    const movedFiles = await runStage("move", "Applying file moves", () =>
+      applyMoveBlocks(targetRepoPath, moveBlocks),
+    );
     const allChangedFiles = [...filesToCommit, ...movedFiles];
 
-    formatChangedFiles(targetRepoPath, allChangedFiles);
-    commitChanges(targetRepoPath, shouldCommit, commitMessage);
+    await runStage("format", "Formatting changed files", () =>
+      formatChangedFiles(targetRepoPath, allChangedFiles),
+    );
+    await runStage(
+      "commit",
+      shouldCommit ? "Committing to Git" : "Skipping commit",
+      () => commitChanges(targetRepoPath, shouldCommit, commitMessage),
+    );
 
-    res.json({
+    emit({
+      type: "result",
       success: true,
       message: buildApplySuccessMessage(shouldCommit),
       appliedFiles: allChangedFiles,
     });
+    res.end();
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ success: false, error: message });
-  }
-});
-
-patchRouter.post("/undo", (_req: Request, res: Response) => {
-  try {
-    const targetRepoPath = repoState.getRepoPath();
-    gitUndo(targetRepoPath);
-    res.json({
-      success: true,
-      message: "Hard reset to previous commit successful!",
-    });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ success: false, error: message });
+    emit({ type: "result", success: false, error: message });
+    res.end();
   }
 });
 
@@ -1653,7 +1731,13 @@ export function resolveShouldCommit(
 ==================================================
 FILE PATH: server\services\dependencyService.ts
 ==================================================
-import { readTextFile, joinPath, dirnamePath, extnamePath, normalizePath } from "../adapters/fsAdapter";
+import {
+  readTextFile,
+  joinPath,
+  dirnamePath,
+  extnamePath,
+  normalizePath,
+} from "../adapters/fsAdapter";
 
 export interface DependencyMap {
   outbound: Record<string, string[]>;
@@ -1664,7 +1748,9 @@ export interface DependencyMap {
 
 const CODE_EXTENSIONS = [".js", ".jsx", ".ts", ".tsx"];
 
-function toArrayMap(setMap: Record<string, Set<string>>): Record<string, string[]> {
+function toArrayMap(
+  setMap: Record<string, Set<string>>,
+): Record<string, string[]> {
   const result: Record<string, string[]> = {};
   for (const key in setMap) {
     result[key] = Array.from(setMap[key]);
@@ -1672,46 +1758,74 @@ function toArrayMap(setMap: Record<string, Set<string>>): Record<string, string[
   return result;
 }
 
-function resolveLocalImportCandidates(fileDir: string, importPath: string): string[] {
-  const rawResolved = normalizePath(joinPath(fileDir, importPath)).replace(/\\/g, "/");
-  return [
-    rawResolved,
-    `${rawResolved}.tsx`,
-    `${rawResolved}.ts`,
-    `${rawResolved}.jsx`,
-    `${rawResolved}.js`,
-    `${rawResolved}/index.tsx`,
-    `${rawResolved}/index.ts`,
-    `${rawResolved}/index.jsx`,
-    `${rawResolved}/index.js`,
-  ];
+function resolveLocalImportCandidates(
+  fileDir: string,
+  importPath: string,
+): string[] {
+  let basePaths: string[];
+
+  if (importPath.startsWith("@/") || importPath.startsWith("~/")) {
+    const cleanPath = importPath.slice(2);
+    basePaths = [
+      normalizePath(cleanPath).replace(/\\/g, "/"),
+      normalizePath(joinPath("src", cleanPath)).replace(/\\/g, "/"),
+    ];
+  } else if (importPath.startsWith(".")) {
+    basePaths = [
+      normalizePath(joinPath(fileDir, importPath)).replace(/\\/g, "/"),
+    ];
+  } else {
+    return [];
+  }
+
+  const candidates: string[] = [];
+  for (const rawResolved of basePaths) {
+    candidates.push(
+      rawResolved,
+      `${rawResolved}.tsx`,
+      `${rawResolved}.ts`,
+      `${rawResolved}.jsx`,
+      `${rawResolved}.js`,
+      `${rawResolved}/index.tsx`,
+      `${rawResolved}/index.ts`,
+      `${rawResolved}/index.jsx`,
+      `${rawResolved}/index.js`,
+    );
+  }
+  return candidates;
 }
 
-function extractLocalImportsFromFile(basePath: string, file: string, fileSet: Set<string>): Set<string> {
+function extractLocalImportsFromFile(
+  basePath: string,
+  file: string,
+  fileSet: Set<string>,
+): Set<string> {
   const imports = new Set<string>();
   const importRegex =
-    /(?:import|export)\s+[\s\S]*?\s+from\s+['"]([^'"]+)['"]|require\(['"]([^'"]+)['"]\)/g;
+    /(?:import|export)\s+[\s\S]*?\s+from\s+['"]([^'"]+)['"]|require\(['"]([^'"]+)['"]\)|import\(['"]([^'"]+)['"]\)/g;
 
   try {
     const content = readTextFile(joinPath(basePath, file));
     let match: RegExpExecArray | null;
 
     while ((match = importRegex.exec(content)) !== null) {
-      let importPath = match[1] || match[2];
+      const importPath = match[1] || match[2] || match[3];
       if (!importPath) continue;
-      if (importPath.startsWith("@/")) importPath = "./" + importPath.slice(2);
-      if (!importPath.startsWith(".")) continue;
 
-      const candidates = resolveLocalImportCandidates(dirnamePath(file), importPath);
+      const candidates = resolveLocalImportCandidates(
+        dirnamePath(file),
+        importPath,
+      );
       for (const cand of candidates) {
         if (fileSet.has(cand) && cand !== file) {
           imports.add(cand);
           break;
         }
       }
-    }
+        }
   } catch {
     // unreadable or unparsable file — skip it
+    return imports;
   }
 
   return imports;
@@ -1734,7 +1848,10 @@ function recordImportEdges(
 function buildLocalImportGraph(
   basePath: string,
   filesList: string[],
-): { outbound: Record<string, string[]>; inboundMap: Record<string, Set<string>> } {
+): {
+  outbound: Record<string, string[]>;
+  inboundMap: Record<string, Set<string>>;
+} {
   const outbound: Record<string, string[]> = {};
   const inboundMap: Record<string, Set<string>> = {};
   const fileSet = new Set(filesList);
@@ -1748,18 +1865,18 @@ function buildLocalImportGraph(
   return { outbound, inboundMap };
 }
 
-/**
- * Scans backend files for registered Express-style route handlers
- * (app.get, router.post, etc.) and maps route -> defining file(s).
- */
-function collectApiRouteHandlers(basePath: string, filesList: string[]): Record<string, Set<string>> {
+function collectApiRouteHandlers(
+  basePath: string,
+  filesList: string[],
+): Record<string, Set<string>> {
   const routeHandlers: Record<string, Set<string>> = {};
   const apiRouteHandlerRegex =
     /(?:app|router|server)\s*\.\s*(?:get|post|put|delete|patch|all|use)\s*\(\s*[`'"]([^`'"]+)[`'"]/gi;
   const routeFileExtensions = [...CODE_EXTENSIONS, ".mjs", ".cjs"];
 
   for (const file of filesList) {
-    if (!routeFileExtensions.includes(extnamePath(file).toLowerCase())) continue;
+    if (!routeFileExtensions.includes(extnamePath(file).toLowerCase()))
+      continue;
 
     try {
       const content = readTextFile(joinPath(basePath, file));
@@ -1773,6 +1890,7 @@ function collectApiRouteHandlers(basePath: string, filesList: string[]): Record<
       }
     } catch {
       // unreadable or unparsable file — skip it
+      continue;
     }
   }
 
@@ -1787,7 +1905,8 @@ function recordApiCallEdge(
 ): void {
   if (backendFile === file) return;
   if (!apiOutbound[file]) apiOutbound[file] = [];
-  if (!apiOutbound[file].includes(backendFile)) apiOutbound[file].push(backendFile);
+  if (!apiOutbound[file].includes(backendFile))
+    apiOutbound[file].push(backendFile);
 
   if (!apiInboundMap[backendFile]) apiInboundMap[backendFile] = new Set();
   apiInboundMap[backendFile].add(file);
@@ -1817,6 +1936,7 @@ function extractApiCallEdgesFromFile(
     }
   } catch {
     // unreadable or unparsable file — skip it
+    return;
   }
 }
 
@@ -1824,25 +1944,38 @@ function resolveApiCallGraph(
   basePath: string,
   filesList: string[],
   routeHandlers: Record<string, Set<string>>,
-): { apiOutbound: Record<string, string[]>; apiInboundMap: Record<string, Set<string>> } {
+): {
+  apiOutbound: Record<string, string[]>;
+  apiInboundMap: Record<string, Set<string>>;
+} {
   const apiOutbound: Record<string, string[]> = {};
   const apiInboundMap: Record<string, Set<string>> = {};
 
   for (const file of filesList) {
     if (!CODE_EXTENSIONS.includes(extnamePath(file).toLowerCase())) continue;
-    extractApiCallEdgesFromFile(basePath, file, routeHandlers, apiOutbound, apiInboundMap);
+    extractApiCallEdgesFromFile(
+      basePath,
+      file,
+      routeHandlers,
+      apiOutbound,
+      apiInboundMap,
+    );
   }
 
   return { apiOutbound, apiInboundMap };
 }
 
-/**
- * Generates inbound, outbound, and API dependency maps for repository files.
- */
-export function getDependencyMap(basePath: string, filesList: string[]): DependencyMap {
+export function getDependencyMap(
+  basePath: string,
+  filesList: string[],
+): DependencyMap {
   const { outbound, inboundMap } = buildLocalImportGraph(basePath, filesList);
   const routeHandlers = collectApiRouteHandlers(basePath, filesList);
-  const { apiOutbound, apiInboundMap } = resolveApiCallGraph(basePath, filesList, routeHandlers);
+  const { apiOutbound, apiInboundMap } = resolveApiCallGraph(
+    basePath,
+    filesList,
+    routeHandlers,
+  );
 
   return {
     outbound,
@@ -1851,6 +1984,7 @@ export function getDependencyMap(basePath: string, filesList: string[]): Depende
     apiInbound: toArrayMap(apiInboundMap),
   };
 }
+
 
 ==================================================
 FILE PATH: server\services\lintService.ts
@@ -2452,7 +2586,12 @@ export * from "./patchApi";
 FILE PATH: src\api\patchApi.ts
 ==================================================
 import { handleResponse } from "./client";
-import { ApplyPayload, ApplyResponse, UndoResponse } from "../types/api";
+import {
+  ApplyPayload,
+  ApplyResponse,
+  ApplyProgressEvent,
+  UndoResponse,
+} from "../types/api";
 
 export const patchApi = {
   apply: (payload: ApplyPayload): Promise<ApplyResponse> =>
@@ -2461,6 +2600,54 @@ export const patchApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }).then(handleResponse<ApplyResponse>),
+
+  // Streaming variant: same endpoint, reads the NDJSON response body
+  // incrementally, calling onProgress for each stage event and resolving
+  // with the final "result" line as the ApplyResponse.
+  applyStream: async (
+    payload: ApplyPayload,
+    onProgress: (event: ApplyProgressEvent) => void,
+  ): Promise<ApplyResponse> => {
+    const res = await fetch("/api/apply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.body) {
+      return handleResponse<ApplyResponse>(res);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let result: ApplyResponse | null = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let newlineIndex: number;
+      while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+        const line = buffer.slice(0, newlineIndex).trim();
+        buffer = buffer.slice(newlineIndex + 1);
+        if (!line) continue;
+
+        const event = JSON.parse(line);
+        if (event.type === "progress") {
+          onProgress(event as ApplyProgressEvent);
+        } else if (event.type === "result") {
+          result = event as ApplyResponse;
+        }
+      }
+    }
+
+    if (!result) {
+      throw new Error("Server closed the connection before sending a result.");
+    }
+    return result;
+  },
 
   undo: (): Promise<UndoResponse> =>
     fetch("/api/undo", {
@@ -2522,6 +2709,7 @@ import {
 import { DiffBlock } from "../../../types/patch";
 import { ClipboardDebugger } from "./diff/ClipboardDebugger";
 import { DiffBlockCard } from "./diff/DiffBlockCard";
+import { useApplyChanges } from "../hooks/useApplyChanges";
 
 interface DiffPanelProps {
   parsedBlocks: DiffBlock[];
@@ -2637,6 +2825,12 @@ export function DiffPanel({
   const activeBlocks = parsedBlocks.filter(
     (b) => !effectiveIgnoredBlocks?.has?.(b.id),
   );
+
+  const { validationErrors = [], isValidating } = useApplyChanges({
+    diffBlocks: activeBlocks,
+    autoValidate: true,
+  });
+
   const matchCount = activeBlocks.filter((b) => b.status === "match").length;
   const noMatchCount = activeBlocks.filter(
     (b) => b.status === "no-match",
@@ -2677,6 +2871,18 @@ export function DiffPanel({
               {ignoredCount > 0 && (
                 <div className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[10px] font-bold">
                   {ignoredCount} IGNORED
+                </div>
+              )}
+              {isValidating && (
+                <div className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded text-[10px] font-bold flex items-center space-x-1">
+                  <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                  <span>VALIDATING...</span>
+                </div>
+              )}
+              {validationErrors.length > 0 && !isValidating && (
+                <div className="bg-rose-500/10 text-rose-400 border border-rose-500/20 px-2 py-0.5 rounded text-[10px] font-bold flex items-center space-x-1">
+                  <AlertTriangle className="w-3 h-3 text-rose-400" />
+                  <span>{validationErrors.length} ERRORS</span>
                 </div>
               )}
             </>
@@ -2772,25 +2978,34 @@ export function DiffPanel({
         ) : (
           <>
             <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4">
-              {parsedBlocks.map((block) => (
-                <DiffBlockCard
-                  key={block.id}
-                  block={block}
-                  isIgnored={Boolean(effectiveIgnoredBlocks?.has?.(block.id))}
-                  isCollapsed={Boolean(collapsedBlocks?.has?.(block.id))}
-                  isEditing={editingBlockId === block.id}
-                  editSearch={editSearch}
-                  editReplace={editReplace}
-                  copiedId={copiedId}
-                  onToggleBlock={toggleBlock}
-                  onToggleCollapse={toggleCollapse}
-                  onCopyBlock={handleCopyBlock}
-                  onStartEditing={startEditing}
-                  onSaveEdit={saveEdit}
-                  onEditSearchChange={setEditSearch}
-                  onEditReplaceChange={setEditReplace}
-                />
-              ))}
+              {parsedBlocks.map((block) => {
+                const blockErrors = validationErrors.filter(
+                  (err) =>
+                    err.includes(block.file) ||
+                    (block.moveTo && err.includes(block.moveTo)),
+                );
+
+                return (
+                  <DiffBlockCard
+                    key={block.id}
+                    block={block}
+                    validationErrors={blockErrors}
+                    isIgnored={Boolean(effectiveIgnoredBlocks?.has?.(block.id))}
+                    isCollapsed={Boolean(collapsedBlocks?.has?.(block.id))}
+                    isEditing={editingBlockId === block.id}
+                    editSearch={editSearch}
+                    editReplace={editReplace}
+                    copiedId={copiedId}
+                    onToggleBlock={toggleBlock}
+                    onToggleCollapse={toggleCollapse}
+                    onCopyBlock={handleCopyBlock}
+                    onStartEditing={startEditing}
+                    onSaveEdit={saveEdit}
+                    onEditSearchChange={setEditSearch}
+                    onEditReplaceChange={setEditReplace}
+                  />
+                );
+              })}
             </div>
 
             <div
@@ -2811,11 +3026,19 @@ export function DiffPanel({
   );
 }
 
+
 ==================================================
 FILE PATH: src\features\prompt-builder\components\Footer.tsx
 ==================================================
 import { useRef, useState } from "react";
-import { Check, GitCommit, History } from "lucide-react";
+import {
+  Check,
+  GitCommit,
+  History,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+} from "lucide-react";
 import { DiffBlock, HistoryLog } from "../../../types/patch";
 import { useApplyChanges } from "../hooks/useApplyChanges";
 
@@ -2839,7 +3062,7 @@ export function Footer({
   );
   const commitDialogRef = useRef<HTMLDialogElement>(null);
 
-  const { isApplying, isValidating, applyChanges, validateDryRun } =
+  const { isApplying, isValidating, stages, applyChanges, validateDryRun } =
     useApplyChanges({ diffBlocks, onApplySuccess });
 
   const handleCommitButtonClick = async () => {
@@ -2884,6 +3107,34 @@ export function Footer({
                     {log.files.join(", ")}
                   </div>
                 </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {stages.length > 0 && (
+        <div className="absolute bottom-full left-0 right-0 bg-zinc-950 border-t border-zinc-800 z-0 px-6 py-3">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-mono">
+            {stages.map((s) => (
+              <div key={s.stage} className="flex items-center space-x-1.5">
+                {s.status === "done" ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                ) : s.status === "error" ? (
+                  <XCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                ) : (
+                  <Loader2 className="w-3.5 h-3.5 text-cyan-500 shrink-0 animate-spin" />
+                )}
+                <span
+                  className={
+                    s.status === "error" ? "text-rose-400" : "text-zinc-400"
+                  }
+                >
+                  {s.label}
+                  {s.durationMs !== undefined && (
+                    <span className="text-zinc-600"> ({s.durationMs}ms)</span>
+                  )}
+                </span>
               </div>
             ))}
           </div>
@@ -3494,6 +3745,49 @@ export function Toast({ message, onClose }: ToastProps) {
 
 
 ==================================================
+FILE PATH: src\features\prompt-builder\components\diff\AcceptToggle.tsx
+==================================================
+interface AcceptToggleProps {
+  isIgnored: boolean;
+  onToggle: () => void;
+}
+
+export function AcceptToggle({ isIgnored, onToggle }: AcceptToggleProps) {
+  return (
+    <label
+      className="flex items-center space-x-2 cursor-pointer shrink-0"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <span
+        className={`text-[10px] font-bold uppercase ${
+          !isIgnored ? "text-cyan-500" : "text-zinc-500"
+        }`}
+      >
+        {isIgnored ? "Ignored" : "Accepted"}
+      </span>
+      <div
+        className={`w-8 h-4 rounded-full flex items-center transition-colors p-0.5 ${
+          !isIgnored ? "bg-cyan-500" : "bg-zinc-700"
+        }`}
+      >
+        <div
+          className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${
+            !isIgnored ? "translate-x-4" : "translate-x-0"
+          }`}
+        />
+      </div>
+      <input
+        type="checkbox"
+        className="hidden"
+        checked={!isIgnored}
+        onChange={onToggle}
+      />
+    </label>
+  );
+}
+
+
+==================================================
 FILE PATH: src\features\prompt-builder\components\diff\ClipboardDebugger.tsx
 ==================================================
 interface ClipboardDebuggerProps {
@@ -3574,11 +3868,15 @@ import {
   Copy,
   Edit2,
   Save,
+  AlertTriangle,
 } from "lucide-react";
 import { DiffBlock } from "../../../../types/patch";
+import { AcceptToggle } from "./AcceptToggle";
+import { StatusBadge } from "./StatusBadge";
 
 interface DiffBlockCardProps {
   block: DiffBlock;
+  validationErrors?: string[];
   isIgnored: boolean;
   isCollapsed: boolean;
   isEditing: boolean;
@@ -3614,60 +3912,46 @@ export function DiffBlockCard({
   if (block.type === "move") {
     return (
       <div
-        className={`bg-zinc-900/30 border border-zinc-800 rounded-xl flex items-center justify-between px-4 py-3 transition-all ${
+        className={`bg-zinc-900/30 border border-zinc-800 rounded-xl flex flex-col transition-all ${
           isIgnored ? "opacity-50 grayscale" : ""
         }`}
       >
-        <div className="flex items-center space-x-3 min-w-0">
-          <span className="bg-violet-500/20 text-violet-400 text-[10px] px-1.5 py-0.5 rounded border border-violet-500/20 font-bold uppercase shrink-0">
-            Move
-          </span>
-          <span className="text-xs font-mono text-zinc-400 truncate">
-            {block.file}
-          </span>
-          <span className="text-zinc-600 shrink-0">→</span>
-          <span className="text-xs font-mono text-zinc-100 font-medium truncate">
-            {block.moveTo}
-          </span>
-          {block.status === "match" ? (
-            <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase shrink-0">
-              Source Found
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center space-x-3 min-w-0">
+            <span className="bg-violet-500/20 text-violet-400 text-[10px] px-1.5 py-0.5 rounded border border-violet-500/20 font-bold uppercase shrink-0">
+              Move
             </span>
-          ) : (
-            <span className="bg-rose-500/20 text-rose-400 text-[10px] px-1.5 py-0.5 rounded border border-rose-500/20 font-bold uppercase shrink-0">
-              Source Missing
+            <span className="text-xs font-mono text-zinc-400 truncate">
+              {block.file}
             </span>
-          )}
-        </div>
-        <label
-          className="flex items-center space-x-2 cursor-pointer shrink-0"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <span
-            className={`text-[10px] font-bold uppercase ${
-              !isIgnored ? "text-cyan-500" : "text-zinc-500"
-            }`}
-          >
-            {isIgnored ? "Ignored" : "Accepted"}
-          </span>
-          <div
-            className={`w-8 h-4 rounded-full flex items-center transition-colors p-0.5 ${
-              !isIgnored ? "bg-cyan-500" : "bg-zinc-700"
-            }`}
-          >
-            <div
-              className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${
-                !isIgnored ? "translate-x-4" : "translate-x-0"
-              }`}
+            <span className="text-zinc-600 shrink-0">→</span>
+            <span className="text-xs font-mono text-zinc-100 font-medium truncate">
+              {block.moveTo}
+            </span>
+            <StatusBadge
+              status={block.status}
+              matchLabel="Source Found"
+              noMatchLabel="Source Missing"
             />
           </div>
-          <input
-            type="checkbox"
-            className="hidden"
-            checked={!isIgnored}
-            onChange={() => onToggleBlock(block.id)}
+          <AcceptToggle
+            isIgnored={isIgnored}
+            onToggle={() => onToggleBlock(block.id)}
           />
-        </label>
+        </div>
+        {validationErrors.length > 0 && !isIgnored && (
+          <div className="bg-rose-950/40 border-t border-rose-900/50 px-4 py-2 flex flex-col space-y-1.5">
+            {validationErrors.map((err, i) => (
+              <div
+                key={i}
+                className="flex items-start text-[11px] text-rose-400/90 leading-tight"
+              >
+                <AlertTriangle className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                <span className="font-mono">{err}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -3708,19 +3992,11 @@ export function DiffBlockCard({
           <span className="text-xs font-mono text-zinc-200 font-medium truncate">
             {block.file}
           </span>
-          {block.status === "match" ? (
-            <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase shrink-0">
-              Match Found
-            </span>
-          ) : (
-            <span className="bg-rose-500/20 text-rose-400 text-[10px] px-1.5 py-0.5 rounded border border-rose-500/20 font-bold uppercase shrink-0">
-              Not Found
-            </span>
-          )}
+          <StatusBadge status={block.status} />
           {isCollapsed && (
             <span className="text-[10px] text-zinc-500 font-mono hidden sm:inline truncate">
-              ({searchLines.length} search / {replaceLines.length}{" "}
-              replace lines)
+              ({searchLines.length} search / {replaceLines.length} replace
+              lines)
             </span>
           )}
         </div>
@@ -3769,37 +4045,26 @@ export function DiffBlockCard({
             <div className="w-px h-4 bg-zinc-800 mx-1"></div>
           </div>
 
-          <label
-            className="flex items-center space-x-2 cursor-pointer shrink-0"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span
-              className={`text-[10px] font-bold uppercase ${
-                !isIgnored ? "text-cyan-500" : "text-zinc-500"
-              }`}
-            >
-              {isIgnored ? "Ignored" : "Accepted"}
-            </span>
-            <div
-              className={`w-8 h-4 rounded-full flex items-center transition-colors p-0.5 ${
-                !isIgnored ? "bg-cyan-500" : "bg-zinc-700"
-              }`}
-            >
-              <div
-                className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${
-                  !isIgnored ? "translate-x-4" : "translate-x-0"
-                }`}
-              />
-            </div>
-            <input
-              type="checkbox"
-              className="hidden"
-              checked={!isIgnored}
-              onChange={() => onToggleBlock(block.id)}
-            />
-          </label>
+          <AcceptToggle
+            isIgnored={isIgnored}
+            onToggle={() => onToggleBlock(block.id)}
+          />
         </div>
       </div>
+
+      {validationErrors.length > 0 && !isIgnored && (
+        <div className="bg-rose-950/40 border-b border-rose-900/50 px-4 py-2 flex flex-col space-y-1.5">
+          {validationErrors.map((err, i) => (
+            <div
+              key={i}
+              className="flex items-start text-[11px] text-rose-400/90 leading-tight"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+              <span className="font-mono">{err}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {isCollapsed ? (
         <div
@@ -3821,9 +4086,7 @@ export function DiffBlockCard({
         <div className="p-4 bg-zinc-950/50 flex flex-col space-y-4 border-t border-zinc-800/50">
           <div className="flex flex-col space-y-1.5">
             <label className="text-[10px] text-rose-400/80 uppercase font-bold tracking-wider flex items-center">
-              <span className="text-rose-500/50 mr-2">
-                {"<<<<<<< SEARCH"}
-              </span>
+              <span className="text-rose-500/50 mr-2">{"<<<<<<< SEARCH"}</span>
             </label>
             <textarea
               value={editSearch}
@@ -3868,6 +4131,33 @@ export function DiffBlockCard({
     </div>
   );
 }
+
+
+==================================================
+FILE PATH: src\features\prompt-builder\components\diff\StatusBadge.tsx
+==================================================
+interface StatusBadgeProps {
+  status: string;
+  matchLabel?: string;
+  noMatchLabel?: string;
+}
+
+export function StatusBadge({
+  status,
+  matchLabel = "Match Found",
+  noMatchLabel = "Not Found",
+}: StatusBadgeProps) {
+  return status === "match" ? (
+    <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase shrink-0">
+      {matchLabel}
+    </span>
+  ) : (
+    <span className="bg-rose-500/20 text-rose-400 text-[10px] px-1.5 py-0.5 rounded border border-rose-500/20 font-bold uppercase shrink-0">
+      {noMatchLabel}
+    </span>
+  );
+}
+
 
 ==================================================
 FILE PATH: src\features\prompt-builder\components\prompt\CompletenessWarningModal.tsx
@@ -4434,13 +4724,22 @@ export function SuggestedContextBar({
 ==================================================
 FILE PATH: src\features\prompt-builder\hooks\useApplyChanges.ts
 ==================================================
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DiffBlock } from "../../../types/patch";
+import { ApplyProgressEvent } from "../../../types/api";
 import { patchApi } from "../../../api/patchApi";
+
+interface ApplyStageState {
+  stage: string;
+  label: string;
+  status: "start" | "done" | "error";
+  durationMs?: number;
+}
 
 interface UseApplyChangesParams {
   diffBlocks: DiffBlock[];
   onApplySuccess?: () => void;
+  autoValidate?: boolean;
 }
 
 interface ApplyResult {
@@ -4459,17 +4758,68 @@ function formatErrorDetails(
     : `${genericLabel}\n${data.error || "Unknown error"}`;
 }
 
-/**
- * Owns all communication with the patch-apply backend for the Footer.
- * Components using this hook stay presentation-only — no fetch calls,
- * no business rules about what counts as success.
- */
 export function useApplyChanges({
   diffBlocks,
   onApplySuccess,
+  autoValidate = false,
 }: UseApplyChangesParams) {
   const [isApplying, setIsApplying] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [stages, setStages] = useState<ApplyStageState[]>([]);
+
+  const handleProgress = (event: ApplyProgressEvent) => {
+    setStages((prev) => {
+      const idx = prev.findIndex((s) => s.stage === event.stage);
+      const updated: ApplyStageState = {
+        stage: event.stage,
+        label: event.label,
+        status: event.status,
+        durationMs: event.durationMs,
+      };
+      if (idx === -1) return [...prev, updated];
+      const next = [...prev];
+      next[idx] = updated;
+      return next;
+    });
+  };
+
+  const blocksJson = JSON.stringify(diffBlocks);
+
+  useEffect(() => {
+    if (!autoValidate) return;
+
+    const blocks = JSON.parse(blocksJson) as DiffBlock[];
+    if (blocks.length === 0) {
+      setValidationErrors([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsValidating(true);
+      try {
+        const data = await patchApi.applyStream(
+          { blocks, dryRun: true },
+          () => {},
+        );
+        if (data.success) {
+          setValidationErrors([]);
+        } else if (data.details) {
+          setValidationErrors(data.details);
+        } else {
+          setValidationErrors([data.error || "Unknown validation error"]);
+        }
+      } catch {
+        setValidationErrors([
+          "Failed to connect to local server for validation.",
+        ]);
+      } finally {
+        setIsValidating(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [blocksJson, autoValidate]);
 
   const applyChanges = async (shouldCommit: boolean, commitMessage: string) => {
     if (diffBlocks.length === 0) {
@@ -4478,13 +4828,17 @@ export function useApplyChanges({
     }
 
     setIsApplying(true);
+    setStages([]);
     try {
-      const data = await patchApi.apply({
-        blocks: diffBlocks,
-        commitMessage: shouldCommit ? commitMessage : "",
-        skipCommit: !shouldCommit,
-        commit: shouldCommit,
-      });
+      const data = await patchApi.applyStream(
+        {
+          blocks: diffBlocks,
+          commitMessage: shouldCommit ? commitMessage : "",
+          skipCommit: !shouldCommit,
+          commit: shouldCommit,
+        },
+        handleProgress,
+      );
 
       if (data.success) {
         alert(
@@ -4520,8 +4874,17 @@ export function useApplyChanges({
 
     setIsValidating(true);
     try {
-      const data = await patchApi.apply({ blocks: diffBlocks, dryRun: true });
-      if (data.success) return true;
+      const data = await patchApi.applyStream(
+        { blocks: diffBlocks, dryRun: true },
+        handleProgress,
+      );
+      if (data.success) {
+        setValidationErrors([]);
+        return true;
+      }
+
+      const errors = data.details || [data.error || "Unknown error"];
+      setValidationErrors(errors);
 
       alert(
         formatErrorDetails(
@@ -4539,7 +4902,14 @@ export function useApplyChanges({
     }
   };
 
-  return { isApplying, isValidating, applyChanges, validateDryRun };
+  return {
+    isApplying,
+    isValidating,
+    validationErrors,
+    stages,
+    applyChanges,
+    validateDryRun,
+  };
 }
 
 
@@ -6009,6 +6379,14 @@ export interface ApplyResponse {
   validatedFiles?: string[];
   validatedMoves?: string[];
   appliedFiles?: string[];
+}
+
+export interface ApplyProgressEvent {
+  type: "progress";
+  stage: string;
+  label: string;
+  status: "start" | "done" | "error";
+  durationMs?: number;
 }
 
 
