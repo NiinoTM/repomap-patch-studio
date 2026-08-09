@@ -1,30 +1,18 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 
 interface UseFileSelectionParams {
   request: string;
   files: string[];
 }
 
-// Extracted from PromptPanel.tsx — seedFiles/acceptedSuggestions state and
-// every handler that mutates them (selection, folder toggling, suggestion
-// accept/reject, syncing @mentions from the request text into seed files).
 export function useFileSelection({ request, files }: UseFileSelectionParams) {
-  const [seedFiles, setSeedFiles] = useState<Set<string>>(new Set());
-  const [acceptedSuggestions, setAcceptedSuggestions] = useState<Set<string>>(
-    new Set(),
-  );
-
-  const selectedFiles = useMemo(() => {
-    const combined = new Set<string>(seedFiles);
-    acceptedSuggestions.forEach((f) => combined.add(f));
-    return combined;
-  }, [seedFiles, acceptedSuggestions]);
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
 
   const addSeedFile = (filePath: string) => {
-    setSeedFiles((prev) => new Set(prev).add(filePath));
+    setSelectedFiles((prev) => new Set(prev).add(filePath));
   };
 
-  // Keep seedFiles in sync with @mentions typed into the request text.
+  // Keep selectedFiles in sync with @mentions typed into the request text.
   useEffect(() => {
     const matches = Array.from(request.matchAll(/@([a-zA-Z0-9_\-./]+)/g));
     const currentMentions = new Set<string>();
@@ -36,7 +24,7 @@ export function useFileSelection({ request, files }: UseFileSelectionParams) {
       }
     }
 
-    setSeedFiles((prev) => {
+    setSelectedFiles((prev) => {
       const next = new Set(prev);
       currentMentions.forEach((f) => next.add(f));
       return next;
@@ -45,29 +33,23 @@ export function useFileSelection({ request, files }: UseFileSelectionParams) {
 
   // Reset selection whenever the active repo's file list changes.
   useEffect(() => {
-    setSeedFiles(new Set());
-    setAcceptedSuggestions(new Set());
+    setSelectedFiles(new Set());
   }, [files]);
 
   const toggleSuggestion = (filePath: string) => {
-    if (selectedFiles.has(filePath)) {
-      setAcceptedSuggestions((prev) => {
-        const next = new Set(prev);
+    setSelectedFiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(filePath)) {
         next.delete(filePath);
-        return next;
-      });
-      setSeedFiles((prev) => {
-        const next = new Set(prev);
-        next.delete(filePath);
-        return next;
-      });
-    } else {
-      setAcceptedSuggestions((prev) => new Set(prev).add(filePath));
-    }
+      } else {
+        next.add(filePath);
+      }
+      return next;
+    });
   };
 
   const acceptAllSuggestions = (filePaths: string[]) => {
-    setAcceptedSuggestions((prev) => {
+    setSelectedFiles((prev) => {
       const next = new Set(prev);
       filePaths.forEach((f) => next.add(f));
       return next;
@@ -75,56 +57,40 @@ export function useFileSelection({ request, files }: UseFileSelectionParams) {
   };
 
   const selectAll = () => {
-    setSeedFiles(new Set(files));
-    setAcceptedSuggestions(new Set());
+    setSelectedFiles(new Set(files));
   };
 
   const deselectAll = () => {
-    setSeedFiles(new Set());
-    setAcceptedSuggestions(new Set());
+    setSelectedFiles(new Set());
   };
 
   const toggleFile = (filePath: string) => {
-    if (selectedFiles.has(filePath)) {
-      setSeedFiles((prev) => {
-        const next = new Set(prev);
+    setSelectedFiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(filePath)) {
         next.delete(filePath);
-        return next;
-      });
-      setAcceptedSuggestions((prev) => {
-        const next = new Set(prev);
-        next.delete(filePath);
-        return next;
-      });
-    } else {
-      setSeedFiles((prev) => new Set(prev).add(filePath));
-    }
+      } else {
+        next.add(filePath);
+      }
+      return next;
+    });
   };
 
   const toggleFolder = (folderFiles: string[], shouldSelect: boolean) => {
-    if (!shouldSelect) {
-      setSeedFiles((prev) => {
-        const next = new Set(prev);
+    setSelectedFiles((prev) => {
+      const next = new Set(prev);
+      if (!shouldSelect) {
         folderFiles.forEach((f) => next.delete(f));
-        return next;
-      });
-      setAcceptedSuggestions((prev) => {
-        const next = new Set(prev);
-        folderFiles.forEach((f) => next.delete(f));
-        return next;
-      });
-    } else {
-      setSeedFiles((prev) => {
-        const next = new Set(prev);
+      } else {
         folderFiles.forEach((f) => next.add(f));
-        return next;
-      });
-    }
+      }
+      return next;
+    });
   };
 
   return {
-    seedFiles,
-    acceptedSuggestions,
+    seedFiles: selectedFiles, // Aliased to prevent breaking destructuring in PromptPanel
+    acceptedSuggestions: new Set<string>(), // Stubbed to prevent breakage
     selectedFiles,
     addSeedFile,
     toggleFile,

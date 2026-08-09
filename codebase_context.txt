@@ -1087,7 +1087,6 @@ export const getFileStats = (
     } catch {
       stats[file] = { size: 0, tokens: 0 };
     }
-};
   }
   return stats;
 };
@@ -1196,7 +1195,7 @@ import { execSync } from "child_process";
  * Opens platform-native folder selection dialog and returns the selected directory path.
  */
 export function openNativeFolderDialog(): string {
-  let cmd = "";
+  let cmd: string;
   if (process.platform === "win32") {
     cmd = `powershell -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.ValidateNames = $false; $f.CheckFileExists = $false; $f.CheckPathExists = $true; $f.FileName = 'Select This Folder'; $f.Title = 'Select Repository Folder'; if($f.ShowDialog() -eq 'OK') { [System.IO.Path]::GetDirectoryName($f.FileName) }"`;
   } else if (process.platform === "darwin") {
@@ -1207,7 +1206,7 @@ export function openNativeFolderDialog(): string {
 
   try {
     return execSync(cmd, { encoding: "utf-8" }).trim();
-  } catch (err) {
+  } catch {
     return "";
   }
 }
@@ -1225,7 +1224,7 @@ historyRouter.get("/history", (_req: Request, res: Response) => {
     const targetRepoPath = repoState.getRepoPath();
     const logs = getGitHistory(targetRepoPath);
     res.json({ success: true, logs });
-  } catch (err: any) {
+  } catch {
     res.json({ success: true, logs: [] });
   }
 });
@@ -1246,7 +1245,7 @@ import {
   commitChanges,
   buildValidationErrorResponse,
   buildApplySuccessMessage,
-  resolveShouldCommit
+  resolveShouldCommit,
 } from "../services/applyPatchService";
 
 export const patchRouter = Router();
@@ -1259,14 +1258,22 @@ interface ApplyRequestBody {
   dryRun?: boolean;
 }
 
-patchRouter.post("/apply", (req: Request, res: Response) => {
-  const { blocks, commitMessage, skipCommit, commit, dryRun }: ApplyRequestBody = req.body;
+patchRouter.post("/apply", async (req: Request, res: Response) => {
+  const {
+    blocks,
+    commitMessage,
+    skipCommit,
+    commit,
+    dryRun,
+  }: ApplyRequestBody = req.body;
   const shouldCommit = resolveShouldCommit(commit, skipCommit);
   const isDryRun = dryRun === true;
   const targetRepoPath = repoState.getRepoPath();
 
   if (!blocks || !Array.isArray(blocks) || blocks.length === 0) {
-    return res.status(400).json({ success: false, error: "No diff blocks provided." });
+    return res
+      .status(400)
+      .json({ success: false, error: "No diff blocks provided." });
   }
 
   const moveBlocks = blocks.filter((b) => b.type === "move");
@@ -1277,12 +1284,18 @@ patchRouter.post("/apply", (req: Request, res: Response) => {
       gitSnapshotPreEdit(targetRepoPath);
     }
 
-    const { pendingWrites, validationErrors: editErrors } = resolveEditWrites(targetRepoPath, editBlocks);
+    const { pendingWrites, validationErrors: editErrors } =
+      await resolveEditWrites(targetRepoPath, editBlocks);
     const moveErrors = validateMoveBlocks(targetRepoPath, moveBlocks);
     const validationErrors = [...editErrors, ...moveErrors];
 
     if (validationErrors.length > 0) {
-      return res.status(422).json({ success: false, ...buildValidationErrorResponse(validationErrors) });
+      return res
+        .status(422)
+        .json({
+          success: false,
+          ...buildValidationErrorResponse(validationErrors),
+        });
     }
 
     if (isDryRun) {
@@ -1319,7 +1332,10 @@ patchRouter.post("/undo", (_req: Request, res: Response) => {
   try {
     const targetRepoPath = repoState.getRepoPath();
     gitUndo(targetRepoPath);
-    res.json({ success: true, message: "Hard reset to previous commit successful!" });
+    res.json({
+      success: true,
+      message: "Hard reset to previous commit successful!",
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ success: false, error: message });
@@ -1330,12 +1346,16 @@ patchRouter.post("/undo", (_req: Request, res: Response) => {
   try {
     const targetRepoPath = repoState.getRepoPath();
     gitUndo(targetRepoPath);
-    res.json({ success: true, message: "Hard reset to previous commit successful!" });
+    res.json({
+      success: true,
+      message: "Hard reset to previous commit successful!",
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ success: false, error: message });
   }
 });
+
 
 ==================================================
 FILE PATH: server\routes\repoRoutes.ts
@@ -1439,7 +1459,12 @@ import {
   dirnamePath,
 } from "../adapters/fsAdapter";
 import { gitMoveFile, formatFile, gitCommit } from "../adapters/gitAdapter";
-import { applyBlockToContent, validateSyntax, DiffBlockInput } from "./patchEngine";
+import {
+  applyBlocksSequentially,
+  validateSyntax,
+  DiffBlockInput,
+} from "./patchEngine";
+import { validateLint } from "./lintService";
 
 const CRITICAL_FILES = [
   "server/index.ts",
@@ -1455,34 +1480,58 @@ export interface ApplyEditsResult {
   validationErrors: string[];
 }
 
-export function resolveEditWrites(
+export async function resolveEditWrites(
   targetRepoPath: string,
   editBlocks: DiffBlockInput[],
-): ApplyEditsResult {
+): Promise<ApplyEditsResult> {
   const pendingWrites = new Map<string, string>();
   const validationErrors: string[] = [];
 
+  // Group blocks by target file, preserving submission order, so every
+  // block for a file is folded onto one running buffer instead of each
+  // being matched independently against stale on-disk content.
+  const blocksByFile = new Map<string, DiffBlockInput[]>();
   for (const block of editBlocks) {
     if (!block.file || block.file === "Active File") continue;
-    const fullPath = resolvePath(targetRepoPath, block.file);
+    const existing = blocksByFile.get(block.file);
+    if (existing) {
+      existing.push(block);
+    } else {
+      blocksByFile.set(block.file, [block]);
+    }
+  }
 
-    let currentContent = pendingWrites.get(block.file);
-    const exists = fileExists(fullPath);
-    if (currentContent === undefined) {
-      currentContent = exists ? readTextFile(fullPath) : "";
+  // No short-circuiting across files: every file in the transaction gets
+  // fully checked (block application + syntax + lint) so one bad file
+  // never hides problems in another, and the caller gets every error in
+  // a single aggregated report instead of one-at-a-time round trips.
+  for (const [file, blocks] of blocksByFile) {
+    const fullPath = resolvePath(targetRepoPath, file);
+    const initialContent = fileExists(fullPath) ? readTextFile(fullPath) : "";
+
+    const { finalContent, blockErrors } = applyBlocksSequentially(
+      initialContent,
+      blocks,
+    );
+
+    if (blockErrors.length > 0) {
+      validationErrors.push(...blockErrors);
+      continue;
     }
 
-    const result = applyBlockToContent(currentContent, block);
-    if (result.success && result.newContent !== undefined) {
-      const syntaxError = validateSyntax(result.newContent, block.file);
-      if (syntaxError) {
-        validationErrors.push(syntaxError);
-      } else {
-        pendingWrites.set(block.file, result.newContent);
-      }
-    } else if (result.error) {
-      validationErrors.push(result.error);
+    const syntaxError = validateSyntax(finalContent, file);
+    if (syntaxError) {
+      validationErrors.push(syntaxError);
+      continue;
     }
+
+    const lintErrors = await validateLint(targetRepoPath, finalContent, file);
+    if (lintErrors.length > 0) {
+      validationErrors.push(...lintErrors);
+      continue;
+    }
+
+    pendingWrites.set(file, finalContent);
   }
 
   return { pendingWrites, validationErrors };
@@ -1537,7 +1586,10 @@ export function writeFilesToDisk(
   }
 }
 
-export function applyMoveBlocks(targetRepoPath: string, moveBlocks: DiffBlockInput[]): string[] {
+export function applyMoveBlocks(
+  targetRepoPath: string,
+  moveBlocks: DiffBlockInput[],
+): string[] {
   const movedFiles: string[] = [];
   for (const block of moveBlocks) {
     if (!block.moveTo) continue;
@@ -1547,7 +1599,10 @@ export function applyMoveBlocks(targetRepoPath: string, moveBlocks: DiffBlockInp
   return movedFiles;
 }
 
-export function formatChangedFiles(targetRepoPath: string, files: string[]): void {
+export function formatChangedFiles(
+  targetRepoPath: string,
+  files: string[],
+): void {
   for (const file of files) {
     formatFile(targetRepoPath, file);
   }
@@ -1559,7 +1614,10 @@ export function commitChanges(
   commitMessage: string | undefined,
 ): void {
   if (!shouldCommit) return;
-  const msg = commitMessage && commitMessage.trim() ? commitMessage.trim() : "ai-edit: updated files";
+  const msg =
+    commitMessage && commitMessage.trim()
+      ? commitMessage.trim()
+      : "ai-edit: updated files";
   gitCommit(targetRepoPath, msg);
 }
 
@@ -1568,7 +1626,9 @@ export interface ValidationErrorResponse {
   details: string[];
 }
 
-export function buildValidationErrorResponse(validationErrors: string[]): ValidationErrorResponse {
+export function buildValidationErrorResponse(
+  validationErrors: string[],
+): ValidationErrorResponse {
   const detailedMsg =
     `Transaction aborted. ${validationErrors.length} validation/syntax error(s) detected:\n` +
     validationErrors.map((err) => `• ${err}`).join("\n") +
@@ -1582,9 +1642,13 @@ export function buildApplySuccessMessage(shouldCommit: boolean): string {
     : "✅ Transaction complete: Edits applied to disk!";
 }
 
-export function resolveShouldCommit(commit: boolean | undefined, skipCommit: boolean | undefined): boolean {
+export function resolveShouldCommit(
+  commit: boolean | undefined,
+  skipCommit: boolean | undefined,
+): boolean {
   return commit === true || (commit !== false && !skipCommit);
 }
+
 
 ==================================================
 FILE PATH: server\services\dependencyService.ts
@@ -1789,6 +1853,73 @@ export function getDependencyMap(basePath: string, filesList: string[]): Depende
 }
 
 ==================================================
+FILE PATH: server\services\lintService.ts
+==================================================
+import { ESLint } from "eslint";
+import { resolvePath } from "../adapters/fsAdapter";
+
+const LINTABLE_EXTENSIONS = [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"];
+
+// One ESLint instance per repo path — flat config resolution (reading
+// eslint.config.js, resolving plugins) isn't free, and every apply-changes
+// transaction can call this several times in one request.
+let cachedLinter: { repoPath: string; instance: ESLint } | null = null;
+
+function getLinter(repoPath: string): ESLint {
+  if (cachedLinter && cachedLinter.repoPath === repoPath) {
+    return cachedLinter.instance;
+  }
+  const instance = new ESLint({ cwd: repoPath });
+  cachedLinter = { repoPath, instance };
+  return instance;
+}
+
+/**
+ * Lints in-memory content (not yet written to disk) against the target
+ * repo's own eslint.config.js. Only error-severity findings are returned —
+ * warn-level rules (e.g. @typescript-eslint/no-explicit-any) are
+ * intentionally non-blocking, matching how the project's own config treats
+ * them. Lint is a best-effort enhancement: if ESLint itself fails to run
+ * (missing plugin, unresolvable config, etc.), this fails open rather than
+ * aborting a transaction over tooling trouble unrelated to the edit itself.
+ */
+export async function validateLint(
+  repoPath: string,
+  content: string,
+  filePath: string,
+): Promise<string[]> {
+  const ext = filePath.slice(filePath.lastIndexOf(".")).toLowerCase();
+  if (!LINTABLE_EXTENSIONS.includes(ext)) return [];
+
+  try {
+    const eslint = getLinter(repoPath);
+    const absolutePath = resolvePath(repoPath, filePath);
+
+    const isIgnored = await eslint.isPathIgnored(absolutePath);
+    if (isIgnored) return [];
+
+    const results = await eslint.lintText(content, { filePath: absolutePath });
+    const errors: string[] = [];
+
+    for (const result of results) {
+      for (const msg of result.messages) {
+        if (msg.severity === 2) {
+          const rule = msg.ruleId ? ` (${msg.ruleId})` : "";
+          errors.push(
+            `ESLint error in ${filePath}:${msg.line ?? "?"} — ${msg.message}${rule}`,
+          );
+        }
+      }
+    }
+
+    return errors;
+  } catch {
+    return [];
+  }
+}
+
+
+==================================================
 FILE PATH: server\services\patchEngine.ts
 ==================================================
 import { validateSyntax } from "./syntaxService";
@@ -1815,7 +1946,10 @@ export interface CondensedRange {
 /**
  * Finds a condensed range match in content for search text.
  */
-export function findCondensedRange(content: string, search: string): CondensedRange | null {
+export function findCondensedRange(
+  content: string,
+  search: string,
+): CondensedRange | null {
   const preCleanContent = content
     .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
     .replace(/\{\s*["']\s*["']\s*\}/g, "");
@@ -1858,27 +1992,11 @@ export function findCondensedRange(content: string, search: string): CondensedRa
   return null;
 }
 
-/**
- * Pure In-Memory Block Application Engine (Exact, Fuzzy Indentation & Condensed Token Stream).
- */
-export function applyBlockToContent(content: string, block: DiffBlockInput): ApplyBlockResult {
-  if (!block.search || !block.search.trim() || block.file === "Active File") {
-    return { success: true, newContent: block.replace };
-  }
-
-  const normContent = content.replace(/\r\n/g, "\n");
-  const normSearch = block.search.replace(/\r\n/g, "\n");
-  const normReplace = block.replace.replace(/\r\n/g, "\n");
-
-  // 1. Exact Match
-  if (normContent.includes(normSearch)) {
-    return {
-      success: true,
-      newContent: normContent.replace(normSearch, normReplace),
-    };
-  }
-
-  // 2. Smart Fuzzy Indentation Match
+function applyFuzzyIndentationMatch(
+  normContent: string,
+  normSearch: string,
+  normReplace: string,
+): string | null {
   const searchLines = normSearch
     .split("\n")
     .map((l) => l.trim())
@@ -1908,7 +2026,43 @@ export function applyBlockToContent(content: string, block: DiffBlockInput): App
     });
 
     contentLines.splice(matchIndex, searchLines.length, ...replaceLines);
-    return { success: true, newContent: contentLines.join("\n") };
+    return contentLines.join("\n");
+  }
+
+  return null;
+}
+
+/**
+ * Pure In-Memory Block Application Engine (Exact, Fuzzy Indentation & Condensed Token Stream).
+ */
+export function applyBlockToContent(
+  content: string,
+  block: DiffBlockInput,
+): ApplyBlockResult {
+  if (!block.search || !block.search.trim() || block.file === "Active File") {
+    return { success: true, newContent: block.replace };
+  }
+
+  const normContent = content.replace(/\r\n/g, "\n");
+  const normSearch = block.search.replace(/\r\n/g, "\n");
+  const normReplace = block.replace.replace(/\r\n/g, "\n");
+
+  // 1. Exact Match
+  if (normContent.includes(normSearch)) {
+    return {
+      success: true,
+      newContent: normContent.replace(normSearch, normReplace),
+    };
+  }
+
+  // 2. Smart Fuzzy Indentation Match
+  const fuzzyMatch = applyFuzzyIndentationMatch(
+    normContent,
+    normSearch,
+    normReplace,
+  );
+  if (fuzzyMatch !== null) {
+    return { success: true, newContent: fuzzyMatch };
   }
 
   // 3. Condensed Token Stream Replacement
@@ -1930,7 +2084,43 @@ export function applyBlockToContent(content: string, block: DiffBlockInput): App
   };
 }
 
+export interface BlockApplyOutcome {
+  finalContent: string;
+  blockErrors: string[];
+}
+
+/**
+ * Applies every block scoped to a single file against a running in-memory
+ * buffer, in order — so a later block in the same transaction can target
+ * text introduced by an earlier block in that same transaction, instead of
+ * every block being matched independently against the original on-disk
+ * content (which is what silently broke a two-block same-file fix earlier).
+ *
+ * A block that fails to match is recorded and skipped, and the buffer is
+ * left unchanged so later, unrelated blocks for the same file still get a
+ * fair shot — this maximizes how many real problems surface in one report.
+ */
+export function applyBlocksSequentially(
+  initialContent: string,
+  blocks: DiffBlockInput[],
+): BlockApplyOutcome {
+  let currentContent = initialContent;
+  const blockErrors: string[] = [];
+
+  for (const block of blocks) {
+    const result = applyBlockToContent(currentContent, block);
+    if (result.success && result.newContent !== undefined) {
+      currentContent = result.newContent;
+    } else if (result.error) {
+      blockErrors.push(result.error);
+    }
+  }
+
+  return { finalContent: currentContent, blockErrors };
+}
+
 export { validateSyntax };
+
 
 ==================================================
 FILE PATH: server\services\repoMapService.ts
@@ -2945,7 +3135,7 @@ export function Header({
 ==================================================
 FILE PATH: src\features\prompt-builder\components\PromptPanel.tsx
 ==================================================
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Copy, Map, Eye, X, FileText, AtSign } from "lucide-react";
 import { MentionDropdown } from "./prompt/MentionDropdown";
 import { SuggestedContextBar } from "./prompt/SuggestedContextBar";
@@ -2955,6 +3145,11 @@ import { useSuggestedContext } from "../hooks/useSuggestedContext";
 import { useFileSelection } from "../hooks/useFileSelection";
 import { useTokenEstimate } from "../hooks/useTokenEstimate";
 import { useCopyPrompt } from "../hooks/useCopyPrompt";
+import {
+  findMissingDependencies,
+  MissingDependency,
+} from "../utils/completenessCheck";
+import { CompletenessWarningModal } from "./prompt/CompletenessWarningModal";
 
 interface PromptPanelProps {
   onCopy: (promptText: string) => void;
@@ -2988,6 +3183,13 @@ export function PromptPanel({
   const [request, setRequest] = useState("");
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [missingDependencies, setMissingDependencies] = useState<
+    MissingDependency[]
+  >([]);
+  const [pendingCopyAction, setPendingCopyAction] = useState<
+    "full" | "files" | null
+  >(null);
+  const [autoConfirmCopy, setAutoConfirmCopy] = useState(false);
 
   const {
     seedFiles,
@@ -3035,6 +3237,54 @@ export function PromptPanel({
 
   const { isCopying, isCopyingFiles, copyFullContext, copyFilesAndPrompt } =
     useCopyPrompt({ selectedFiles, repoMap, request, onCopy });
+
+  // Runs after selectedFiles updates (post acceptAllSuggestions) so the
+  // copy actions below read the freshly-added files, not a stale closure.
+  useEffect(() => {
+    if (!pendingCopyAction || !autoConfirmCopy) return;
+    if (pendingCopyAction === "full") {
+      copyFullContext();
+    } else {
+      copyFilesAndPrompt();
+    }
+    setPendingCopyAction(null);
+    setAutoConfirmCopy(false);
+    setMissingDependencies([]);
+  }, [selectedFiles]);
+
+  const handleCopyClick = (action: "full" | "files") => {
+    const missing = findMissingDependencies(selectedFiles, dependencyMap);
+    if (missing.length > 0) {
+      setMissingDependencies(missing);
+      setPendingCopyAction(action);
+      return;
+    }
+    if (action === "full") {
+      copyFullContext();
+    } else {
+      copyFilesAndPrompt();
+    }
+  };
+
+  const handleAddMissingAndCopy = () => {
+    acceptAllSuggestions(missingDependencies.map((dep) => dep.filePath));
+    setAutoConfirmCopy(true);
+  };
+
+  const handleCopyAnyway = () => {
+    if (pendingCopyAction === "full") {
+      copyFullContext();
+    } else if (pendingCopyAction === "files") {
+      copyFilesAndPrompt();
+    }
+    setPendingCopyAction(null);
+    setMissingDependencies([]);
+  };
+
+  const handleCancelCompletenessWarning = () => {
+    setPendingCopyAction(null);
+    setMissingDependencies([]);
+  };
 
   return (
     <div className="border-r border-zinc-800 flex flex-col h-full p-4 space-y-4 bg-zinc-950/50">
@@ -3121,7 +3371,7 @@ export function PromptPanel({
 
       <div className="flex space-x-2 shrink-0">
         <button
-          onClick={copyFullContext}
+          onClick={() => handleCopyClick("full")}
           disabled={isCopying || isCopyingFiles}
           className="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold py-2.5 rounded-lg shadow-lg shadow-cyan-500/10 flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer text-[11px]"
         >
@@ -3134,7 +3384,7 @@ export function PromptPanel({
         </button>
 
         <button
-          onClick={copyFilesAndPrompt}
+          onClick={() => handleCopyClick("files")}
           disabled={isCopying || isCopyingFiles || selectedFiles.size === 0}
           className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold py-2.5 rounded-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer border border-zinc-700 text-[11px]"
         >
@@ -3188,6 +3438,15 @@ export function PromptPanel({
             </div>
           </div>
         </div>
+      )}
+
+      {missingDependencies.length > 0 && pendingCopyAction && (
+        <CompletenessWarningModal
+          missingDependencies={missingDependencies}
+          onAddMissingAndCopy={handleAddMissingAndCopy}
+          onCopyAnyway={handleCopyAnyway}
+          onCancel={handleCancelCompletenessWarning}
+        />
       )}
     </div>
   );
@@ -3610,6 +3869,83 @@ export function DiffBlockCard({
 }
 
 ==================================================
+FILE PATH: src\features\prompt-builder\components\prompt\CompletenessWarningModal.tsx
+==================================================
+import { AlertTriangle, X } from "lucide-react";
+import { MissingDependency } from "../../utils/completenessCheck";
+
+interface CompletenessWarningModalProps {
+  missingDependencies: MissingDependency[];
+  onAddMissingAndCopy: () => void;
+  onCopyAnyway: () => void;
+  onCancel: () => void;
+}
+
+export function CompletenessWarningModal({
+  missingDependencies,
+  onAddMissingAndCopy,
+  onCopyAnyway,
+  onCancel,
+}: CompletenessWarningModalProps) {
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-zinc-950 border border-amber-500/40 rounded-xl w-full max-w-lg flex flex-col overflow-hidden shadow-2xl">
+        <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900">
+          <h2 className="text-sm font-bold text-amber-400 flex items-center">
+            <AlertTriangle className="w-4 h-4 mr-2 shrink-0" />
+            Context Incomplete ({missingDependencies.length})
+          </h2>
+          <button
+            onClick={onCancel}
+            className="text-zinc-400 hover:text-zinc-200 p-1 rounded-md hover:bg-zinc-800 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-4 overflow-y-auto max-h-[50vh] custom-scrollbar space-y-2">
+          <p className="text-xs text-zinc-400">
+            These files are referenced by your current selection but are not
+            included. Sending code without them risks the AI hallucinating their
+            contents.
+          </p>
+          {missingDependencies.map((dep) => (
+            <div
+              key={dep.filePath}
+              className="bg-zinc-900 border border-zinc-800 rounded-lg p-2.5"
+            >
+              <p className="font-mono text-xs text-zinc-200 truncate">
+                {dep.filePath}
+              </p>
+              <p className="text-[10px] text-zinc-500 mt-0.5">
+                {dep.kind === "api" ? "Called by " : "Imported by "}
+                {dep.requiredBy.map((f) => f.split("/").pop() || f).join(", ")}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <div className="p-4 border-t border-zinc-800 bg-zinc-900 flex justify-end space-x-3">
+          <button
+            onClick={onCopyAnyway}
+            className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors border border-zinc-700 cursor-pointer"
+          >
+            Copy Anyway
+          </button>
+          <button
+            onClick={onAddMissingAndCopy}
+            className="px-4 py-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-500 rounded-lg transition-colors shadow-lg shadow-amber-900/20 cursor-pointer"
+          >
+            Add Missing & Copy
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+==================================================
 FILE PATH: src\features\prompt-builder\components\prompt\FileTree.tsx
 ==================================================
 import React, { useState, useMemo } from "react";
@@ -3821,8 +4157,7 @@ export function FileTree({
 ==================================================
 FILE PATH: src\features\prompt-builder\components\prompt\MentionDropdown.tsx
 ==================================================
-import React from "react";
-import { createPortal } from "react-dom";
+import { RefObject, useEffect, useRef } from "react";
 import { FileText } from "lucide-react";
 import { FuzzyResult } from "../../utils/fuzzySearch";
 
@@ -3838,7 +4173,7 @@ interface MentionDropdownProps {
   } | null;
   activeMentionIndex: number;
   selectedFiles: Set<string>;
-  mentionPopupRef: React.RefObject<HTMLDivElement | null>;
+  mentionPopupRef: RefObject<HTMLDivElement | null>;
   onInsertMention: (filePath: string) => void;
   onHoverMention: (index: number) => void;
 }
@@ -3853,100 +4188,129 @@ export function MentionDropdown({
   onInsertMention,
   onHoverMention,
 }: MentionDropdownProps) {
-  if (mentionQuery === null || mentionMatches.length === 0 || !mentionPos) {
+  const listRef = useRef<HTMLUListElement>(null);
+
+  useEffect(() => {
+    if (listRef.current) {
+      const activeEl = listRef.current.children[
+        activeMentionIndex
+      ] as HTMLElement;
+      if (activeEl) {
+        activeEl.scrollIntoView({ block: "nearest" });
+      }
+    }
+  }, [activeMentionIndex]);
+
+  if (mentionQuery === null || !mentionPos || mentionMatches.length === 0) {
     return null;
   }
 
-  const renderFuzzyPath = (result: FuzzyResult) => {
-    const dirLen = result.dirPath ? result.dirPath.length + 1 : 0;
-    const dirChars = result.filePath.slice(0, dirLen).split("");
-    const fileChars = result.filePath.slice(dirLen).split("");
+  const renderChars = (chars: string[], offset: number, matches: number[]) => {
+    return chars.map((char, i) => {
+      const globalIndex = offset + i;
+      const isMatched = matches.includes(globalIndex);
+      return isMatched ? (
+        <span
+          key={i}
+          className="text-cyan-400 font-bold bg-cyan-500/20 rounded-[2px]"
+        >
+          {char}
+        </span>
+      ) : (
+        <span key={i}>{char}</span>
+      );
+    });
+  };
 
-    const renderChars = (chars: string[], offset: number) =>
-      chars.map((char, i) => {
-        const idx = offset + i;
-        const isMatched = result.matchedIndices.has(idx);
-        return (
-          <span
-            key={idx}
-            className={
-              isMatched
-                ? "text-cyan-400 font-bold bg-cyan-950/60 rounded-[1px]"
-                : "text-zinc-400"
-            }
-          >
-            {char}
-          </span>
-        );
-      });
+  const renderFuzzyPath = (result: FuzzyResult) => {
+    const lastSlash = result.filePath.lastIndexOf("/");
+
+    let dir = "";
+    let file = result.filePath;
+    const dirOffset = 0;
+    let fileOffset = 0;
+
+    if (lastSlash !== -1) {
+      // By slicing up to lastSlash + 1, we INCLUDE the '/' character in the directory string.
+      // This fixes the bug where the slash was being omitted from the rendered results!
+      dir = result.filePath.slice(0, lastSlash + 1);
+      file = result.filePath.slice(lastSlash + 1);
+      fileOffset = lastSlash + 1;
+    }
 
     return (
-      <span className="font-mono text-xs flex items-center min-w-0">
-        {dirChars.length > 0 && (
-          <span
-            className="overflow-hidden whitespace-nowrap text-ellipsis shrink"
-            style={{ direction: "rtl", textAlign: "left" }}
-            title={result.dirPath}
-          >
-            {renderChars(dirChars, 0)}
+      <span className="flex truncate w-full text-left items-center">
+        {dir && (
+          <span className="opacity-50 truncate flex-shrink">
+            {renderChars(dir.split(""), dirOffset, result.matches)}
           </span>
         )}
-        <span className="whitespace-nowrap shrink-0">
-          {renderChars(fileChars, dirLen)}
+        <span className="font-medium text-zinc-300 flex-shrink-0">
+          {renderChars(file.split(""), fileOffset, result.matches)}
         </span>
       </span>
     );
   };
 
-  return createPortal(
+  return (
     <div
       ref={mentionPopupRef}
-      className="fixed bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl z-[100] flex flex-col"
+      className="fixed z-50 bg-zinc-900 border border-zinc-700 shadow-2xl rounded-lg overflow-hidden flex flex-col"
       style={{
+        top: mentionPos.top,
         left: mentionPos.left,
-        width: mentionPos.width,
+        width: Math.min(mentionPos.width, 600),
         maxHeight: mentionPos.maxHeight,
-        top: mentionPos.direction === "down" ? mentionPos.top : undefined,
-        bottom:
-          mentionPos.direction === "up"
-            ? window.innerHeight - mentionPos.top
-            : undefined,
+        transform: mentionPos.direction === "up" ? "translateY(-100%)" : "none",
       }}
     >
-      <div className="p-1.5 bg-zinc-950 border-b border-zinc-800 text-[10px] text-zinc-400 font-medium flex justify-between shrink-0">
-        <span>Fuzzy Matches for "@{mentionQuery}"</span>
-        <span className="text-zinc-600">
-          ↑↓ to navigate, Enter to select
+      <div className="px-3 py-2 border-b border-zinc-800 bg-zinc-900/50 flex items-center justify-between">
+        <span className="text-xs font-medium text-zinc-400">
+          Fuzzy Matches for{" "}
+          <span className="text-cyan-400">"@{mentionQuery}"</span>
+        </span>
+        <span className="text-[10px] text-zinc-500 flex items-center">
+          <span className="mr-1">↑↓</span> to navigate, Enter to select
         </span>
       </div>
-      <div className="overflow-y-auto custom-scrollbar">
-        {mentionMatches.map((res, idx) => (
-          <div
-            key={res.filePath}
-            onClick={() => onInsertMention(res.filePath)}
-            onMouseEnter={() => onHoverMention(idx)}
-            className={`px-3 py-1.5 text-xs flex items-center justify-between cursor-pointer transition-colors gap-2 ${
-              idx === activeMentionIndex
-                ? "bg-cyan-600/30 text-cyan-200 border-l-2 border-cyan-500"
-                : "text-zinc-300 hover:bg-zinc-800/50"
-            }`}
-          >
-            <div className="flex items-center min-w-0 flex-1">
-              <FileText className="w-3.5 h-3.5 mr-2 text-zinc-400 shrink-0" />
-              {renderFuzzyPath(res)}
-            </div>
-            {selectedFiles.has(res.filePath) && (
-              <span className="text-[9px] bg-cyan-500/20 text-cyan-400 font-mono px-1 py-0.5 rounded border border-cyan-500/30 shrink-0">
-                Added
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>,
-    document.body,
+      <ul
+        ref={listRef}
+        className="overflow-y-auto custom-scrollbar flex-1 py-1"
+      >
+        {mentionMatches.map((match, i) => {
+          const isActive = i === activeMentionIndex;
+          const isSelected = selectedFiles.has(match.filePath);
+
+          return (
+            <li
+              key={match.filePath}
+              className={`px-3 py-2 cursor-pointer flex items-center space-x-3 transition-colors ${
+                isActive ? "bg-cyan-500/10" : "hover:bg-zinc-800/50"
+              }`}
+              onMouseEnter={() => onHoverMention(i)}
+              onClick={() => onInsertMention(match.filePath)}
+            >
+              <FileText
+                className={`w-4 h-4 shrink-0 ${
+                  isActive ? "text-cyan-400" : "text-zinc-500"
+                }`}
+              />
+              <div className="flex-1 min-w-0 font-mono text-[13px] truncate flex items-center justify-between">
+                {renderFuzzyPath(match)}
+                {isSelected && (
+                  <span className="ml-3 text-[10px] px-1.5 py-0.5 rounded border border-cyan-500/30 text-cyan-400 bg-cyan-500/10 shrink-0 flex items-center space-x-1">
+                    <span>Added</span>
+                  </span>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
+
 
 ==================================================
 FILE PATH: src\features\prompt-builder\components\prompt\SuggestedContextBar.tsx
@@ -3957,6 +4321,7 @@ import { Sparkles, Globe, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 export interface SuggestedFile {
   filePath: string;
   type: "parent" | "child" | "hub" | "api";
+  distance: number;
   importedActiveFiles: string[];
   importingActiveFiles: string[];
   tooltip: string;
@@ -3992,6 +4357,10 @@ export function SuggestedContextBar({
       <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto custom-scrollbar">
         {suggestedFiles.map((item) => {
           const fileName = item.filePath.split("/").pop() || item.filePath;
+          const distanceStyles =
+            item.distance > 1
+              ? "opacity-60 hover:opacity-100 border-dashed"
+              : "";
 
           if (item.type === "api") {
             return (
@@ -3999,7 +4368,7 @@ export function SuggestedContextBar({
                 key={item.filePath}
                 onClick={() => onToggleSuggestion(item.filePath)}
                 title={item.tooltip}
-                className="text-[10px] bg-emerald-950/50 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/70 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors shadow-sm"
+                className={`text-[10px] bg-emerald-950/50 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/70 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-all shadow-sm ${distanceStyles}`}
               >
                 <Globe className="w-3 h-3 text-emerald-400 shrink-0" />
                 <span className="font-mono truncate max-w-[130px]">
@@ -4015,7 +4384,7 @@ export function SuggestedContextBar({
                 key={item.filePath}
                 onClick={() => onToggleSuggestion(item.filePath)}
                 title={item.tooltip}
-                className="text-[10px] bg-purple-950/40 border border-purple-500/40 text-purple-300 hover:bg-purple-900/60 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
+                className={`text-[10px] bg-purple-950/40 border border-purple-500/40 text-purple-300 hover:bg-purple-900/60 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-all ${distanceStyles}`}
               >
                 <ArrowUp className="w-3 h-3 text-purple-400 shrink-0" />
                 <span className="font-mono truncate max-w-[130px]">
@@ -4031,7 +4400,7 @@ export function SuggestedContextBar({
                 key={item.filePath}
                 onClick={() => onToggleSuggestion(item.filePath)}
                 title={item.tooltip}
-                className="text-[10px] bg-cyan-950/40 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-900/60 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
+                className={`text-[10px] bg-cyan-950/40 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-900/60 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-all ${distanceStyles}`}
               >
                 <ArrowDown className="w-3 h-3 text-cyan-400 shrink-0" />
                 <span className="font-mono truncate max-w-[130px]">
@@ -4046,7 +4415,7 @@ export function SuggestedContextBar({
               key={item.filePath}
               onClick={() => onToggleSuggestion(item.filePath)}
               title={item.tooltip}
-              className="text-[10px] bg-gradient-to-r from-purple-950/50 to-cyan-950/50 border border-indigo-500/50 text-indigo-200 hover:from-purple-900/70 hover:to-cyan-900/70 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-colors"
+              className={`text-[10px] bg-gradient-to-r from-purple-950/50 to-cyan-950/50 border border-indigo-500/50 text-indigo-200 hover:from-purple-900/70 hover:to-cyan-900/70 px-1.5 py-0.5 rounded flex items-center space-x-1 cursor-pointer transition-all ${distanceStyles}`}
             >
               <ArrowUpDown className="w-3 h-3 text-indigo-300 shrink-0" />
               <span className="font-mono truncate max-w-[130px]">
@@ -4059,6 +4428,7 @@ export function SuggestedContextBar({
     </div>
   );
 }
+
 
 ==================================================
 FILE PATH: src\features\prompt-builder\hooks\useApplyChanges.ts
@@ -4245,33 +4615,21 @@ export function useCopyPrompt({
 ==================================================
 FILE PATH: src\features\prompt-builder\hooks\useFileSelection.ts
 ==================================================
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 
 interface UseFileSelectionParams {
   request: string;
   files: string[];
 }
 
-// Extracted from PromptPanel.tsx — seedFiles/acceptedSuggestions state and
-// every handler that mutates them (selection, folder toggling, suggestion
-// accept/reject, syncing @mentions from the request text into seed files).
 export function useFileSelection({ request, files }: UseFileSelectionParams) {
-  const [seedFiles, setSeedFiles] = useState<Set<string>>(new Set());
-  const [acceptedSuggestions, setAcceptedSuggestions] = useState<Set<string>>(
-    new Set(),
-  );
-
-  const selectedFiles = useMemo(() => {
-    const combined = new Set<string>(seedFiles);
-    acceptedSuggestions.forEach((f) => combined.add(f));
-    return combined;
-  }, [seedFiles, acceptedSuggestions]);
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
 
   const addSeedFile = (filePath: string) => {
-    setSeedFiles((prev) => new Set(prev).add(filePath));
+    setSelectedFiles((prev) => new Set(prev).add(filePath));
   };
 
-  // Keep seedFiles in sync with @mentions typed into the request text.
+  // Keep selectedFiles in sync with @mentions typed into the request text.
   useEffect(() => {
     const matches = Array.from(request.matchAll(/@([a-zA-Z0-9_\-./]+)/g));
     const currentMentions = new Set<string>();
@@ -4283,7 +4641,7 @@ export function useFileSelection({ request, files }: UseFileSelectionParams) {
       }
     }
 
-    setSeedFiles((prev) => {
+    setSelectedFiles((prev) => {
       const next = new Set(prev);
       currentMentions.forEach((f) => next.add(f));
       return next;
@@ -4292,29 +4650,23 @@ export function useFileSelection({ request, files }: UseFileSelectionParams) {
 
   // Reset selection whenever the active repo's file list changes.
   useEffect(() => {
-    setSeedFiles(new Set());
-    setAcceptedSuggestions(new Set());
+    setSelectedFiles(new Set());
   }, [files]);
 
   const toggleSuggestion = (filePath: string) => {
-    if (selectedFiles.has(filePath)) {
-      setAcceptedSuggestions((prev) => {
-        const next = new Set(prev);
+    setSelectedFiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(filePath)) {
         next.delete(filePath);
-        return next;
-      });
-      setSeedFiles((prev) => {
-        const next = new Set(prev);
-        next.delete(filePath);
-        return next;
-      });
-    } else {
-      setAcceptedSuggestions((prev) => new Set(prev).add(filePath));
-    }
+      } else {
+        next.add(filePath);
+      }
+      return next;
+    });
   };
 
   const acceptAllSuggestions = (filePaths: string[]) => {
-    setAcceptedSuggestions((prev) => {
+    setSelectedFiles((prev) => {
       const next = new Set(prev);
       filePaths.forEach((f) => next.add(f));
       return next;
@@ -4322,56 +4674,40 @@ export function useFileSelection({ request, files }: UseFileSelectionParams) {
   };
 
   const selectAll = () => {
-    setSeedFiles(new Set(files));
-    setAcceptedSuggestions(new Set());
+    setSelectedFiles(new Set(files));
   };
 
   const deselectAll = () => {
-    setSeedFiles(new Set());
-    setAcceptedSuggestions(new Set());
+    setSelectedFiles(new Set());
   };
 
   const toggleFile = (filePath: string) => {
-    if (selectedFiles.has(filePath)) {
-      setSeedFiles((prev) => {
-        const next = new Set(prev);
+    setSelectedFiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(filePath)) {
         next.delete(filePath);
-        return next;
-      });
-      setAcceptedSuggestions((prev) => {
-        const next = new Set(prev);
-        next.delete(filePath);
-        return next;
-      });
-    } else {
-      setSeedFiles((prev) => new Set(prev).add(filePath));
-    }
+      } else {
+        next.add(filePath);
+      }
+      return next;
+    });
   };
 
   const toggleFolder = (folderFiles: string[], shouldSelect: boolean) => {
-    if (!shouldSelect) {
-      setSeedFiles((prev) => {
-        const next = new Set(prev);
+    setSelectedFiles((prev) => {
+      const next = new Set(prev);
+      if (!shouldSelect) {
         folderFiles.forEach((f) => next.delete(f));
-        return next;
-      });
-      setAcceptedSuggestions((prev) => {
-        const next = new Set(prev);
-        folderFiles.forEach((f) => next.delete(f));
-        return next;
-      });
-    } else {
-      setSeedFiles((prev) => {
-        const next = new Set(prev);
+      } else {
         folderFiles.forEach((f) => next.add(f));
-        return next;
-      });
-    }
+      }
+      return next;
+    });
   };
 
   return {
-    seedFiles,
-    acceptedSuggestions,
+    seedFiles: selectedFiles, // Aliased to prevent breaking destructuring in PromptPanel
+    acceptedSuggestions: new Set<string>(), // Stubbed to prevent breakage
     selectedFiles,
     addSeedFile,
     toggleFile,
@@ -4807,6 +5143,8 @@ interface UseSuggestedContextProps {
   };
 }
 
+const MAX_DEPTH = 2; // Configurable depth for multi-hop traversal
+
 export function useSuggestedContext({
   seedFiles,
   selectedFiles,
@@ -4829,96 +5167,112 @@ export function useSuggestedContext({
     const apiOutboundMap = dependencyMap.apiOutbound || {};
     const apiInboundMap = dependencyMap.apiInbound || {};
 
-    const candidates = new Set<string>();
+    const candidateDistances = new Map<string, number>();
+    const visited = new Set<string>(selectedFiles);
+    const queue: { path: string; depth: number }[] = [];
 
-    seedFiles.forEach((file) => {
-      const children = outboundMap[file] || [];
-      children.forEach((child) => {
-        if (!selectedFiles.has(child)) candidates.add(child);
-      });
-
-      const parents = inboundMap[file] || [];
-      parents.forEach((parent) => {
-        if (!selectedFiles.has(parent)) candidates.add(parent);
-      });
-
-      const apiTargets = apiOutboundMap[file] || [];
-      apiTargets.forEach((apiTarget) => {
-        if (!selectedFiles.has(apiTarget)) candidates.add(apiTarget);
-      });
-
-      const apiCallers = apiInboundMap[file] || [];
-      apiCallers.forEach((apiCaller) => {
-        if (!selectedFiles.has(apiCaller)) candidates.add(apiCaller);
-      });
+    // Initialize queue with all selected files at depth 0.
+    // This makes accepted suggestions act as new seeds automatically.
+    selectedFiles.forEach((file) => {
+      queue.push({ path: file, depth: 0 });
     });
+
+    while (queue.length > 0) {
+      const { path: currentFile, depth } = queue.shift()!;
+
+      if (depth >= MAX_DEPTH) continue;
+
+      const nextDepth = depth + 1;
+      const neighbors = new Set([
+        ...(outboundMap[currentFile] || []),
+        ...(inboundMap[currentFile] || []),
+        ...(apiOutboundMap[currentFile] || []),
+        ...(apiInboundMap[currentFile] || []),
+      ]);
+
+      neighbors.forEach((neighbor) => {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor);
+          candidateDistances.set(neighbor, nextDepth);
+          queue.push({ path: neighbor, depth: nextDepth });
+        }
+      });
+    }
 
     const results: SuggestedFile[] = [];
 
-    candidates.forEach((candPath) => {
+    candidateDistances.forEach((distance, candPath) => {
       const candOutbound = outboundMap[candPath] || [];
       const candInbound = inboundMap[candPath] || [];
       const candApiOutbound = apiOutboundMap[candPath] || [];
       const candApiInbound = apiInboundMap[candPath] || [];
 
-      const isApiHandler = candApiInbound.some((f) => seedFiles.has(f));
-      const isApiClient = candApiOutbound.some((f) => seedFiles.has(f));
+      // Determine relationship relative to nodes strictly closer to the seeds
+      const isCloser = (f: string) =>
+        selectedFiles.has(f) ||
+        (candidateDistances.get(f) ?? Infinity) < distance;
 
-      if (isApiHandler || isApiClient) {
-        const seedNames =
-          seedFiles.size > 0
-            ? Array.from(seedFiles)
-                .map((f) => f.split("/").pop() || f)
-                .join(", ")
-            : "";
+      const closerApiInbound = candApiInbound.filter(isCloser);
+      const closerApiOutbound = candApiOutbound.filter(isCloser);
+
+      if (closerApiInbound.length > 0 || closerApiOutbound.length > 0) {
+        const relNames = [...closerApiInbound, ...closerApiOutbound]
+          .map((f) => f.split("/").pop() || f)
+          .join(", ");
         results.push({
           filePath: candPath,
           type: "api",
+          distance,
           importedActiveFiles: [],
           importingActiveFiles: [],
-          tooltip: `API Endpoint Link: Handles network calls for ${seedNames}`,
+          tooltip: `[${distance} hop${distance > 1 ? "s" : ""}] API Endpoint Link: Handles network calls for ${relNames}`,
         });
         return;
       }
 
-      const importedSeed = candOutbound.filter((f) => seedFiles.has(f));
-      const importingSeed = candInbound.filter((f) => seedFiles.has(f));
+      const importedByCloser = candInbound.filter(isCloser);
+      const importsCloser = candOutbound.filter(isCloser);
 
-      const isParent = importedSeed.length > 0;
-      const isChild = importingSeed.length > 0;
+      const isParent = importsCloser.length > 0;
+      const isChild = importedByCloser.length > 0;
 
-      let type: "parent" | "child" | "hub" = "child";
-      let tooltip = "";
+      let type: "parent" | "child" | "hub";
+      let tooltip: string;
 
       if (isParent && isChild) {
         type = "hub";
-        tooltip = "Hub: Both a parent and child across active context";
+        tooltip = `[${distance} hop${distance > 1 ? "s" : ""}] Hub: Both a parent and child to active context`;
       } else if (isParent) {
         type = "parent";
-        const fileNames = importedSeed
+        const fileNames = importsCloser
           .map((f) => f.split("/").pop() || f)
           .join(", ");
-        tooltip = `Parent: Imports ${fileNames}`;
+        tooltip = `[${distance} hop${distance > 1 ? "s" : ""}] Parent: Imports ${fileNames}`;
       } else {
         type = "child";
-        const fileNames = importingSeed
+        const fileNames = importedByCloser
           .map((f) => f.split("/").pop() || f)
           .join(", ");
-        tooltip = `Child: Imported by ${fileNames}`;
+        tooltip = `[${distance} hop${distance > 1 ? "s" : ""}] Child: Imported by ${fileNames}`;
       }
 
       results.push({
         filePath: candPath,
         type,
-        importedActiveFiles: importedSeed,
-        importingActiveFiles: importingSeed,
+        distance,
+        importedActiveFiles: importsCloser,
+        importingActiveFiles: importedByCloser,
         tooltip,
       });
     });
 
-    return results;
+    return results.sort((a, b) => {
+      if (a.distance !== b.distance) return a.distance - b.distance;
+      return a.filePath.localeCompare(b.filePath);
+    });
   }, [seedFiles, selectedFiles, dependencyMap]);
 }
+
 
 ==================================================
 FILE PATH: src\features\prompt-builder\hooks\useTokenEstimate.ts
@@ -5074,6 +5428,72 @@ export function validateBlocks(
 
 
 ==================================================
+FILE PATH: src\features\prompt-builder\utils\completenessCheck.ts
+==================================================
+export interface MissingDependency {
+  filePath: string;
+  requiredBy: string[];
+  kind: "import" | "api";
+}
+
+interface DependencyMapShape {
+  outbound?: Record<string, string[]>;
+  apiOutbound?: Record<string, string[]>;
+}
+
+/**
+ * Detects files that are referenced (via import or API call) by the current
+ * selection but are NOT themselves selected. This is a deterministic check —
+ * unlike the suggestion bar, it is meant to run right before context is
+ * copied, so nothing referenced by the sent code is silently missing.
+ */
+export function findMissingDependencies(
+  selectedFiles: Set<string>,
+  dependencyMap?: DependencyMapShape,
+): MissingDependency[] {
+  if (!dependencyMap) return [];
+
+  const outboundMap = dependencyMap.outbound || {};
+  const apiOutboundMap = dependencyMap.apiOutbound || {};
+
+  const missingByFile = new Map<string, MissingDependency>();
+
+  const recordEdge = (
+    target: string,
+    source: string,
+    kind: "import" | "api",
+  ) => {
+    if (selectedFiles.has(target)) return;
+    const existing = missingByFile.get(target);
+    if (existing) {
+      if (!existing.requiredBy.includes(source)) {
+        existing.requiredBy.push(source);
+      }
+    } else {
+      missingByFile.set(target, {
+        filePath: target,
+        requiredBy: [source],
+        kind,
+      });
+    }
+  };
+
+  selectedFiles.forEach((file) => {
+    (outboundMap[file] || []).forEach((target) =>
+      recordEdge(target, file, "import"),
+    );
+    (apiOutboundMap[file] || []).forEach((target) =>
+      recordEdge(target, file, "api"),
+    );
+  });
+
+  return Array.from(missingByFile.values()).sort((a, b) =>
+    a.filePath.localeCompare(b.filePath),
+  );
+}
+
+
+==================================================
 FILE PATH: src\features\prompt-builder\utils\diffParser.ts
 ==================================================
 import { DiffBlock } from "../../../types/patch";
@@ -5203,77 +5623,129 @@ FILE PATH: src\features\prompt-builder\utils\fuzzySearch.ts
 ==================================================
 export interface FuzzyResult {
   filePath: string;
-  fileName: string;
-  dirPath: string;
   score: number;
-  matchedIndices: Set<number>;
+  matches: number[];
 }
 
-export function fuzzySearchFiles(files: string[], query: string): FuzzyResult[] {
-  if (!query) {
-    return files.slice(0, 8).map((f) => {
-      const parts = f.split("/");
-      const fileName = parts.pop() || f;
-      return {
-        filePath: f,
-        fileName,
-        dirPath: parts.join("/"),
-        score: 0,
-        matchedIndices: new Set<number>(),
-      };
-    });
+function trySubstringMatch(
+  filePath: string,
+  lowerPath: string,
+  query: string,
+  lowerQuery: string,
+): FuzzyResult | null {
+  const substringIdx = lowerPath.indexOf(lowerQuery);
+  if (substringIdx === -1) return null;
+
+  const matches: number[] = [];
+  for (let i = 0; i < lowerQuery.length; i++) {
+    matches.push(substringIdx + i);
   }
 
-  const q = query.toLowerCase();
-  const results: FuzzyResult[] = [];
+  let score = 1000 - filePath.length; // Favor shorter paths
 
-  for (const file of files) {
-    const lowerFile = file.toLowerCase();
-    let qIdx = 0;
-    let score = 0;
-    let consecutive = 0;
-    const matchedIndices = new Set<number>();
+  // Bonus if it matches the start of the filename
+  const lastSlash = lowerPath.lastIndexOf("/");
+  if (substringIdx === lastSlash + 1) {
+    score += 500;
+  } else if (substringIdx > lastSlash) {
+    score += 200; // Matches somewhere inside the filename
+  }
 
-    const parts = file.split("/");
-    const fileName = parts.pop() || file;
-    const dirPath = parts.join("/");
-    const fileNameStartIdx = file.lastIndexOf("/") + 1;
+  // Exact case match bonus
+  if (filePath.includes(query)) {
+    score += 100;
+  }
 
-    for (let i = 0; i < file.length; i++) {
-      if (qIdx < q.length && lowerFile[i] === q[qIdx]) {
-        matchedIndices.add(i);
-        qIdx++;
-        score += 10;
-        consecutive += 1;
-        score += consecutive * 5;
+  return { filePath, score, matches };
+}
 
-        if (i >= fileNameStartIdx) score += 15;
+function tryFuzzyMatch(
+  filePath: string,
+  lowerPath: string,
+  query: string,
+  lowerQuery: string,
+): FuzzyResult | null {
+  const matches: number[] = [];
+  let queryIdx = lowerQuery.length - 1;
+  let pathIdx = lowerPath.length - 1;
+  let score = 0;
+  let consecutive = 0;
 
-        if (
-          i === 0 ||
-          i === fileNameStartIdx ||
-          " /._-".includes(file[i - 1])
-        ) {
-          score += 20;
-        }
-      } else {
-        consecutive = 0;
+  while (pathIdx >= 0 && queryIdx >= 0) {
+    if (lowerPath[pathIdx] === lowerQuery[queryIdx]) {
+      matches.push(pathIdx);
+
+      score += 10; // Base match score
+      if (consecutive > 0) {
+        score += consecutive * 5; // Consecutive characters matter a lot
       }
+
+      const isBoundary =
+        pathIdx === 0 || ["/", ".", "-", "_"].includes(lowerPath[pathIdx - 1]);
+
+      if (isBoundary) {
+        score += 20;
+        if (pathIdx === lowerPath.lastIndexOf("/") + 1) {
+          score += 40; // Massive bonus for filename boundary
+        }
+      }
+
+      if (filePath[pathIdx] === query[queryIdx]) {
+        score += 5; // Exact case
+      }
+
+      consecutive++;
+      queryIdx--;
+    } else {
+      consecutive = 0;
+    }
+    pathIdx--;
+  }
+
+  // Only accept if all characters in the query were found
+  if (queryIdx < 0) {
+    score -= filePath.length; // Slight penalty for longer paths
+    // Reverse matches since we collected them right-to-left
+    return { filePath, score, matches: matches.reverse() };
+  }
+
+  return null;
+}
+
+export function fuzzySearchFiles(
+  files: string[],
+  query: string,
+): FuzzyResult[] {
+  if (!query) {
+    return files.slice(0, 20).map((filePath) => ({
+      filePath,
+      score: 0,
+      matches: [],
+    }));
+  }
+
+  const results: FuzzyResult[] = [];
+  const lowerQuery = query.toLowerCase();
+
+  for (const filePath of files) {
+    const lowerPath = filePath.toLowerCase();
+
+    // 1. Direct Substring Match (Highest priority)
+    let match = trySubstringMatch(filePath, lowerPath, query, lowerQuery);
+
+    // 2. Right-to-Left Greedy Fuzzy Match (Fallback)
+    if (!match) {
+      match = tryFuzzyMatch(filePath, lowerPath, query, lowerQuery);
     }
 
-    if (qIdx === q.length) {
-      results.push({
-        filePath: file,
-        fileName,
-        dirPath,
-        score,
-        matchedIndices,
-      });
+    if (match) {
+      results.push(match);
     }
   }
 
-  return results.sort((a, b) => b.score - a.score).slice(0, 8);
+  return results.sort((a, b) => b.score - a.score).slice(0, 20);
 }
+
 
 ==================================================
 FILE PATH: src\features\prompt-builder\utils\promptTemplates.ts
