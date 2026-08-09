@@ -1,5 +1,11 @@
 import { useState, useEffect } from "react";
-import { ClipboardPaste, AlertTriangle, Bug } from "lucide-react";
+import {
+  ClipboardPaste,
+  AlertTriangle,
+  Bug,
+  Copy,
+  CheckCircle2,
+} from "lucide-react";
 import { DiffBlock } from "../../../types/patch";
 import { ClipboardDebugger } from "./diff/ClipboardDebugger";
 import { DiffBlockCard } from "./diff/DiffBlockCard";
@@ -41,6 +47,10 @@ export function DiffPanel({
   const [editSearch, setEditSearch] = useState("");
   const [editReplace, setEditReplace] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [copiedAllErrors, setCopiedAllErrors] = useState(false);
+  const [copiedErrorBlockId, setCopiedErrorBlockId] = useState<string | null>(
+    null,
+  );
 
   const handleCopyBlock = (block: DiffBlock) => {
     const text = `FILE: ${block.file}\n<<<<<<< SEARCH\n${block.search}\n=======\n${block.replace}\n>>>>>>> REPLACE`;
@@ -49,26 +59,53 @@ export function DiffPanel({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const handleCopyAllErrors = () => {
+    if (validationErrors.length === 0) return;
+    const text = [
+      "### Patch Validation Errors for AI Resolution\n",
+      "The following validation errors were encountered when checking diff blocks:\n",
+      ...validationErrors.map((err, idx) => `${idx + 1}. ${err}`),
+      "\nPlease analyze these errors and provide updated diff blocks that fix these issues.",
+    ].join("\n");
+
+    navigator.clipboard.writeText(text);
+    setCopiedAllErrors(true);
+    setTimeout(() => setCopiedAllErrors(false), 2000);
+  };
+
+  const handleCopyBlockWithError = (block: DiffBlock, errors: string[]) => {
+    const blockContent =
+      block.type === "move"
+        ? `MOVE '${block.file}' -> '${block.moveTo}'`
+        : `FILE: ${block.file}\n<<<<<<< SEARCH\n${block.search}\n=======\n${block.replace}\n>>>>>>> REPLACE`;
+
+    const formattedErrors =
+      errors.length > 0
+        ? errors.map((err) => `- ${err}`).join("\n")
+        : "- No specific validation error provided.";
+
+    const text = `### Error Report for Block: ${block.file}\n\nValidation Errors:\n${formattedErrors}\n\nBlock Content:\n${blockContent}\n\nPlease fix this patch block so that SEARCH matches the current file content.`;
+
+    navigator.clipboard.writeText(text);
+    setCopiedErrorBlockId(block.id);
+    setTimeout(() => setCopiedErrorBlockId(null), 2000);
+  };
+
   const startEditing = (block: DiffBlock) => {
     setEditingBlockId(block.id);
     setEditSearch(block.search || "");
     setEditReplace(block.replace || "");
-    if (collapsedBlocks.has(block.id)) {
-      toggleCollapse(block.id);
-    }
+    if (collapsedBlocks.has(block.id)) toggleCollapse(block.id);
   };
 
   const saveEdit = () => {
-    if (editingBlockId && onBlockEdit) {
+    if (editingBlockId && onBlockEdit)
       onBlockEdit(editingBlockId, editSearch, editReplace);
-    }
     setEditingBlockId(null);
   };
 
   useEffect(() => {
-    if (parsedBlocks.length === 0) {
-      setFilterMode("all");
-    }
+    if (parsedBlocks.length === 0) setFilterMode("all");
   }, [parsedBlocks]);
 
   useEffect(() => {
@@ -78,11 +115,9 @@ export function DiffPanel({
       const totalLines = (
         (parsedBlocks[0].search || "") + (parsedBlocks[0].replace || "")
       ).split("\n").length;
-      if (totalLines > 25) {
-        setCollapsedBlocks(new Set([parsedBlocks[0].id]));
-      } else {
-        setCollapsedBlocks(new Set());
-      }
+      setCollapsedBlocks(
+        totalLines > 25 ? new Set([parsedBlocks[0].id]) : new Set(),
+      );
     } else {
       setCollapsedBlocks(new Set());
     }
@@ -94,11 +129,8 @@ export function DiffPanel({
     } else {
       setInternalIgnoredBlocks((prev) => {
         const next = new Set(prev);
-        if (next.has(id)) {
-          next.delete(id);
-        } else {
-          next.add(id);
-        }
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
         return next;
       });
     }
@@ -107,21 +139,18 @@ export function DiffPanel({
   const toggleCollapse = (id: string) => {
     setCollapsedBlocks((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
 
   const toggleAllCollapse = () => {
-    if (collapsedBlocks.size === parsedBlocks.length) {
-      setCollapsedBlocks(new Set());
-    } else {
-      setCollapsedBlocks(new Set(parsedBlocks.map((b) => b.id)));
-    }
+    setCollapsedBlocks(
+      collapsedBlocks.size === parsedBlocks.length
+        ? new Set()
+        : new Set(parsedBlocks.map((b) => b.id)),
+    );
   };
 
   const activeBlocks = parsedBlocks.filter(
@@ -133,13 +162,12 @@ export function DiffPanel({
     autoValidate: true,
   });
 
-  const getBlockErrors = (block: DiffBlock) => {
-    return validationErrors.filter(
+  const getBlockErrors = (block: DiffBlock) =>
+    validationErrors.filter(
       (err) =>
         err.includes(block.file) ||
         (block.moveTo && err.includes(block.moveTo)),
     );
-  };
 
   const matchCount = activeBlocks.filter((b) => b.status === "match").length;
   const noMatchCount = activeBlocks.filter(
@@ -153,17 +181,14 @@ export function DiffPanel({
 
   const filteredBlocks = parsedBlocks.filter((block) => {
     const isIgnored = Boolean(effectiveIgnoredBlocks?.has?.(block.id));
-    const isMatched = block.status === "match";
-    const isNoMatch = block.status === "no-match";
     const hasError = getBlockErrors(block).length > 0;
-
     switch (filterMode) {
       case "active":
         return !isIgnored;
       case "matched":
-        return !isIgnored && isMatched;
+        return !isIgnored && block.status === "match";
       case "not-matched":
-        return !isIgnored && isNoMatch;
+        return !isIgnored && block.status === "no-match";
       case "errors":
         return !isIgnored && hasError;
       case "ignored":
@@ -192,6 +217,36 @@ export function DiffPanel({
         onClear={onClear}
       />
 
+      {validationErrors.length > 0 && (
+        <div className="bg-rose-950/40 border border-rose-900/60 rounded-xl p-3 flex items-center justify-between shrink-0 shadow-sm">
+          <div className="flex items-center space-x-2.5 text-rose-300 text-xs font-medium min-w-0 pr-2">
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span className="truncate">
+              {validationErrors.length} validation{" "}
+              {validationErrors.length === 1 ? "error" : "errors"} detected in
+              diff blocks
+            </span>
+          </div>
+          <button
+            onClick={handleCopyAllErrors}
+            className="px-3 py-1.5 bg-rose-900/60 hover:bg-rose-800/80 text-rose-100 text-xs font-medium rounded-lg transition-colors shrink-0 flex items-center space-x-1.5 cursor-pointer border border-rose-700/50"
+            title="Copy all validation errors to clipboard for AI resolution"
+          >
+            {copiedAllErrors ? (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Copied All Errors!</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-3.5 h-3.5 text-rose-300" />
+                <span>Copy All Errors</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
       <div className="flex-1 flex flex-col space-y-4 overflow-hidden">
         {!pastedContent ? (
           <div
@@ -212,12 +267,12 @@ export function DiffPanel({
               No Diff Blocks Detected
             </p>
             <p className="text-xs text-zinc-400 max-w-md">
-              The pasted clipboard text does not contain valid
+              The pasted clipboard text does not contain valid{" "}
               <code className="text-cyan-400">
                 &lt;&lt;&lt;&lt;&lt;&lt;&lt; SEARCH
               </code>
-              , <code className="text-cyan-400">Create 'file'</code>, or
-              <code className="text-cyan-400">MOVE 'old' -&gt; 'new'</code>
+              , <code className="text-cyan-400">Create 'file'</code>, or{" "}
+              <code className="text-cyan-400">MOVE 'old' -&gt; 'new'</code>{" "}
               blocks.
             </p>
             <div className="flex items-center space-x-3 pt-2">
@@ -237,7 +292,6 @@ export function DiffPanel({
                 </span>
               </button>
             </div>
-
             {showDebug && <ClipboardDebugger pastedContent={pastedContent} />}
           </div>
         ) : (
@@ -246,7 +300,7 @@ export function DiffPanel({
               {filteredBlocks.length === 0 ? (
                 <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-zinc-500 space-y-2 border border-zinc-800/60 rounded-xl bg-zinc-900/20">
                   <p className="text-xs font-semibold text-zinc-400">
-                    No diff blocks match the current filter (
+                    No diff blocks match current filter (
                     <span className="text-cyan-400 font-bold uppercase">
                       {filterMode}
                     </span>
@@ -260,36 +314,28 @@ export function DiffPanel({
                   </button>
                 </div>
               ) : (
-                filteredBlocks.map((block) => {
-                  const blockErrors = validationErrors.filter(
-                    (err) =>
-                      err.includes(block.file) ||
-                      (block.moveTo && err.includes(block.moveTo)),
-                  );
-
-                  return (
-                    <DiffBlockCard
-                      key={block.id}
-                      block={block}
-                      validationErrors={blockErrors}
-                      isIgnored={Boolean(
-                        effectiveIgnoredBlocks?.has?.(block.id),
-                      )}
-                      isCollapsed={Boolean(collapsedBlocks?.has?.(block.id))}
-                      isEditing={editingBlockId === block.id}
-                      editSearch={editSearch}
-                      editReplace={editReplace}
-                      copiedId={copiedId}
-                      onToggleBlock={toggleBlock}
-                      onToggleCollapse={toggleCollapse}
-                      onCopyBlock={handleCopyBlock}
-                      onStartEditing={startEditing}
-                      onSaveEdit={saveEdit}
-                      onEditSearchChange={setEditSearch}
-                      onEditReplaceChange={setEditReplace}
-                    />
-                  );
-                })
+                filteredBlocks.map((block) => (
+                  <DiffBlockCard
+                    key={block.id}
+                    block={block}
+                    validationErrors={getBlockErrors(block)}
+                    isIgnored={Boolean(effectiveIgnoredBlocks?.has?.(block.id))}
+                    isCollapsed={Boolean(collapsedBlocks?.has?.(block.id))}
+                    isEditing={editingBlockId === block.id}
+                    editSearch={editSearch}
+                    editReplace={editReplace}
+                    copiedId={copiedId}
+                    copiedErrorId={copiedErrorBlockId}
+                    onToggleBlock={toggleBlock}
+                    onToggleCollapse={toggleCollapse}
+                    onCopyBlock={handleCopyBlock}
+                    onCopyBlockWithError={handleCopyBlockWithError}
+                    onStartEditing={startEditing}
+                    onSaveEdit={saveEdit}
+                    onEditSearchChange={setEditSearch}
+                    onEditReplaceChange={setEditReplace}
+                  />
+                ))
               )}
             </div>
 
