@@ -53,7 +53,8 @@ export function DiffPanel({
   );
 
   const handleCopyBlock = (block: DiffBlock) => {
-    const text = `FILE: ${block.file}\n<<<<<<< SEARCH\n${block.search}\n=======\n${block.replace}\n>>>>>>> REPLACE`;
+    const targetFile = block.matchedFile || block.file;
+    const text = `FILE: ${targetFile}\n<<<<<<< SEARCH\n${block.search}\n=======\n${block.replace}\n>>>>>>> REPLACE`;
     navigator.clipboard.writeText(text);
     setCopiedId(block.id);
     setTimeout(() => setCopiedId(null), 2000);
@@ -74,17 +75,18 @@ export function DiffPanel({
   };
 
   const handleCopyBlockWithError = (block: DiffBlock, errors: string[]) => {
+    const targetFile = block.matchedFile || block.file;
     const blockContent =
       block.type === "move"
         ? `MOVE '${block.file}' -> '${block.moveTo}'`
-        : `FILE: ${block.file}\n<<<<<<< SEARCH\n${block.search}\n=======\n${block.replace}\n>>>>>>> REPLACE`;
+        : `FILE: ${targetFile}\n<<<<<<< SEARCH\n${block.search}\n=======\n${block.replace}\n>>>>>>> REPLACE`;
 
     const formattedErrors =
       errors.length > 0
         ? errors.map((err) => `- ${err}`).join("\n")
         : "- No specific validation error provided.";
 
-    const text = `### Error Report for Block: ${block.file}\n\nValidation Errors:\n${formattedErrors}\n\nBlock Content:\n${blockContent}\n\nPlease fix this patch block so that SEARCH matches the current file content.`;
+    const text = `### Error Report for Block: ${targetFile}\n\nValidation Errors:\n${formattedErrors}\n\nBlock Content:\n${blockContent}\n\nPlease fix this patch block so that SEARCH matches the current file content.`;
 
     navigator.clipboard.writeText(text);
     setCopiedErrorBlockId(block.id);
@@ -166,6 +168,7 @@ export function DiffPanel({
     validationErrors.filter(
       (err) =>
         err.includes(block.file) ||
+        (block.matchedFile && err.includes(block.matchedFile)) ||
         (block.moveTo && err.includes(block.moveTo)),
     );
 

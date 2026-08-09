@@ -58,13 +58,19 @@ export function useApplyChanges({
     });
   };
 
+  const normalizeBlocks = (blocks: DiffBlock[]): DiffBlock[] =>
+    blocks.map((b) => ({
+      ...b,
+      file: b.matchedFile || b.file,
+    }));
+
   const blocksJson = JSON.stringify(diffBlocks);
 
   useEffect(() => {
     if (!autoValidate) return;
 
-    const blocks = JSON.parse(blocksJson) as DiffBlock[];
-    if (blocks.length === 0) {
+    const rawBlocks = JSON.parse(blocksJson) as DiffBlock[];
+    if (rawBlocks.length === 0) {
       setValidationErrors([]);
       return;
     }
@@ -72,6 +78,7 @@ export function useApplyChanges({
     const timer = setTimeout(async () => {
       setIsValidating(true);
       try {
+        const blocks = normalizeBlocks(rawBlocks);
         const data = await patchApi.applyStream(
           { blocks, dryRun: true },
           () => {},
@@ -104,9 +111,10 @@ export function useApplyChanges({
     setIsApplying(true);
     setStages([]);
     try {
+      const normalizedBlocks = normalizeBlocks(diffBlocks);
       const data = await patchApi.applyStream(
         {
-          blocks: diffBlocks,
+          blocks: normalizedBlocks,
           commitMessage: shouldCommit ? commitMessage : "",
           skipCommit: !shouldCommit,
           commit: shouldCommit,
@@ -148,8 +156,9 @@ export function useApplyChanges({
 
     setIsValidating(true);
     try {
+      const normalizedBlocks = normalizeBlocks(diffBlocks);
       const data = await patchApi.applyStream(
-        { blocks: diffBlocks, dryRun: true },
+        { blocks: normalizedBlocks, dryRun: true },
         handleProgress,
       );
       if (data.success) {

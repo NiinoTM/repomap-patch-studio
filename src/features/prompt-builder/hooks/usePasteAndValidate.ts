@@ -13,6 +13,7 @@ interface UsePasteAndValidateParams {
   discoveryMode: boolean;
   setDiscoveryMode: (value: boolean) => void;
   setDiscoveredFiles: (files: string[]) => void;
+  repoFiles?: string[];
 }
 
 /**
@@ -30,6 +31,7 @@ export function usePasteAndValidate({
   discoveryMode,
   setDiscoveryMode,
   setDiscoveredFiles,
+  repoFiles,
 }: UsePasteAndValidateParams) {
   const handlePaste = useCallback(
     async (append = false) => {
@@ -64,15 +66,22 @@ export function usePasteAndValidate({
           return;
         }
 
-        const uniqueFiles = Array.from(
-          new Set(
-            parsed.map((b) => b.file).filter((f) => f !== "Active File"),
-          ),
+        const hasUnmatchedOrActive = parsed.some(
+          (b) => b.file === "Active File" || !b.file,
+        );
+
+        const filesToFetch = Array.from(
+          new Set([
+            ...parsed
+              .map((b) => b.file)
+              .filter((f) => f && f !== "Active File"),
+            ...(hasUnmatchedOrActive ? repoFiles || [] : []),
+          ]),
         );
 
         let data = { success: false, contents: {} as Record<string, string> };
-        if (uniqueFiles.length > 0) {
-          data = await filesApi.fetchFiles(uniqueFiles);
+        if (filesToFetch.length > 0) {
+          data = await filesApi.fetchFiles(filesToFetch);
         } else {
           data.success = true;
         }
@@ -94,6 +103,7 @@ export function usePasteAndValidate({
       discoveryMode,
       setDiscoveryMode,
       setDiscoveredFiles,
+      repoFiles,
     ],
   );
 

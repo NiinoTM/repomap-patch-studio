@@ -2058,166 +2058,13 @@ export async function validateLint(
 FILE PATH: server\services\patchEngine.ts
 ==================================================
 import { validateSyntax } from "./syntaxService";
-
-export interface DiffBlockInput {
-  file: string;
-  search: string;
-  replace: string;
-  type?: "edit" | "move";
-  moveTo?: string;
-}
-
-export interface ApplyBlockResult {
-  success: boolean;
-  newContent?: string;
-  error?: string;
-}
-
-export interface CondensedRange {
-  start: number;
-  end: number;
-}
-
-/**
- * Finds a condensed range match in content for search text.
- */
-export function findCondensedRange(
-  content: string,
-  search: string,
-): CondensedRange | null {
-  const preCleanContent = content
-    .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
-    .replace(/\{\s*["']\s*["']\s*\}/g, "");
-  const cleanSearch = search
-    .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
-    .replace(/\{\s*["']\s*["']\s*\}/g, "")
-    .replace(/[\s,'"`();]+/g, "");
-
-  if (!cleanSearch) return null;
-
-  let cIdx = 0;
-  let sIdx = 0;
-  let startMatchPos = -1;
-
-  while (cIdx < preCleanContent.length && sIdx < cleanSearch.length) {
-    if (/[\s,'"`();]/.test(preCleanContent[cIdx])) {
-      cIdx++;
-      continue;
-    }
-
-    if (preCleanContent[cIdx] === cleanSearch[sIdx]) {
-      if (sIdx === 0) startMatchPos = cIdx;
-      sIdx++;
-      cIdx++;
-    } else {
-      if (startMatchPos !== -1) {
-        cIdx = startMatchPos + 1;
-        startMatchPos = -1;
-        sIdx = 0;
-      } else {
-        cIdx++;
-      }
-    }
-  }
-
-  if (sIdx === cleanSearch.length && startMatchPos !== -1) {
-    return { start: startMatchPos, end: cIdx };
-  }
-
-  return null;
-}
-
-function applyFuzzyIndentationMatch(
-  normContent: string,
-  normSearch: string,
-  normReplace: string,
-): string | null {
-  const searchLines = normSearch
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-  const contentLines = normContent.split("\n");
-
-  let matchIndex = -1;
-  for (let i = 0; i <= contentLines.length - searchLines.length; i++) {
-    let isCandidate = true;
-    for (let j = 0; j < searchLines.length; j++) {
-      if (contentLines[i + j].trim() !== searchLines[j]) {
-        isCandidate = false;
-        break;
-      }
-    }
-    if (isCandidate) {
-      matchIndex = i;
-      break;
-    }
-  }
-
-  if (matchIndex !== -1) {
-    const indentMatch = contentLines[matchIndex].match(/^[ \t]*/);
-    const indent = indentMatch ? indentMatch[0] : "";
-    const replaceLines = normReplace.split("\n").map((line) => {
-      return line.trim() ? indent + line.replace(/^[ \t]*/, "") : "";
-    });
-
-    contentLines.splice(matchIndex, searchLines.length, ...replaceLines);
-    return contentLines.join("\n");
-  }
-
-  return null;
-}
-
-/**
- * Pure In-Memory Block Application Engine (Exact, Fuzzy Indentation & Condensed Token Stream).
- */
-export function applyBlockToContent(
-  content: string,
-  block: DiffBlockInput,
-): ApplyBlockResult {
-  if (!block.search || !block.search.trim() || block.file === "Active File") {
-    return { success: true, newContent: block.replace };
-  }
-
-  const normContent = content.replace(/\r\n/g, "\n");
-  const normSearch = block.search.replace(/\r\n/g, "\n");
-  const normReplace = block.replace.replace(/\r\n/g, "\n");
-
-  // 1. Exact Match
-  if (normContent.includes(normSearch)) {
-    return {
-      success: true,
-      newContent: normContent.replace(normSearch, normReplace),
-    };
-  }
-
-  // 2. Smart Fuzzy Indentation Match
-  const fuzzyMatch = applyFuzzyIndentationMatch(
-    normContent,
-    normSearch,
-    normReplace,
-  );
-  if (fuzzyMatch !== null) {
-    return { success: true, newContent: fuzzyMatch };
-  }
-
-  // 3. Condensed Token Stream Replacement
-  const range = findCondensedRange(normContent, normSearch);
-  if (range) {
-    const cleanNormContent = normContent
-      .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
-      .replace(/\{\s*["']\s*["']\s*\}/g, "");
-    const newContent =
-      cleanNormContent.slice(0, range.start) +
-      normReplace +
-      cleanNormContent.slice(range.end);
-    return { success: true, newContent };
-  }
-
-  return {
-    success: false,
-    error: `SEARCH block match failed for file: ${block.file}`,
-  };
-}
+import {
+  DiffBlockInput,
+  ApplyBlockResult,
+  CondensedRange,
+  findCondensedRange,
+  applyBlockToContent,
+} from "../../src/utils/patchMatcher";
 
 export interface BlockApplyOutcome {
   finalContent: string;
@@ -2254,7 +2101,14 @@ export function applyBlocksSequentially(
   return { finalContent: currentContent, blockErrors };
 }
 
-export { validateSyntax };
+export {
+  type DiffBlockInput,
+  type ApplyBlockResult,
+  type CondensedRange,
+  findCondensedRange,
+  applyBlockToContent,
+  validateSyntax,
+};
 
 
 ==================================================
@@ -2420,6 +2274,7 @@ export default function App() {
     discoveryMode,
     setDiscoveryMode,
     setDiscoveredFiles,
+    repoFiles,
   });
 
   const handleChangeRepo = async (newPath: string) => {
@@ -2761,7 +2616,8 @@ export function DiffPanel({
   );
 
   const handleCopyBlock = (block: DiffBlock) => {
-    const text = `FILE: ${block.file}\n<<<<<<< SEARCH\n${block.search}\n=======\n${block.replace}\n>>>>>>> REPLACE`;
+    const targetFile = block.matchedFile || block.file;
+    const text = `FILE: ${targetFile}\n<<<<<<< SEARCH\n${block.search}\n=======\n${block.replace}\n>>>>>>> REPLACE`;
     navigator.clipboard.writeText(text);
     setCopiedId(block.id);
     setTimeout(() => setCopiedId(null), 2000);
@@ -2782,17 +2638,18 @@ export function DiffPanel({
   };
 
   const handleCopyBlockWithError = (block: DiffBlock, errors: string[]) => {
+    const targetFile = block.matchedFile || block.file;
     const blockContent =
       block.type === "move"
         ? `MOVE '${block.file}' -> '${block.moveTo}'`
-        : `FILE: ${block.file}\n<<<<<<< SEARCH\n${block.search}\n=======\n${block.replace}\n>>>>>>> REPLACE`;
+        : `FILE: ${targetFile}\n<<<<<<< SEARCH\n${block.search}\n=======\n${block.replace}\n>>>>>>> REPLACE`;
 
     const formattedErrors =
       errors.length > 0
         ? errors.map((err) => `- ${err}`).join("\n")
         : "- No specific validation error provided.";
 
-    const text = `### Error Report for Block: ${block.file}\n\nValidation Errors:\n${formattedErrors}\n\nBlock Content:\n${blockContent}\n\nPlease fix this patch block so that SEARCH matches the current file content.`;
+    const text = `### Error Report for Block: ${targetFile}\n\nValidation Errors:\n${formattedErrors}\n\nBlock Content:\n${blockContent}\n\nPlease fix this patch block so that SEARCH matches the current file content.`;
 
     navigator.clipboard.writeText(text);
     setCopiedErrorBlockId(block.id);
@@ -2874,6 +2731,7 @@ export function DiffPanel({
     validationErrors.filter(
       (err) =>
         err.includes(block.file) ||
+        (block.matchedFile && err.includes(block.matchedFile)) ||
         (block.moveTo && err.includes(block.moveTo)),
     );
 
@@ -3069,7 +2927,7 @@ export function DiffPanel({
 ==================================================
 FILE PATH: src\features\prompt-builder\components\Footer.tsx
 ==================================================
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Check,
   GitCommit,
@@ -3095,14 +2953,37 @@ export function Footer({
   onApplySuccess,
 }: FooterProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [showProgressBanner, setShowProgressBanner] = useState(false);
   const [commitMessage, setCommitMessage] = useState("ai-edit: updated files");
   const [modalCommitMessage, setModalCommitMessage] = useState(
     "ai-edit: updated files",
   );
   const commitDialogRef = useRef<HTMLDialogElement>(null);
+  const prevRunningRef = useRef(false);
 
   const { isApplying, isValidating, stages, applyChanges, validateDryRun } =
     useApplyChanges({ diffBlocks, onApplySuccess });
+
+  useEffect(() => {
+    const isRunning = isApplying || isValidating;
+
+    if (isRunning) {
+      setShowProgressBanner(true);
+      setDrawerOpen(false);
+      prevRunningRef.current = true;
+      return;
+    }
+
+    if (prevRunningRef.current && !isRunning) {
+      prevRunningRef.current = false;
+      const timer = setTimeout(() => {
+        setShowProgressBanner(false);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [isApplying, isValidating]);
+
+  const hasErrors = stages.some((s) => s.status === "error");
 
   const handleCommitButtonClick = async () => {
     const ok = await validateDryRun();
@@ -3152,7 +3033,7 @@ export function Footer({
         </div>
       )}
 
-      {stages.length > 0 && (
+      {showProgressBanner && stages.length > 0 && (
         <div className="absolute bottom-full left-0 right-0 bg-zinc-950 border-t border-zinc-800 z-0 px-6 py-3">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-mono">
             {stages.map((s) => (
@@ -3195,8 +3076,31 @@ export function Footer({
           />
         </div>
         <div className="flex items-center space-x-4">
+          {stages.length > 0 && (
+            <button
+              onClick={() => {
+                setShowProgressBanner((prev) => !prev);
+                if (!showProgressBanner) setDrawerOpen(false);
+              }}
+              className="flex flex-col items-center justify-center px-4 py-2 hover:bg-zinc-900 rounded-md transition-colors"
+              title="Toggle progress details"
+            >
+              {isApplying || isValidating ? (
+                <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
+              ) : hasErrors ? (
+                <XCircle className="w-4 h-4 text-rose-400" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              )}
+              <span className="text-[10px] mt-1 text-zinc-500">Progress</span>
+            </button>
+          )}
+
           <button
-            onClick={() => setDrawerOpen(!drawerOpen)}
+            onClick={() => {
+              setDrawerOpen((prev) => !prev);
+              if (!drawerOpen) setShowProgressBanner(false);
+            }}
             className="flex flex-col items-center justify-center px-4 py-2 hover:bg-zinc-900 rounded-md transition-colors"
           >
             <History className="w-4 h-4 text-zinc-500" />
@@ -4105,9 +4009,17 @@ export function DiffBlockCard({
             )}
           </button>
           <span className="text-xs font-mono text-zinc-200 font-medium truncate">
-            {block.file}
+            {block.matchedFile || block.file}
           </span>
-          <StatusBadge status={block.status} />
+          {block.file === "Active File" && block.matchedFile && (
+            <span className="text-[10px] text-zinc-500 font-mono hidden md:inline truncate">
+              (Active File)
+            </span>
+          )}
+          <StatusBadge
+            status={block.status}
+            isCodeMatched={block.isCodeMatched}
+          />
           {isCollapsed && (
             <span className="text-[10px] text-zinc-500 font-mono hidden sm:inline truncate">
               ({searchLines.length} search / {replaceLines.length} replace
@@ -4496,25 +4408,43 @@ export function DiffFilterToolbar({
 ==================================================
 FILE PATH: src\features\prompt-builder\components\diff\StatusBadge.tsx
 ==================================================
+import { Code2 } from "lucide-react";
+
 interface StatusBadgeProps {
   status: string;
   matchLabel?: string;
   noMatchLabel?: string;
+  isCodeMatched?: boolean;
 }
 
 export function StatusBadge({
   status,
   matchLabel = "Match Found",
   noMatchLabel = "Not Found",
+  isCodeMatched = false,
 }: StatusBadgeProps) {
-  return status === "match" ? (
-    <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase shrink-0">
-      {matchLabel}
-    </span>
-  ) : (
-    <span className="bg-rose-500/20 text-rose-400 text-[10px] px-1.5 py-0.5 rounded border border-rose-500/20 font-bold uppercase shrink-0">
-      {noMatchLabel}
-    </span>
+  return (
+    <div className="flex items-center space-x-1.5 shrink-0">
+      {status === "match" ? (
+        <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase shrink-0">
+          {matchLabel}
+        </span>
+      ) : (
+        <span className="bg-rose-500/20 text-rose-400 text-[10px] px-1.5 py-0.5 rounded border border-rose-500/20 font-bold uppercase shrink-0">
+          {noMatchLabel}
+        </span>
+      )}
+
+      {isCodeMatched && (
+        <span
+          className="bg-cyan-500/20 text-cyan-400 text-[10px] px-1.5 py-0.5 rounded border border-cyan-500/30 font-bold uppercase shrink-0 flex items-center"
+          title="Target file resolved by matching SEARCH block against codebase content"
+        >
+          <Code2 className="w-3.5 h-3.5 mr-1" />
+          <span>Found by Code</span>
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -5144,13 +5074,19 @@ export function useApplyChanges({
     });
   };
 
+  const normalizeBlocks = (blocks: DiffBlock[]): DiffBlock[] =>
+    blocks.map((b) => ({
+      ...b,
+      file: b.matchedFile || b.file,
+    }));
+
   const blocksJson = JSON.stringify(diffBlocks);
 
   useEffect(() => {
     if (!autoValidate) return;
 
-    const blocks = JSON.parse(blocksJson) as DiffBlock[];
-    if (blocks.length === 0) {
+    const rawBlocks = JSON.parse(blocksJson) as DiffBlock[];
+    if (rawBlocks.length === 0) {
       setValidationErrors([]);
       return;
     }
@@ -5158,6 +5094,7 @@ export function useApplyChanges({
     const timer = setTimeout(async () => {
       setIsValidating(true);
       try {
+        const blocks = normalizeBlocks(rawBlocks);
         const data = await patchApi.applyStream(
           { blocks, dryRun: true },
           () => {},
@@ -5190,9 +5127,10 @@ export function useApplyChanges({
     setIsApplying(true);
     setStages([]);
     try {
+      const normalizedBlocks = normalizeBlocks(diffBlocks);
       const data = await patchApi.applyStream(
         {
-          blocks: diffBlocks,
+          blocks: normalizedBlocks,
           commitMessage: shouldCommit ? commitMessage : "",
           skipCommit: !shouldCommit,
           commit: shouldCommit,
@@ -5234,8 +5172,9 @@ export function useApplyChanges({
 
     setIsValidating(true);
     try {
+      const normalizedBlocks = normalizeBlocks(diffBlocks);
       const data = await patchApi.applyStream(
-        { blocks: diffBlocks, dryRun: true },
+        { blocks: normalizedBlocks, dryRun: true },
         handleProgress,
       );
       if (data.success) {
@@ -5705,6 +5644,7 @@ interface UsePasteAndValidateParams {
   discoveryMode: boolean;
   setDiscoveryMode: (value: boolean) => void;
   setDiscoveredFiles: (files: string[]) => void;
+  repoFiles?: string[];
 }
 
 /**
@@ -5722,6 +5662,7 @@ export function usePasteAndValidate({
   discoveryMode,
   setDiscoveryMode,
   setDiscoveredFiles,
+  repoFiles,
 }: UsePasteAndValidateParams) {
   const handlePaste = useCallback(
     async (append = false) => {
@@ -5756,15 +5697,22 @@ export function usePasteAndValidate({
           return;
         }
 
-        const uniqueFiles = Array.from(
-          new Set(
-            parsed.map((b) => b.file).filter((f) => f !== "Active File"),
-          ),
+        const hasUnmatchedOrActive = parsed.some(
+          (b) => b.file === "Active File" || !b.file,
+        );
+
+        const filesToFetch = Array.from(
+          new Set([
+            ...parsed
+              .map((b) => b.file)
+              .filter((f) => f && f !== "Active File"),
+            ...(hasUnmatchedOrActive ? repoFiles || [] : []),
+          ]),
         );
 
         let data = { success: false, contents: {} as Record<string, string> };
-        if (uniqueFiles.length > 0) {
-          data = await filesApi.fetchFiles(uniqueFiles);
+        if (filesToFetch.length > 0) {
+          data = await filesApi.fetchFiles(filesToFetch);
         } else {
           data.success = true;
         }
@@ -5786,6 +5734,7 @@ export function usePasteAndValidate({
       discoveryMode,
       setDiscoveryMode,
       setDiscoveredFiles,
+      repoFiles,
     ],
   );
 
@@ -6112,47 +6061,25 @@ export function useTokenEstimate({
 FILE PATH: src\features\prompt-builder\utils\blockMatcher.ts
 ==================================================
 import { DiffBlock } from "../../../types/patch";
+import { applyBlockToContent } from "../../../utils/patchMatcher";
 
 /**
  * Determines whether a SEARCH block can be located inside a file's current
- * contents. Tries three progressively looser strategies:
- *  1. Exact match after normalizing line endings.
- *  2. Match after trimming each line (tolerates whitespace/indentation drift).
- *  3. Match after stripping comments/whitespace entirely (tolerates minor
- *     formatting changes made to the file since the AI generated the diff).
+ * contents.
+ *
+ * Uses the exact same underlying applyBlockToContent engine as the server
+ * (Exact, Fuzzy Indentation, and Condensed Token Stream matchers) to guarantee
+ * the UI badge accurately reflects whether the block will actually apply.
  *
  * Pure function: no React, no network calls — safe to unit test directly.
  */
 export function matchesFileContent(search: string, content: string): boolean {
-  const normContent = content.replace(/\r\n/g, "\n");
-  const normSearch = search.replace(/\r\n/g, "\n");
-
-  if (normContent.includes(normSearch)) return true;
-
-  const searchLines = normSearch
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-  const contentLines = normContent
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-  if (
-    searchLines.length > 0 &&
-    contentLines.join("\n").includes(searchLines.join("\n"))
-  ) {
-    return true;
-  }
-
-  const tokenize = (str: string) =>
-    str
-      .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
-      .replace(/\{\s*["']\s*["']\s*\}/g, "")
-      .replace(/[\s,'"`();]+/g, "");
-
-  const tokenSearch = tokenize(normSearch);
-  const tokenContent = tokenize(normContent);
-  return tokenSearch.length > 0 && tokenContent.includes(tokenSearch);
+  const result = applyBlockToContent(content, {
+    file: "match-test", // Dummy filename to bypass "Active File" skip checks
+    search,
+    replace: "", // Replacement string doesn't matter for matching
+  });
+  return result.success;
 }
 
 /**
@@ -6164,6 +6091,8 @@ export function validateBlocks(
   blocks: DiffBlock[],
   contents: Record<string, string>,
 ): DiffBlock[] {
+  const contentEntries = Object.entries(contents);
+
   return blocks.map((block) => {
     if (block.type === "move") {
       const sourceExists = !!contents[block.file];
@@ -6173,18 +6102,42 @@ export function validateBlocks(
       };
     }
 
-    if (!block.search.trim() || block.file === "Active File") {
-      return { ...block, status: "match" as const };
+    if (block.file && block.file !== "Active File" && contents[block.file]) {
+      const content = contents[block.file];
+      const isMatch =
+        !block.search.trim() || matchesFileContent(block.search, content);
+      if (isMatch) {
+        return {
+          ...block,
+          status: "match" as const,
+          matchedFile: block.file,
+          isCodeMatched: false,
+        };
+      }
     }
 
-    const content = contents[block.file];
-    if (!content) return { ...block, status: "no-match" as const };
+    if (block.search.trim()) {
+      for (const [filePath, content] of contentEntries) {
+        if (matchesFileContent(block.search, content)) {
+          return {
+            ...block,
+            status: "match" as const,
+            matchedFile: filePath,
+            isCodeMatched:
+              block.file === "Active File" || block.file !== filePath,
+          };
+        }
+      }
+    }
 
     return {
       ...block,
-      status: matchesFileContent(block.search, content)
-        ? ("match" as const)
-        : ("no-match" as const),
+      status:
+        !block.search.trim() && block.file === "Active File"
+          ? ("match" as const)
+          : ("no-match" as const),
+      matchedFile: undefined,
+      isCodeMatched: false,
     };
   });
 }
@@ -6876,6 +6829,8 @@ export interface DiffBlock {
   // `moveTo` is the destination — search/replace are unused and left "".
   type?: "edit" | "move";
   moveTo?: string;
+  matchedFile?: string;
+  isCodeMatched?: boolean;
 }
 
 export interface HistoryLog {
@@ -6883,6 +6838,170 @@ export interface HistoryLog {
   timestamp: string;
   files: string[];
   message: string;
+}
+
+
+==================================================
+FILE PATH: src\utils\patchMatcher.ts
+==================================================
+export interface DiffBlockInput {
+  file: string;
+  search: string;
+  replace: string;
+  type?: "edit" | "move";
+  moveTo?: string;
+}
+
+export interface ApplyBlockResult {
+  success: boolean;
+  newContent?: string;
+  error?: string;
+}
+
+export interface CondensedRange {
+  start: number;
+  end: number;
+}
+
+/**
+ * Finds a condensed range match in content for search text.
+ */
+export function findCondensedRange(
+  content: string,
+  search: string,
+): CondensedRange | null {
+  const preCleanContent = content
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
+    .replace(/\{\s*["']\s*["']\s*\}/g, "");
+  const cleanSearch = search
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
+    .replace(/\{\s*["']\s*["']\s*\}/g, "")
+    .replace(/[\s,'"`();]+/g, "");
+
+  if (!cleanSearch) return null;
+
+  let cIdx = 0;
+  let sIdx = 0;
+  let startMatchPos = -1;
+
+  while (cIdx < preCleanContent.length && sIdx < cleanSearch.length) {
+    if (/[\s,'"`();]/.test(preCleanContent[cIdx])) {
+      cIdx++;
+      continue;
+    }
+
+    if (preCleanContent[cIdx] === cleanSearch[sIdx]) {
+      if (sIdx === 0) startMatchPos = cIdx;
+      sIdx++;
+      cIdx++;
+    } else {
+      if (startMatchPos !== -1) {
+        cIdx = startMatchPos + 1;
+        startMatchPos = -1;
+        sIdx = 0;
+      } else {
+        cIdx++;
+      }
+    }
+  }
+
+  if (sIdx === cleanSearch.length && startMatchPos !== -1) {
+    return { start: startMatchPos, end: cIdx };
+  }
+
+  return null;
+}
+
+export function applyFuzzyIndentationMatch(
+  normContent: string,
+  normSearch: string,
+  normReplace: string,
+): string | null {
+  const searchLines = normSearch
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const contentLines = normContent.split("\n");
+
+  let matchIndex = -1;
+  for (let i = 0; i <= contentLines.length - searchLines.length; i++) {
+    let isCandidate = true;
+    for (let j = 0; j < searchLines.length; j++) {
+      if (contentLines[i + j].trim() !== searchLines[j]) {
+        isCandidate = false;
+        break;
+      }
+    }
+    if (isCandidate) {
+      matchIndex = i;
+      break;
+    }
+  }
+
+  if (matchIndex !== -1) {
+    const indentMatch = contentLines[matchIndex].match(/^[ \t]*/);
+    const indent = indentMatch ? indentMatch[0] : "";
+    const replaceLines = normReplace.split("\n").map((line) => {
+      return line.trim() ? indent + line.replace(/^[ \t]*/, "") : "";
+    });
+
+    contentLines.splice(matchIndex, searchLines.length, ...replaceLines);
+    return contentLines.join("\n");
+  }
+
+  return null;
+}
+
+/**
+ * Pure In-Memory Block Application Engine (Exact, Fuzzy Indentation & Condensed Token Stream).
+ */
+export function applyBlockToContent(
+  content: string,
+  block: DiffBlockInput,
+): ApplyBlockResult {
+  if (!block.search || !block.search.trim() || block.file === "Active File") {
+    return { success: true, newContent: block.replace };
+  }
+
+  const normContent = content.replace(/\r\n/g, "\n");
+  const normSearch = block.search.replace(/\r\n/g, "\n");
+  const normReplace = block.replace.replace(/\r\n/g, "\n");
+
+  // 1. Exact Match
+  if (normContent.includes(normSearch)) {
+    return {
+      success: true,
+      newContent: normContent.replace(normSearch, normReplace),
+    };
+  }
+
+  // 2. Smart Fuzzy Indentation Match
+  const fuzzyMatch = applyFuzzyIndentationMatch(
+    normContent,
+    normSearch,
+    normReplace,
+  );
+  if (fuzzyMatch !== null) {
+    return { success: true, newContent: fuzzyMatch };
+  }
+
+  // 3. Condensed Token Stream Replacement
+  const range = findCondensedRange(normContent, normSearch);
+  if (range) {
+    const cleanNormContent = normContent
+      .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
+      .replace(/\{\s*["']\s*["']\s*\}/g, "");
+    const newContent =
+      cleanNormContent.slice(0, range.start) +
+      normReplace +
+      cleanNormContent.slice(range.end);
+    return { success: true, newContent };
+  }
+
+  return {
+    success: false,
+    error: `SEARCH block match failed for file: ${block.file}`,
+  };
 }
 
 

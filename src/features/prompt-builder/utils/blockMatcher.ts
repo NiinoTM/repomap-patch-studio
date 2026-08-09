@@ -29,6 +29,8 @@ export function validateBlocks(
   blocks: DiffBlock[],
   contents: Record<string, string>,
 ): DiffBlock[] {
+  const contentEntries = Object.entries(contents);
+
   return blocks.map((block) => {
     if (block.type === "move") {
       const sourceExists = !!contents[block.file];
@@ -38,18 +40,42 @@ export function validateBlocks(
       };
     }
 
-    if (!block.search.trim() || block.file === "Active File") {
-      return { ...block, status: "match" as const };
+    if (block.file && block.file !== "Active File" && contents[block.file]) {
+      const content = contents[block.file];
+      const isMatch =
+        !block.search.trim() || matchesFileContent(block.search, content);
+      if (isMatch) {
+        return {
+          ...block,
+          status: "match" as const,
+          matchedFile: block.file,
+          isCodeMatched: false,
+        };
+      }
     }
 
-    const content = contents[block.file];
-    if (!content) return { ...block, status: "no-match" as const };
+    if (block.search.trim()) {
+      for (const [filePath, content] of contentEntries) {
+        if (matchesFileContent(block.search, content)) {
+          return {
+            ...block,
+            status: "match" as const,
+            matchedFile: filePath,
+            isCodeMatched:
+              block.file === "Active File" || block.file !== filePath,
+          };
+        }
+      }
+    }
 
     return {
       ...block,
-      status: matchesFileContent(block.search, content)
-        ? ("match" as const)
-        : ("no-match" as const),
+      status:
+        !block.search.trim() && block.file === "Active File"
+          ? ("match" as const)
+          : ("no-match" as const),
+      matchedFile: undefined,
+      isCodeMatched: false,
     };
   });
 }

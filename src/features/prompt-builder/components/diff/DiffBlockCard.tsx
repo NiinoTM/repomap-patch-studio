@@ -155,9 +155,17 @@ export function DiffBlockCard({
             )}
           </button>
           <span className="text-xs font-mono text-zinc-200 font-medium truncate">
-            {block.file}
+            {block.matchedFile || block.file}
           </span>
-          <StatusBadge status={block.status} />
+          {block.file === "Active File" && block.matchedFile && (
+            <span className="text-[10px] text-zinc-500 font-mono hidden md:inline truncate">
+              (Active File)
+            </span>
+          )}
+          <StatusBadge
+            status={block.status}
+            isCodeMatched={block.isCodeMatched}
+          />
           {isCollapsed && (
             <span className="text-[10px] text-zinc-500 font-mono hidden sm:inline truncate">
               ({searchLines.length} search / {replaceLines.length} replace

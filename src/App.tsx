@@ -44,6 +44,7 @@ export default function App() {
     discoveryMode,
     setDiscoveryMode,
     setDiscoveredFiles,
+    repoFiles,
   });
 
   const handleChangeRepo = async (newPath: string) => {

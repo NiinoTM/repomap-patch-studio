@@ -9,6 +9,8 @@ export interface DiffBlock {
   // `moveTo` is the destination — search/replace are unused and left "".
   type?: "edit" | "move";
   moveTo?: string;
+  matchedFile?: string;
+  isCodeMatched?: boolean;
 }
 
 export interface HistoryLog {
