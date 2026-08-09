@@ -29,6 +29,7 @@ interface DiffBlockCardProps {
 
 export function DiffBlockCard({
   block,
+  validationErrors = [],
   isIgnored = false,
   isCollapsed = false,
   isEditing = false,
