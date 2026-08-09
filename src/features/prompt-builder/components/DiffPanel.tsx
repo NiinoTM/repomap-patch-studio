@@ -1,16 +1,9 @@
 import { useState, useEffect } from "react";
-import {
-  ClipboardPaste,
-  AlertTriangle,
-  Bug,
-  CheckCircle2,
-  XCircle,
-  FoldVertical,
-  UnfoldVertical,
-} from "lucide-react";
+import { ClipboardPaste, AlertTriangle, Bug } from "lucide-react";
 import { DiffBlock } from "../../../types/patch";
 import { ClipboardDebugger } from "./diff/ClipboardDebugger";
 import { DiffBlockCard } from "./diff/DiffBlockCard";
+import { DiffFilterToolbar, type FilterMode } from "./diff/DiffFilterToolbar";
 import { useApplyChanges } from "../hooks/useApplyChanges";
 
 interface DiffPanelProps {
@@ -38,6 +31,7 @@ export function DiffPanel({
   const effectiveIgnoredBlocks =
     ignoredBlocks ?? internalIgnoredBlocks ?? new Set<string>();
 
+  const [filterMode, setFilterMode] = useState<FilterMode>("all");
   const [showDebug, setShowDebug] = useState(false);
   const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(
     new Set(),
@@ -70,6 +64,12 @@ export function DiffPanel({
     }
     setEditingBlockId(null);
   };
+
+  useEffect(() => {
+    if (parsedBlocks.length === 0) {
+      setFilterMode("all");
+    }
+  }, [parsedBlocks]);
 
   useEffect(() => {
     if (parsedBlocks.length > 1) {
@@ -133,6 +133,14 @@ export function DiffPanel({
     autoValidate: true,
   });
 
+  const getBlockErrors = (block: DiffBlock) => {
+    return validationErrors.filter(
+      (err) =>
+        err.includes(block.file) ||
+        (block.moveTo && err.includes(block.moveTo)),
+    );
+  };
+
   const matchCount = activeBlocks.filter((b) => b.status === "match").length;
   const noMatchCount = activeBlocks.filter(
     (b) => b.status === "no-match",
@@ -143,91 +151,46 @@ export function DiffPanel({
   const allCollapsed =
     parsedBlocks.length > 0 && collapsedBlocks.size === parsedBlocks.length;
 
+  const filteredBlocks = parsedBlocks.filter((block) => {
+    const isIgnored = Boolean(effectiveIgnoredBlocks?.has?.(block.id));
+    const isMatched = block.status === "match";
+    const isNoMatch = block.status === "no-match";
+    const hasError = getBlockErrors(block).length > 0;
+
+    switch (filterMode) {
+      case "active":
+        return !isIgnored;
+      case "matched":
+        return !isIgnored && isMatched;
+      case "not-matched":
+        return !isIgnored && isNoMatch;
+      case "errors":
+        return !isIgnored && hasError;
+      case "ignored":
+        return isIgnored;
+      case "all":
+      default:
+        return true;
+    }
+  });
+
   return (
     <div className="flex flex-col h-full w-full min-w-0 bg-zinc-950 p-4 space-y-4 overflow-hidden">
-      <div className="flex items-center justify-between bg-zinc-900 p-2 rounded-lg border border-zinc-800 flex-wrap gap-2">
-        <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-          {parsedBlocks.length > 0 && (
-            <>
-              <div className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-2 py-0.5 rounded text-[10px] font-bold">
-                {parsedBlocks.length} DETECTED
-              </div>
-              <div className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[10px] font-bold flex items-center space-x-1">
-                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                <span>{matchCount} MATCHED</span>
-              </div>
-              <div
-                className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center space-x-1 border ${
-                  noMatchCount > 0
-                    ? "bg-rose-500/10 text-rose-400 border-rose-500/20"
-                    : "bg-zinc-800/80 text-zinc-500 border-zinc-700/50"
-                }`}
-              >
-                <XCircle
-                  className={`w-3 h-3 ${
-                    noMatchCount > 0 ? "text-rose-400" : "text-zinc-500"
-                  }`}
-                />
-                <span>{noMatchCount} NOT FOUND</span>
-              </div>
-              {ignoredCount > 0 && (
-                <div className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[10px] font-bold">
-                  {ignoredCount} IGNORED
-                </div>
-              )}
-              {isValidating && (
-                <div className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded text-[10px] font-bold flex items-center space-x-1">
-                  <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
-                  <span>VALIDATING...</span>
-                </div>
-              )}
-              {validationErrors.length > 0 && !isValidating && (
-                <div className="bg-rose-500/10 text-rose-400 border border-rose-500/20 px-2 py-0.5 rounded text-[10px] font-bold flex items-center space-x-1">
-                  <AlertTriangle className="w-3 h-3 text-rose-400" />
-                  <span>{validationErrors.length} ERRORS</span>
-                </div>
-              )}
-            </>
-          )}
-          <span className="text-xs text-zinc-400">
-            Paste AI response below to review diffs
-          </span>
-        </div>
-
-        <div className="flex items-center space-x-2 shrink-0">
-          {parsedBlocks.length > 0 && (
-            <button
-              onClick={toggleAllCollapse}
-              className="text-xs bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1 rounded text-zinc-300 hover:text-white transition-colors cursor-pointer flex items-center space-x-1 border border-zinc-700/50"
-              title={
-                allCollapsed
-                  ? "Expand all diff blocks"
-                  : "Retract all diff blocks"
-              }
-            >
-              {allCollapsed ? (
-                <>
-                  <UnfoldVertical className="w-3.5 h-3.5" />
-                  <span>Expand All</span>
-                </>
-              ) : (
-                <>
-                  <FoldVertical className="w-3.5 h-3.5" />
-                  <span>Retract All</span>
-                </>
-              )}
-            </button>
-          )}
-          {pastedContent && (
-            <button
-              onClick={onClear}
-              className="text-xs bg-zinc-800 px-3 py-1 rounded text-zinc-200 hover:bg-zinc-700 transition-colors cursor-pointer border border-zinc-700/50"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-      </div>
+      <DiffFilterToolbar
+        parsedBlocksCount={parsedBlocks.length}
+        activeCount={activeBlocks.length}
+        matchCount={matchCount}
+        noMatchCount={noMatchCount}
+        ignoredCount={ignoredCount}
+        validationErrorCount={validationErrors.length}
+        isValidating={isValidating}
+        filterMode={filterMode}
+        onSelectFilter={setFilterMode}
+        allCollapsed={allCollapsed}
+        onToggleAllCollapse={toggleAllCollapse}
+        pastedContent={pastedContent}
+        onClear={onClear}
+      />
 
       <div className="flex-1 flex flex-col space-y-4 overflow-hidden">
         {!pastedContent ? (
@@ -280,34 +243,54 @@ export function DiffPanel({
         ) : (
           <>
             <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4">
-              {parsedBlocks.map((block) => {
-                const blockErrors = validationErrors.filter(
-                  (err) =>
-                    err.includes(block.file) ||
-                    (block.moveTo && err.includes(block.moveTo)),
-                );
+              {filteredBlocks.length === 0 ? (
+                <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-zinc-500 space-y-2 border border-zinc-800/60 rounded-xl bg-zinc-900/20">
+                  <p className="text-xs font-semibold text-zinc-400">
+                    No diff blocks match the current filter (
+                    <span className="text-cyan-400 font-bold uppercase">
+                      {filterMode}
+                    </span>
+                    )
+                  </p>
+                  <button
+                    onClick={() => setFilterMode("all")}
+                    className="text-xs text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
+                  >
+                    Show all blocks
+                  </button>
+                </div>
+              ) : (
+                filteredBlocks.map((block) => {
+                  const blockErrors = validationErrors.filter(
+                    (err) =>
+                      err.includes(block.file) ||
+                      (block.moveTo && err.includes(block.moveTo)),
+                  );
 
-                return (
-                  <DiffBlockCard
-                    key={block.id}
-                    block={block}
-                    validationErrors={blockErrors}
-                    isIgnored={Boolean(effectiveIgnoredBlocks?.has?.(block.id))}
-                    isCollapsed={Boolean(collapsedBlocks?.has?.(block.id))}
-                    isEditing={editingBlockId === block.id}
-                    editSearch={editSearch}
-                    editReplace={editReplace}
-                    copiedId={copiedId}
-                    onToggleBlock={toggleBlock}
-                    onToggleCollapse={toggleCollapse}
-                    onCopyBlock={handleCopyBlock}
-                    onStartEditing={startEditing}
-                    onSaveEdit={saveEdit}
-                    onEditSearchChange={setEditSearch}
-                    onEditReplaceChange={setEditReplace}
-                  />
-                );
-              })}
+                  return (
+                    <DiffBlockCard
+                      key={block.id}
+                      block={block}
+                      validationErrors={blockErrors}
+                      isIgnored={Boolean(
+                        effectiveIgnoredBlocks?.has?.(block.id),
+                      )}
+                      isCollapsed={Boolean(collapsedBlocks?.has?.(block.id))}
+                      isEditing={editingBlockId === block.id}
+                      editSearch={editSearch}
+                      editReplace={editReplace}
+                      copiedId={copiedId}
+                      onToggleBlock={toggleBlock}
+                      onToggleCollapse={toggleCollapse}
+                      onCopyBlock={handleCopyBlock}
+                      onStartEditing={startEditing}
+                      onSaveEdit={saveEdit}
+                      onEditSearchChange={setEditSearch}
+                      onEditReplaceChange={setEditReplace}
+                    />
+                  );
+                })
+              )}
             </div>
 
             <div
