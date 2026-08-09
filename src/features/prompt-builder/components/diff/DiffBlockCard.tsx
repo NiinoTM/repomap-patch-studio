@@ -8,6 +8,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { DiffBlock } from "../../../../types/patch";
+import { AcceptToggle } from "./AcceptToggle";
+import { StatusBadge } from "./StatusBadge";
 
 interface DiffBlockCardProps {
   block: DiffBlock;
@@ -63,45 +65,16 @@ export function DiffBlockCard({
             <span className="text-xs font-mono text-zinc-100 font-medium truncate">
               {block.moveTo}
             </span>
-            {block.status === "match" ? (
-              <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase shrink-0">
-                Source Found
-              </span>
-            ) : (
-              <span className="bg-rose-500/20 text-rose-400 text-[10px] px-1.5 py-0.5 rounded border border-rose-500/20 font-bold uppercase shrink-0">
-                Source Missing
-              </span>
-            )}
-          </div>
-          <label
-            className="flex items-center space-x-2 cursor-pointer shrink-0"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span
-              className={`text-[10px] font-bold uppercase ${
-                !isIgnored ? "text-cyan-500" : "text-zinc-500"
-              }`}
-            >
-              {isIgnored ? "Ignored" : "Accepted"}
-            </span>
-            <div
-              className={`w-8 h-4 rounded-full flex items-center transition-colors p-0.5 ${
-                !isIgnored ? "bg-cyan-500" : "bg-zinc-700"
-              }`}
-            >
-              <div
-                className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${
-                  !isIgnored ? "translate-x-4" : "translate-x-0"
-                }`}
-              />
-            </div>
-            <input
-              type="checkbox"
-              className="hidden"
-              checked={!isIgnored}
-              onChange={() => onToggleBlock(block.id)}
+            <StatusBadge
+              status={block.status}
+              matchLabel="Source Found"
+              noMatchLabel="Source Missing"
             />
-          </label>
+          </div>
+          <AcceptToggle
+            isIgnored={isIgnored}
+            onToggle={() => onToggleBlock(block.id)}
+          />
         </div>
         {validationErrors.length > 0 && !isIgnored && (
           <div className="bg-rose-950/40 border-t border-rose-900/50 px-4 py-2 flex flex-col space-y-1.5">
@@ -156,15 +129,7 @@ export function DiffBlockCard({
           <span className="text-xs font-mono text-zinc-200 font-medium truncate">
             {block.file}
           </span>
-          {block.status === "match" ? (
-            <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase shrink-0">
-              Match Found
-            </span>
-          ) : (
-            <span className="bg-rose-500/20 text-rose-400 text-[10px] px-1.5 py-0.5 rounded border border-rose-500/20 font-bold uppercase shrink-0">
-              Not Found
-            </span>
-          )}
+          <StatusBadge status={block.status} />
           {isCollapsed && (
             <span className="text-[10px] text-zinc-500 font-mono hidden sm:inline truncate">
               ({searchLines.length} search / {replaceLines.length} replace
@@ -217,35 +182,10 @@ export function DiffBlockCard({
             <div className="w-px h-4 bg-zinc-800 mx-1"></div>
           </div>
 
-          <label
-            className="flex items-center space-x-2 cursor-pointer shrink-0"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span
-              className={`text-[10px] font-bold uppercase ${
-                !isIgnored ? "text-cyan-500" : "text-zinc-500"
-              }`}
-            >
-              {isIgnored ? "Ignored" : "Accepted"}
-            </span>
-            <div
-              className={`w-8 h-4 rounded-full flex items-center transition-colors p-0.5 ${
-                !isIgnored ? "bg-cyan-500" : "bg-zinc-700"
-              }`}
-            >
-              <div
-                className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform ${
-                  !isIgnored ? "translate-x-4" : "translate-x-0"
-                }`}
-              />
-            </div>
-            <input
-              type="checkbox"
-              className="hidden"
-              checked={!isIgnored}
-              onChange={() => onToggleBlock(block.id)}
-            />
-          </label>
+          <AcceptToggle
+            isIgnored={isIgnored}
+            onToggle={() => onToggleBlock(block.id)}
+          />
         </div>
       </div>
 
