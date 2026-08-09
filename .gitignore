@@ -7,3 +7,4 @@ coverage/
 .env*
 !.env.example
 .eslintcache
+codebase_context.txt
