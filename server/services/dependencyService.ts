@@ -1,4 +1,10 @@
-import { readTextFile, joinPath, dirnamePath, extnamePath, normalizePath } from "../adapters/fsAdapter";
+import {
+  readTextFile,
+  joinPath,
+  dirnamePath,
+  extnamePath,
+  normalizePath,
+} from "../adapters/fsAdapter";
 
 export interface DependencyMap {
   outbound: Record<string, string[]>;
@@ -9,7 +15,9 @@ export interface DependencyMap {
 
 const CODE_EXTENSIONS = [".js", ".jsx", ".ts", ".tsx"];
 
-function toArrayMap(setMap: Record<string, Set<string>>): Record<string, string[]> {
+function toArrayMap(
+  setMap: Record<string, Set<string>>,
+): Record<string, string[]> {
   const result: Record<string, string[]> = {};
   for (const key in setMap) {
     result[key] = Array.from(setMap[key]);
@@ -17,46 +25,74 @@ function toArrayMap(setMap: Record<string, Set<string>>): Record<string, string[
   return result;
 }
 
-function resolveLocalImportCandidates(fileDir: string, importPath: string): string[] {
-  const rawResolved = normalizePath(joinPath(fileDir, importPath)).replace(/\\/g, "/");
-  return [
-    rawResolved,
-    `${rawResolved}.tsx`,
-    `${rawResolved}.ts`,
-    `${rawResolved}.jsx`,
-    `${rawResolved}.js`,
-    `${rawResolved}/index.tsx`,
-    `${rawResolved}/index.ts`,
-    `${rawResolved}/index.jsx`,
-    `${rawResolved}/index.js`,
-  ];
+function resolveLocalImportCandidates(
+  fileDir: string,
+  importPath: string,
+): string[] {
+  let basePaths: string[];
+
+  if (importPath.startsWith("@/") || importPath.startsWith("~/")) {
+    const cleanPath = importPath.slice(2);
+    basePaths = [
+      normalizePath(cleanPath).replace(/\\/g, "/"),
+      normalizePath(joinPath("src", cleanPath)).replace(/\\/g, "/"),
+    ];
+  } else if (importPath.startsWith(".")) {
+    basePaths = [
+      normalizePath(joinPath(fileDir, importPath)).replace(/\\/g, "/"),
+    ];
+  } else {
+    return [];
+  }
+
+  const candidates: string[] = [];
+  for (const rawResolved of basePaths) {
+    candidates.push(
+      rawResolved,
+      `${rawResolved}.tsx`,
+      `${rawResolved}.ts`,
+      `${rawResolved}.jsx`,
+      `${rawResolved}.js`,
+      `${rawResolved}/index.tsx`,
+      `${rawResolved}/index.ts`,
+      `${rawResolved}/index.jsx`,
+      `${rawResolved}/index.js`,
+    );
+  }
+  return candidates;
 }
 
-function extractLocalImportsFromFile(basePath: string, file: string, fileSet: Set<string>): Set<string> {
+function extractLocalImportsFromFile(
+  basePath: string,
+  file: string,
+  fileSet: Set<string>,
+): Set<string> {
   const imports = new Set<string>();
   const importRegex =
-    /(?:import|export)\s+[\s\S]*?\s+from\s+['"]([^'"]+)['"]|require\(['"]([^'"]+)['"]\)/g;
+    /(?:import|export)\s+[\s\S]*?\s+from\s+['"]([^'"]+)['"]|require\(['"]([^'"]+)['"]\)|import\(['"]([^'"]+)['"]\)/g;
 
   try {
     const content = readTextFile(joinPath(basePath, file));
     let match: RegExpExecArray | null;
 
     while ((match = importRegex.exec(content)) !== null) {
-      let importPath = match[1] || match[2];
+      const importPath = match[1] || match[2] || match[3];
       if (!importPath) continue;
-      if (importPath.startsWith("@/")) importPath = "./" + importPath.slice(2);
-      if (!importPath.startsWith(".")) continue;
 
-      const candidates = resolveLocalImportCandidates(dirnamePath(file), importPath);
+      const candidates = resolveLocalImportCandidates(
+        dirnamePath(file),
+        importPath,
+      );
       for (const cand of candidates) {
         if (fileSet.has(cand) && cand !== file) {
           imports.add(cand);
           break;
         }
       }
-    }
+        }
   } catch {
     // unreadable or unparsable file — skip it
+    return imports;
   }
 
   return imports;
@@ -79,7 +115,10 @@ function recordImportEdges(
 function buildLocalImportGraph(
   basePath: string,
   filesList: string[],
-): { outbound: Record<string, string[]>; inboundMap: Record<string, Set<string>> } {
+): {
+  outbound: Record<string, string[]>;
+  inboundMap: Record<string, Set<string>>;
+} {
   const outbound: Record<string, string[]> = {};
   const inboundMap: Record<string, Set<string>> = {};
   const fileSet = new Set(filesList);
@@ -93,18 +132,18 @@ function buildLocalImportGraph(
   return { outbound, inboundMap };
 }
 
-/**
- * Scans backend files for registered Express-style route handlers
- * (app.get, router.post, etc.) and maps route -> defining file(s).
- */
-function collectApiRouteHandlers(basePath: string, filesList: string[]): Record<string, Set<string>> {
+function collectApiRouteHandlers(
+  basePath: string,
+  filesList: string[],
+): Record<string, Set<string>> {
   const routeHandlers: Record<string, Set<string>> = {};
   const apiRouteHandlerRegex =
     /(?:app|router|server)\s*\.\s*(?:get|post|put|delete|patch|all|use)\s*\(\s*[`'"]([^`'"]+)[`'"]/gi;
   const routeFileExtensions = [...CODE_EXTENSIONS, ".mjs", ".cjs"];
 
   for (const file of filesList) {
-    if (!routeFileExtensions.includes(extnamePath(file).toLowerCase())) continue;
+    if (!routeFileExtensions.includes(extnamePath(file).toLowerCase()))
+      continue;
 
     try {
       const content = readTextFile(joinPath(basePath, file));
@@ -118,6 +157,7 @@ function collectApiRouteHandlers(basePath: string, filesList: string[]): Record<
       }
     } catch {
       // unreadable or unparsable file — skip it
+      continue;
     }
   }
 
@@ -132,7 +172,8 @@ function recordApiCallEdge(
 ): void {
   if (backendFile === file) return;
   if (!apiOutbound[file]) apiOutbound[file] = [];
-  if (!apiOutbound[file].includes(backendFile)) apiOutbound[file].push(backendFile);
+  if (!apiOutbound[file].includes(backendFile))
+    apiOutbound[file].push(backendFile);
 
   if (!apiInboundMap[backendFile]) apiInboundMap[backendFile] = new Set();
   apiInboundMap[backendFile].add(file);
@@ -162,6 +203,7 @@ function extractApiCallEdgesFromFile(
     }
   } catch {
     // unreadable or unparsable file — skip it
+    return;
   }
 }
 
@@ -169,25 +211,38 @@ function resolveApiCallGraph(
   basePath: string,
   filesList: string[],
   routeHandlers: Record<string, Set<string>>,
-): { apiOutbound: Record<string, string[]>; apiInboundMap: Record<string, Set<string>> } {
+): {
+  apiOutbound: Record<string, string[]>;
+  apiInboundMap: Record<string, Set<string>>;
+} {
   const apiOutbound: Record<string, string[]> = {};
   const apiInboundMap: Record<string, Set<string>> = {};
 
   for (const file of filesList) {
     if (!CODE_EXTENSIONS.includes(extnamePath(file).toLowerCase())) continue;
-    extractApiCallEdgesFromFile(basePath, file, routeHandlers, apiOutbound, apiInboundMap);
+    extractApiCallEdgesFromFile(
+      basePath,
+      file,
+      routeHandlers,
+      apiOutbound,
+      apiInboundMap,
+    );
   }
 
   return { apiOutbound, apiInboundMap };
 }
 
-/**
- * Generates inbound, outbound, and API dependency maps for repository files.
- */
-export function getDependencyMap(basePath: string, filesList: string[]): DependencyMap {
+export function getDependencyMap(
+  basePath: string,
+  filesList: string[],
+): DependencyMap {
   const { outbound, inboundMap } = buildLocalImportGraph(basePath, filesList);
   const routeHandlers = collectApiRouteHandlers(basePath, filesList);
-  const { apiOutbound, apiInboundMap } = resolveApiCallGraph(basePath, filesList, routeHandlers);
+  const { apiOutbound, apiInboundMap } = resolveApiCallGraph(
+    basePath,
+    filesList,
+    routeHandlers,
+  );
 
   return {
     outbound,
