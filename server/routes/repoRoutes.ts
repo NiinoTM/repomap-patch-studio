@@ -1,10 +1,11 @@
 import { Router, Request, Response } from "express";
-import { fileExists, isDirectory, readTextFile, joinPath } from "../adapters/fsAdapter";
 import {
-  repoState,
-  getAllFiles,
-  getFileStats,
-} from "../adapters/gitAdapter";
+  fileExists,
+  isDirectory,
+  readTextFile,
+  joinPath,
+} from "../adapters/fsAdapter";
+import { repoState, getAllFiles, getFileStats } from "../adapters/gitAdapter";
 import { generateRepoMap } from "../services/repoMapService";
 import { getDependencyMap } from "../services/dependencyService";
 import { openNativeFolderDialog } from "../adapters/osAdapter";
@@ -78,9 +79,14 @@ repoRouter.post("/files", (req: Request, res: Response) => {
 
 repoRouter.post("/native-folder-dialog", (_req: Request, res: Response) => {
   try {
-    const selectedPath = openNativeFolderDialog();
-    res.json({ success: true, path: selectedPath });
-  } catch {
-    res.json({ success: true, path: "" });
+    const result = openNativeFolderDialog();
+    if (result.error) {
+      res.json({ success: false, path: "", error: result.error });
+      return;
+    }
+    res.json({ success: true, path: result.path });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.json({ success: false, path: "", error: message });
   }
 });

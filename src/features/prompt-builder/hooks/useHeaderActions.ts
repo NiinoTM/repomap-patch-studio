@@ -49,7 +49,15 @@ export function useHeaderActions({
       const data = await repoApi.openFolderDialog();
       if (data.success && data.path) {
         onChangeRepo(data.path);
+        return;
       }
+      if (!data.success) {
+        // Real failure (dialog couldn't launch) — surface the reason.
+        alert(
+          "❌ Failed to open folder dialog: " + (data.error || "Unknown error"),
+        );
+      }
+      // success && !path means the user cancelled the dialog — no-op, no alert.
     } catch (err) {
       console.error("Failed to open folder dialog:", err);
       alert("Failed to open native folder dialog. Ensure backend is running.");
