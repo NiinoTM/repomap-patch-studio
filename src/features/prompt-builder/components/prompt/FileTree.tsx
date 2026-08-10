@@ -10,8 +10,10 @@ import {
   MinusSquare,
   Search,
   X,
+  List,
 } from "lucide-react";
 import { buildFileTree, TreeNode } from "../../utils/treeBuilder";
+import { SelectedFilesModal } from "./SelectedFilesModal";
 
 interface FileTreeProps {
   files: string[];
@@ -37,8 +39,12 @@ export function FileTree({
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     new Set(["root"]),
   );
+  const [isSelectedModalOpen, setIsSelectedModalOpen] = useState(false);
 
-  const treeData = useMemo(() => buildFileTree(files, searchQuery), [files, searchQuery]);
+  const treeData = useMemo(
+    () => buildFileTree(files, searchQuery),
+    [files, searchQuery],
+  );
 
   const toggleFolderExpand = (folderPath: string) => {
     setExpandedFolders((prev) => {
@@ -150,9 +156,21 @@ export function FileTree({
   return (
     <div className="flex-1 flex flex-col space-y-2 min-h-0">
       <div className="flex items-center justify-between">
-        <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold">
-          Context Selection ({selectedFiles.size}/{files.length})
-        </label>
+        <div className="flex items-center space-x-2">
+          <label className="text-[11px] uppercase tracking-wider text-zinc-500 font-bold">
+            Context Selection ({selectedFiles.size}/{files.length})
+          </label>
+          {selectedFiles.size > 0 && (
+            <button
+              onClick={() => setIsSelectedModalOpen(true)}
+              className="text-[10px] bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 font-medium px-1.5 py-0.5 rounded flex items-center space-x-1 border border-cyan-500/30 transition-colors cursor-pointer"
+              title="View list of selected files"
+            >
+              <List className="w-3 h-3" />
+              <span>View List</span>
+            </button>
+          )}
+        </div>
         <div className="flex items-center space-x-2 text-[10px]">
           <button
             onClick={onSelectAll}
@@ -200,6 +218,14 @@ export function FileTree({
           )}
         </div>
       </div>
+
+      <SelectedFilesModal
+        isOpen={isSelectedModalOpen}
+        onClose={() => setIsSelectedModalOpen(false)}
+        selectedFiles={selectedFiles}
+        onToggleFile={onToggleFile}
+        onDeselectAll={onDeselectAll}
+      />
     </div>
   );
 }
