@@ -194,6 +194,16 @@ export const formatFile = (basePath: string, fileRel: string): void => {
   }
 };
 
+// execSync throws with .stdout/.stderr attached at runtime, but Node's
+// own ExecException type doesn't declare them — a local shape + guard
+// beats `any` or a blind cast.
+interface ExecError extends Error {
+  stdout?: string | Buffer;
+  stderr?: string | Buffer;
+}
+
+const isExecError = (err: unknown): err is ExecError => err instanceof Error;
+
 export const gitCommit = (
   basePath: string,
   message: string = "ai-edit: updated files",
@@ -203,14 +213,17 @@ export const gitCommit = (
       cwd: basePath,
       encoding: "utf-8",
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     // If Husky hooks fail, capture the linter output so it reaches the UI
+    const execError = isExecError(error) ? error : null;
     const output = (
-      error.stdout ||
-      error.stderr ||
-      error.message ||
+      execError?.stdout ||
+      execError?.stderr ||
+      execError?.message ||
       "Unknown Git error"
-    ).trim();
+    )
+      .toString()
+      .trim();
     throw new Error(`Git commit rejected (Husky hooks failed):\n${output}`, {
       cause: error,
     });
