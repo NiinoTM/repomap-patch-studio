@@ -1,5 +1,11 @@
 import React, { useState } from "react";
 import { useHeaderActions } from "../hooks/useHeaderActions";
+import { useBranchManager } from "../../git-branch/hooks/useBranchManager";
+import { BranchSelectorPill } from "../../git-branch/components/BranchSelectorPill";
+import { BranchManagerModal } from "../../git-branch/components/BranchManagerModal";
+import { CreateBranchDialog } from "../../git-branch/components/CreateBranchDialog";
+import { RenameBranchDialog } from "../../git-branch/components/RenameBranchDialog";
+import { DirtyStateWarningModal } from "../../git-branch/components/DirtyStateWarningModal";
 
 interface HeaderProps {
   onUndoSuccess?: () => void;
@@ -11,10 +17,6 @@ interface HeaderProps {
     files: number;
     selectedCount: number;
   };
-  branch?: string;
-  branches?: string[];
-  isClean?: boolean;
-  onSwitchBranch?: (branch: string) => Promise<boolean>;
 }
 
 export function Header({
@@ -22,15 +24,13 @@ export function Header({
   repoPath,
   onChangeRepo,
   tokenStats,
-  branch,
-  branches,
-  isClean,
-  onSwitchBranch,
 }: HeaderProps) {
   const { isUndoing, handleUndo, handleChangeRepo } = useHeaderActions({
     onUndoSuccess,
     onChangeRepo,
   });
+
+  const branchManager = useBranchManager({ onBranchChange: onUndoSuccess });
 
   // Manual path entry — an alternative to the native OS folder dialog.
   // Useful under RDP/headless setups where ShowDialog() can hang or fail
@@ -199,53 +199,52 @@ export function Header({
       )}
 
       <div className="flex items-center space-x-4">
-        <div className="flex items-center space-x-1.5 relative group">
-          <span
-            className={`flex h-2 w-2 rounded-full ${(isClean ?? true) ? "bg-emerald-500" : "bg-amber-500"}`}
-          ></span>
-          <div className="text-[11px] font-mono text-zinc-400 flex items-center">
-            git:
-            <div className="relative ml-1 flex items-center">
-              <select
-                value={branch || ""}
-                onChange={(e) => {
-                  if (e.target.value !== branch)
-                    onSwitchBranch?.(e.target.value);
-                }}
-                className={`appearance-none bg-transparent cursor-pointer hover:underline focus:outline-none pr-3 py-0.5 ${(isClean ?? true) ? "text-emerald-500" : "text-amber-500"}`}
-                title="Switch branch"
-              >
-                {(branches?.length ? branches : [branch || "main"]).map((b) => (
-                  <option
-                    key={b}
-                    value={b}
-                    className="bg-zinc-900 text-zinc-300"
-                  >
-                    {b}
-                  </option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute right-0 flex items-center text-zinc-500">
-                <svg
-                  className="h-2 w-2"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </div>
-            </div>
-            <span className="ml-1">
-              ({(isClean ?? true) ? "Clean" : "Dirty"})
-            </span>
-          </div>
-        </div>
+        <BranchSelectorPill
+          currentBranch={branchManager.currentBranch}
+          isClean={branchManager.isClean}
+          onClick={() => branchManager.setIsManagerOpen(true)}
+        />
+
+        <BranchManagerModal
+          isOpen={branchManager.isManagerOpen}
+          onClose={() => branchManager.setIsManagerOpen(false)}
+          branches={branchManager.branches}
+          currentBranch={branchManager.currentBranch}
+          isClean={branchManager.isClean}
+          searchQuery={branchManager.searchQuery}
+          onSearchChange={branchManager.setSearchQuery}
+          onSelectBranch={(b) => branchManager.switchBranch(b)}
+          onCreateOpen={() => branchManager.setIsCreateOpen(true)}
+          onRenameOpen={(b) => branchManager.setBranchToRename(b)}
+          onDeleteBranch={(b) => branchManager.deleteBranch(b)}
+        />
+
+        <CreateBranchDialog
+          isOpen={branchManager.isCreateOpen}
+          onClose={() => branchManager.setIsCreateOpen(false)}
+          currentBranch={branchManager.currentBranch}
+          branches={branchManager.allBranches.map((b) => b.name)}
+          onCreate={branchManager.createBranch}
+        />
+
+        <RenameBranchDialog
+          isOpen={Boolean(branchManager.branchToRename)}
+          onClose={() => branchManager.setBranchToRename(null)}
+          branchToRename={branchManager.branchToRename}
+          onRename={branchManager.renameBranch}
+        />
+
+        <DirtyStateWarningModal
+          isOpen={Boolean(branchManager.dirtyTargetBranch)}
+          targetBranch={branchManager.dirtyTargetBranch}
+          onClose={() => branchManager.setDirtyTargetBranch(null)}
+          onStashAndSwitch={branchManager.stashAndSwitch}
+          onForceSwitch={() => {
+            if (branchManager.dirtyTargetBranch) {
+              branchManager.switchBranch(branchManager.dirtyTargetBranch, true);
+            }
+          }}
+        />
 
         <button
           onClick={handleUndo}
