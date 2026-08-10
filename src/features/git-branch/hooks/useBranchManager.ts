@@ -6,7 +6,9 @@ interface UseBranchManagerParams {
   onBranchChange?: () => void;
 }
 
-export function useBranchManager({ onBranchChange }: UseBranchManagerParams = {}) {
+export function useBranchManager({
+  onBranchChange,
+}: UseBranchManagerParams = {}) {
   const [branches, setBranches] = useState<BranchDetails[]>([]);
   const [currentBranch, setCurrentBranch] = useState<string>("");
   const [isClean, setIsClean] = useState<boolean>(true);
@@ -16,7 +18,9 @@ export function useBranchManager({ onBranchChange }: UseBranchManagerParams = {}
   const [isManagerOpen, setIsManagerOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [branchToRename, setBranchToRename] = useState<string | null>(null);
-  const [dirtyTargetBranch, setDirtyTargetBranch] = useState<string | null>(null);
+  const [dirtyTargetBranch, setDirtyTargetBranch] = useState<string | null>(
+    null,
+  );
   const [searchQuery, setSearchQuery] = useState("");
 
   const refreshBranches = useCallback(async () => {
@@ -53,35 +57,63 @@ export function useBranchManager({ onBranchChange }: UseBranchManagerParams = {}
   const switchBranch = (target: string, force = false) => {
     if (target === currentBranch) return;
     if (!isClean && !force) return setDirtyTargetBranch(target);
-    execBranchAction(() => branchApi.switchBranch({ branch: target }), setIsLoading, () => onActionDone(true), "Failed to switch branch");
+    execBranchAction(
+      () => branchApi.switchBranch({ branch: target }),
+      setIsLoading,
+      () => onActionDone(true),
+      "Failed to switch branch",
+    );
   };
 
   const stashAndSwitch = () => {
     if (!dirtyTargetBranch) return;
-    execBranchAction(() => branchApi.switchBranch({ branch: dirtyTargetBranch, stash: true }), setIsLoading, () => onActionDone(true), "Failed to stash and switch");
+    execBranchAction(
+      () => branchApi.switchBranch({ branch: dirtyTargetBranch, stash: true }),
+      setIsLoading,
+      () => onActionDone(true),
+      "Failed to stash and switch",
+    );
   };
 
   const createBranch = (name: string, startPoint?: string) => {
-    execBranchAction(() => branchApi.createBranch({ name, startPoint }), setIsLoading, async () => {
-      setIsCreateOpen(false);
-      await onActionDone(true);
-    }, "Failed to create branch");
+    execBranchAction(
+      () => branchApi.createBranch({ name, startPoint }),
+      setIsLoading,
+      async () => {
+        setIsCreateOpen(false);
+        await onActionDone(true);
+      },
+      "Failed to create branch",
+    );
   };
 
   const renameBranch = (oldName: string, newName: string) => {
-    execBranchAction(() => branchApi.renameBranch({ oldName, newName }), setIsLoading, async () => {
-      setBranchToRename(null);
-      await onActionDone();
-    }, "Failed to rename branch");
+    execBranchAction(
+      () => branchApi.renameBranch({ oldName, newName }),
+      setIsLoading,
+      async () => {
+        setBranchToRename(null);
+        await onActionDone();
+      },
+      "Failed to rename branch",
+    );
   };
 
   const deleteBranch = (branchName: string, force = false) => {
-    if (!confirm(`Are you sure you want to delete branch "${branchName}"?`)) return;
-    execBranchAction(() => branchApi.deleteBranch({ branch: branchName, force }), setIsLoading, refreshBranches, "Failed to delete branch");
+    if (!confirm(`Are you sure you want to delete branch "${branchName}"?`))
+      return;
+    execBranchAction(
+      () => branchApi.deleteBranch({ branch: branchName, force }),
+      setIsLoading,
+      refreshBranches,
+      "Failed to delete branch",
+    );
   };
 
   return {
-    branches: branches.filter((b) => b.name.toLowerCase().includes(searchQuery.toLowerCase())),
+    branches: branches.filter((b) =>
+      b.name.toLowerCase().includes(searchQuery.toLowerCase()),
+    ),
     allBranches: branches,
     currentBranch,
     isClean,
@@ -110,7 +142,7 @@ async function execBranchAction(
   apiCall: () => Promise<{ success: boolean; error?: string }>,
   setIsLoading: (l: boolean) => void,
   onSuccess: () => Promise<void> | void,
-  errorMessage: string
+  errorMessage: string,
 ) {
   setIsLoading(true);
   try {
