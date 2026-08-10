@@ -52,6 +52,23 @@ export const getGitBranch = (
   }
 };
 
+export const getGitBranches = (
+  basePath: string = repoState.getRepoPath(),
+): string[] => {
+  try {
+    const raw = execSync('git branch --format="%(refname:short)"', {
+      cwd: basePath,
+      encoding: "utf-8",
+    });
+    return raw
+      .split(/\r?\n/)
+      .map((b) => b.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+};
+
 export const getGitStatusClean = (
   basePath: string = repoState.getRepoPath(),
 ): boolean => {

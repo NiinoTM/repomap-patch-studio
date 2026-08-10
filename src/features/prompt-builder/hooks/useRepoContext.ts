@@ -118,5 +118,6 @@ export function useRepoContext() {
     changeRepo,
     switchBranch: handleSwitchBranch,
     refreshHistory: fetchHistory,
+    refreshRepo: loadRepo,
   };
 }

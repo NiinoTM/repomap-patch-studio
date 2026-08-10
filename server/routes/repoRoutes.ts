@@ -8,6 +8,7 @@ import {
 import { repoState, getAllFiles, getFileStats } from "../adapters/gitAdapter";
 import {
   getGitBranch,
+  getGitBranches,
   getGitStatusClean,
   getDetailedBranchList,
   gitSwitchBranch,

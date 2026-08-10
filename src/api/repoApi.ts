@@ -24,7 +24,7 @@ export const repoApi = {
   switchBranch: (
     branch: string,
   ): Promise<{ success: boolean; error?: string }> =>
-    fetch("/api/switch-branch", {
+    fetch("/api/branches/switch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ branch }),
