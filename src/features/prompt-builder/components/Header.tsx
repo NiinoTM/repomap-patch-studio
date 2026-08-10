@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { useHeaderActions } from "../hooks/useHeaderActions";
 
 interface HeaderProps {
@@ -24,8 +24,40 @@ export function Header({
     onChangeRepo,
   });
 
+  // Manual path entry — an alternative to the native OS folder dialog.
+  // Useful under RDP/headless setups where ShowDialog() can hang or fail
+  // to render, but kept available generally as a faster option too.
+  const [isEditingPath, setIsEditingPath] = useState(false);
+  const [manualPath, setManualPath] = useState(repoPath);
+
+  const startManualEdit = () => {
+    setManualPath(repoPath);
+    setIsEditingPath(true);
+  };
+
+  const submitManualPath = () => {
+    const trimmed = manualPath.trim();
+    if (trimmed && trimmed !== repoPath) {
+      onChangeRepo(trimmed);
+    }
+    setIsEditingPath(false);
+  };
+
+  const cancelManualEdit = () => {
+    setManualPath(repoPath);
+    setIsEditingPath(false);
+  };
+
+  const handlePathKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      submitManualPath();
+    } else if (e.key === "Escape") {
+      cancelManualEdit();
+    }
+  };
+
   const TARGET_BUDGET = 30000;
-  
+
   const budgetPercentage = Math.min(
     100,
     Math.round(((tokenStats?.total || 0) / TARGET_BUDGET) * 100),
@@ -65,16 +97,57 @@ export function Header({
 
         <div className="h-4 w-[1px] bg-zinc-800 mx-2"></div>
 
-        <div className="flex items-center space-x-2 bg-zinc-900 border border-zinc-800 px-2 py-1 rounded text-xs max-w-[300px]">
-          <span className="text-zinc-500 truncate" title={repoPath}>
-            {repoPath}
-          </span>
-          <button
-            onClick={handleChangeRepo}
-            className="text-cyan-500 hover:text-cyan-400 font-medium px-1 shrink-0"
-          >
-            Change
-          </button>
+        <div className="flex items-center space-x-2 bg-zinc-900 border border-zinc-800 px-2 py-1 rounded text-xs max-w-[340px]">
+          {isEditingPath ? (
+            <>
+              <input
+                autoFocus
+                type="text"
+                value={manualPath}
+                onChange={(e) => setManualPath(e.target.value)}
+                onKeyDown={handlePathKeyDown}
+                onBlur={cancelManualEdit}
+                placeholder="Type or paste a folder path..."
+                className="bg-zinc-950 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-200 text-xs w-[220px] focus:outline-none focus:border-cyan-500"
+              />
+              <button
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={submitManualPath}
+                className="text-emerald-500 hover:text-emerald-400 font-medium px-1 shrink-0"
+                title="Use this path (Enter)"
+              >
+                ✓
+              </button>
+              <button
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={cancelManualEdit}
+                className="text-zinc-500 hover:text-zinc-400 font-medium px-1 shrink-0"
+                title="Cancel (Esc)"
+              >
+                ✕
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="text-zinc-500 truncate" title={repoPath}>
+                {repoPath}
+              </span>
+              <button
+                onClick={handleChangeRepo}
+                className="text-cyan-500 hover:text-cyan-400 font-medium px-1 shrink-0"
+                title="Browse using the native OS folder dialog"
+              >
+                Browse
+              </button>
+              <button
+                onClick={startManualEdit}
+                className="text-cyan-500 hover:text-cyan-400 font-medium px-1 shrink-0"
+                title="Type a folder path manually"
+              >
+                Type path
+              </button>
+            </>
+          )}
         </div>
       </div>
 
