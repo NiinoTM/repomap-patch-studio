@@ -11,6 +11,10 @@ interface HeaderProps {
     files: number;
     selectedCount: number;
   };
+  branch?: string;
+  branches?: string[];
+  isClean?: boolean;
+  onSwitchBranch?: (branch: string) => Promise<boolean>;
 }
 
 export function Header({
@@ -18,6 +22,10 @@ export function Header({
   repoPath,
   onChangeRepo,
   tokenStats,
+  branch,
+  branches,
+  isClean,
+  onSwitchBranch,
 }: HeaderProps) {
   const { isUndoing, handleUndo, handleChangeRepo } = useHeaderActions({
     onUndoSuccess,
@@ -191,11 +199,52 @@ export function Header({
       )}
 
       <div className="flex items-center space-x-4">
-        <div className="flex items-center space-x-2">
-          <span className="flex h-2 w-2 rounded-full bg-emerald-500"></span>
-          <span className="text-[11px] font-mono text-zinc-400">
-            git: <span className="text-emerald-500">main</span> (Clean)
-          </span>
+        <div className="flex items-center space-x-1.5 relative group">
+          <span
+            className={`flex h-2 w-2 rounded-full ${(isClean ?? true) ? "bg-emerald-500" : "bg-amber-500"}`}
+          ></span>
+          <div className="text-[11px] font-mono text-zinc-400 flex items-center">
+            git:
+            <div className="relative ml-1 flex items-center">
+              <select
+                value={branch || ""}
+                onChange={(e) => {
+                  if (e.target.value !== branch)
+                    onSwitchBranch?.(e.target.value);
+                }}
+                className={`appearance-none bg-transparent cursor-pointer hover:underline focus:outline-none pr-3 py-0.5 ${(isClean ?? true) ? "text-emerald-500" : "text-amber-500"}`}
+                title="Switch branch"
+              >
+                {(branches?.length ? branches : [branch || "main"]).map((b) => (
+                  <option
+                    key={b}
+                    value={b}
+                    className="bg-zinc-900 text-zinc-300"
+                  >
+                    {b}
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute right-0 flex items-center text-zinc-500">
+                <svg
+                  className="h-2 w-2"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </div>
+            </div>
+            <span className="ml-1">
+              ({(isClean ?? true) ? "Clean" : "Dirty"})
+            </span>
+          </div>
         </div>
 
         <button

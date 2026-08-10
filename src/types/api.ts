@@ -12,6 +12,9 @@ export interface RepoContextResponse {
     apiOutbound?: Record<string, string[]>;
     apiInbound?: Record<string, string[]>;
   };
+  branch?: string;
+  branches?: string[];
+  isClean?: boolean;
   error?: string;
 }
 

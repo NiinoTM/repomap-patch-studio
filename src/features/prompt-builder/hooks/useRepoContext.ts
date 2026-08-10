@@ -16,6 +16,9 @@ export function useRepoContext() {
     apiOutbound?: Record<string, string[]>;
     apiInbound?: Record<string, string[]>;
   }>({ outbound: {}, inbound: {} });
+  const [branch, setBranch] = useState<string>("");
+  const [branches, setBranches] = useState<string[]>([]);
+  const [isClean, setIsClean] = useState<boolean>(true);
   const [logs, setLogs] = useState<HistoryLog[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
@@ -40,6 +43,9 @@ export function useRepoContext() {
         setRepoMap(data.repoMap);
         setFileStats(data.fileStats || {});
         setDependencyMap(data.dependencyMap || { outbound: {}, inbound: {} });
+        setBranch(data.branch || "");
+        setBranches(data.branches || []);
+        setIsClean(data.isClean ?? true);
       }
     } catch (err) {
       console.error("Failed to fetch repo context:", err);
@@ -64,6 +70,9 @@ export function useRepoContext() {
         setRepoMap(data.repoMap);
         setFileStats(data.fileStats || {});
         setDependencyMap(data.dependencyMap || { outbound: {}, inbound: {} });
+        setBranch(data.branch || "");
+        setBranches(data.branches || []);
+        setIsClean(data.isClean ?? true);
         fetchHistory();
         return true;
       } else {
@@ -77,15 +86,37 @@ export function useRepoContext() {
     }
   };
 
+  const handleSwitchBranch = async (newBranch: string) => {
+    try {
+      const data = await repoApi.switchBranch(newBranch);
+      if (data.success) {
+        await loadRepo();
+        fetchHistory();
+        return true;
+      } else {
+        alert("Error: " + (data.error || "Failed to switch branch"));
+        return false;
+      }
+    } catch (err) {
+      console.error("Failed to switch branch:", err);
+      alert("Failed to switch branch. Ensure backend is running.");
+      return false;
+    }
+  };
+
   return {
     repoPath,
     repoFiles,
     repoMap,
     fileStats,
     dependencyMap,
+    branch,
+    branches,
+    isClean,
     logs,
     isLoading,
     changeRepo,
+    switchBranch: handleSwitchBranch,
     refreshHistory: fetchHistory,
   };
 }

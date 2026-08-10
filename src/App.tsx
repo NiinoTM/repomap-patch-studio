@@ -33,6 +33,10 @@ export default function App() {
     logs,
     changeRepo,
     refreshHistory,
+    branch,
+    branches,
+    isClean,
+    switchBranch,
   } = useRepoContext();
 
   const { handlePaste } = usePasteAndValidate({
@@ -98,6 +102,10 @@ export default function App() {
         onChangeRepo={handleChangeRepo}
         onUndoSuccess={refreshHistory}
         tokenStats={tokenStats}
+        branch={branch}
+        branches={branches}
+        isClean={isClean}
+        onSwitchBranch={switchBranch}
       />
 
       <main className="flex-1 flex overflow-hidden">

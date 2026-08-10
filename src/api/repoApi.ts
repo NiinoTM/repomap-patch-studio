@@ -20,6 +20,15 @@ export const repoApi = {
     fetch("/api/native-folder-dialog", {
       method: "POST",
     }).then(handleResponse<FolderDialogResponse>),
+
+  switchBranch: (
+    branch: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    fetch("/api/switch-branch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ branch }),
+    }).then(handleResponse<{ success: boolean; error?: string }>),
 };
 
 export const filesApi = {

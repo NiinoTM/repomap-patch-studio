@@ -114,6 +114,48 @@ export interface HistoryLogItem {
   files: string[];
 }
 
+export const getGitBranch = (basePath: string = targetRepoPath): string => {
+  try {
+    return (
+      execSync("git branch --show-current", {
+        cwd: basePath,
+        encoding: "utf-8",
+      }).trim() || "unknown"
+    );
+  } catch {
+    return "unknown";
+  }
+};
+
+export const getGitBranches = (basePath: string = targetRepoPath): string[] => {
+  try {
+    const raw = execSync('git branch --format="%(refname:short)"', {
+      cwd: basePath,
+      encoding: "utf-8",
+    });
+    return raw
+      .split(/\r?\n/)
+      .map((b) => b.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+};
+
+export const getGitStatusClean = (
+  basePath: string = targetRepoPath,
+): boolean => {
+  try {
+    const raw = execSync("git status --porcelain", {
+      cwd: basePath,
+      encoding: "utf-8",
+    });
+    return raw.trim().length === 0;
+  } catch {
+    return true; // Fallback
+  }
+};
+
 export const getGitHistory = (
   basePath: string = targetRepoPath,
 ): HistoryLogItem[] => {
@@ -149,6 +191,10 @@ export const gitUndo = (basePath: string = targetRepoPath): void => {
     cwd: basePath,
     stdio: "ignore",
   });
+};
+
+export const gitSwitchBranch = (basePath: string, branch: string): void => {
+  execSync(`git checkout "${branch}"`, { cwd: basePath, stdio: "ignore" });
 };
 
 export const gitSnapshotPreEdit = (basePath: string = targetRepoPath): void => {
