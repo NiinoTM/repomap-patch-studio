@@ -27,22 +27,26 @@ export function parseDiffBlocks(rawText: string): DiffBlock[] {
       if (fileMatch) currentFile = fileMatch[1];
 
       // MOVE/RENAME directive — its own standalone line, no SEARCH/REPLACE
-      // markers needed. Accepts "->", "→", or "to" as the separator.
+      // markers needed. Accepts "->", "→", or "to" as the separator. The
+      // verb is captured in its own group so changeType can distinguish
+      // MOVE from RENAME instead of collapsing both into one label.
       const moveMatch = trimmed.match(
-        /^(?:MOVE|RENAME|Move|Rename)\s*:?\s*[`"']?([^`"'\n]+?)[`"']?\s*(?:->|→|to)\s*[`"']?([^`"'\n]+?)[`"']?$/i,
+        /^(MOVE|RENAME|Move|Rename)\s*:?\s*[`"']?([^`"'\n]+?)[`"']?\s*(?:->|→|to)\s*[`"']?([^`"'\n]+?)[`"']?$/i,
       );
       if (moveMatch) {
         console.log(
-          `[Parser] 📦 Found MOVE directive: ${moveMatch[1]} -> ${moveMatch[2]}`,
+          `[Parser] 📦 Found MOVE directive: ${moveMatch[2]} -> ${moveMatch[3]}`,
         );
+        const isRename = /^rename$/i.test(moveMatch[1]);
         blocks.push({
           id: String(index++),
-          file: moveMatch[1].trim(),
+          file: moveMatch[2].trim(),
           status: "match",
           search: "",
           replace: "",
           type: "move",
-          moveTo: moveMatch[2].trim(),
+          changeType: isRename ? "RENAME" : "MOVE",
+          moveTo: moveMatch[3].trim(),
         });
       }
 
@@ -80,6 +84,7 @@ export function parseDiffBlocks(rawText: string): DiffBlock[] {
           status: "match",
           search: sText,
           replace: rText,
+          changeType: sText.trim() === "" ? "CREATE" : "EDIT",
         });
 
         state = "IDLE";
@@ -111,6 +116,7 @@ export function parseDiffBlocks(rawText: string): DiffBlock[] {
         status: "match",
         search: "",
         replace: replaceContent,
+        changeType: "CREATE",
       });
     }
   }

@@ -60,7 +60,7 @@ export function DiffBlockCard({
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center space-x-3 min-w-0">
             <span className="bg-violet-500/20 text-violet-400 text-[10px] px-1.5 py-0.5 rounded border border-violet-500/20 font-bold uppercase shrink-0">
-              Move
+              {block.changeType === "RENAME" ? "Rename" : "Move"}
             </span>
             <span className="text-xs font-mono text-zinc-400 truncate">
               {block.file}
@@ -165,6 +165,7 @@ export function DiffBlockCard({
           <StatusBadge
             status={block.status}
             isCodeMatched={block.isCodeMatched}
+            changeType={block.changeType}
           />
           {isCollapsed && (
             <span className="text-[10px] text-zinc-500 font-mono hidden sm:inline truncate">

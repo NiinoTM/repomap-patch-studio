@@ -1,18 +1,9 @@
 import { Router, Request, Response } from "express";
-import { gitSnapshotPreEdit, repoState, gitUndo } from "../adapters/gitAdapter";
+import { repoState, gitUndo } from "../adapters/gitAdapter";
 import { DiffBlockInput } from "../services/patchEngine";
-import {
-  resolveEditWrites,
-  validateMoveBlocks,
-  sortFilesForCommit,
-  writeFilesToDisk,
-  applyMoveBlocks,
-  formatChangedFiles,
-  commitChanges,
-  buildValidationErrorResponse,
-  buildApplySuccessMessage,
-  resolveShouldCommit,
-} from "../services/applyPatchService";
+import { resolveShouldCommit } from "../services/applyPatchService";
+import { runApplyPipeline } from "../services/applyPipeline";
+import { createStageRunner } from "../utils/streamProgress";
 
 export const patchRouter = Router();
 
@@ -51,119 +42,16 @@ patchRouter.post("/apply", async (req: Request, res: Response) => {
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders();
 
-  const emit = (event: Record<string, unknown>) => {
-    res.write(JSON.stringify(event) + "\n");
-  };
+  const stageRunner = createStageRunner(res);
 
-  const runStage = async <T>(
-    stage: string,
-    label: string,
-    fn: () => T | Promise<T>,
-  ): Promise<T> => {
-    emit({ type: "progress", stage, label, status: "start" });
-    // Yield to the event loop so Node flushes the socket before execSync blocks it
-    await new Promise((resolve) => setTimeout(resolve, 10));
+  await runApplyPipeline(
+    targetRepoPath,
+    blocks,
+    { isDryRun, shouldCommit, commitMessage },
+    stageRunner,
+  );
 
-    const startedAt = Date.now();
-    try {
-      const result = await fn();
-      emit({
-        type: "progress",
-        stage,
-        label,
-        status: "done",
-        durationMs: Date.now() - startedAt,
-      });
-      // Yield again to flush the 'done' state before the next stage starts
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      return result;
-    } catch (err) {
-      emit({
-        type: "progress",
-        stage,
-        label,
-        status: "error",
-        durationMs: Date.now() - startedAt,
-      });
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      throw err;
-    }
-  };
-
-  const moveBlocks = blocks.filter((b) => b.type === "move");
-  const editBlocks = blocks.filter((b) => b.type !== "move");
-
-  try {
-    if (!isDryRun) {
-      await runStage("snapshot", "Snapshotting repo state", () =>
-        gitSnapshotPreEdit(targetRepoPath),
-      );
-    }
-
-    const { pendingWrites, validationErrors: editErrors } = await runStage(
-      "validate",
-      "Validating & linting changed files",
-      () => resolveEditWrites(targetRepoPath, editBlocks),
-    );
-    const moveErrors = await runStage(
-      "validate-moves",
-      "Checking move targets",
-      () => validateMoveBlocks(targetRepoPath, moveBlocks),
-    );
-    const validationErrors = [...editErrors, ...moveErrors];
-
-    if (validationErrors.length > 0) {
-      emit({
-        type: "result",
-        success: false,
-        ...buildValidationErrorResponse(validationErrors),
-      });
-      return res.end();
-    }
-
-    if (isDryRun) {
-      emit({
-        type: "result",
-        success: true,
-        dryRun: true,
-        message: "✅ Pre-flight validation passed. No files were modified.",
-        validatedFiles: Array.from(pendingWrites.keys()),
-        validatedMoves: moveBlocks.map((b) => `${b.file} -> ${b.moveTo}`),
-      });
-      return res.end();
-    }
-
-    const filesToCommit = sortFilesForCommit(Array.from(pendingWrites.keys()));
-    await runStage("write", "Writing files to disk", () =>
-      writeFilesToDisk(targetRepoPath, filesToCommit, pendingWrites),
-    );
-
-    const movedFiles = await runStage("move", "Applying file moves", () =>
-      applyMoveBlocks(targetRepoPath, moveBlocks),
-    );
-    const allChangedFiles = [...filesToCommit, ...movedFiles];
-
-    await runStage("format", "Formatting changed files", () =>
-      formatChangedFiles(targetRepoPath, allChangedFiles),
-    );
-    await runStage(
-      "commit",
-      shouldCommit ? "Committing to Git" : "Skipping commit",
-      () => commitChanges(targetRepoPath, shouldCommit, commitMessage),
-    );
-
-    emit({
-      type: "result",
-      success: true,
-      message: buildApplySuccessMessage(shouldCommit),
-      appliedFiles: allChangedFiles,
-    });
-    res.end();
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    emit({ type: "result", success: false, error: message });
-    res.end();
-  }
+  res.end();
 });
 
 patchRouter.post("/undo", (_req: Request, res: Response) => {

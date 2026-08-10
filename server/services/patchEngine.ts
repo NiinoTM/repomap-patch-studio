@@ -10,6 +10,12 @@ import {
 export interface BlockApplyOutcome {
   finalContent: string;
   blockErrors: string[];
+  // Match strategy per successfully-applied block, in application order —
+  // lets a downstream corruption check (e.g. the leaked-marker check in
+  // applyPatchService.ts) name which tier is implicated instead of just
+  // reporting "corruption detected" with no way to tell exact matches
+  // from the riskier condensed-token fallback.
+  matchStrategies: string[];
 }
 
 /**
@@ -29,17 +35,19 @@ export function applyBlocksSequentially(
 ): BlockApplyOutcome {
   let currentContent = initialContent;
   const blockErrors: string[] = [];
+  const matchStrategies: string[] = [];
 
   for (const block of blocks) {
     const result = applyBlockToContent(currentContent, block);
     if (result.success && result.newContent !== undefined) {
       currentContent = result.newContent;
+      if (result.matchStrategy) matchStrategies.push(result.matchStrategy);
     } else if (result.error) {
       blockErrors.push(result.error);
     }
   }
 
-  return { finalContent: currentContent, blockErrors };
+  return { finalContent: currentContent, blockErrors, matchStrategies };
 }
 
 export {

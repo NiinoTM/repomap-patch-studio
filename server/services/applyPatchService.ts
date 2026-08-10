@@ -57,7 +57,7 @@ export async function resolveEditWrites(
     const fullPath = resolvePath(targetRepoPath, file);
     const initialContent = fileExists(fullPath) ? readTextFile(fullPath) : "";
 
-    const { finalContent, blockErrors } = applyBlocksSequentially(
+    const { finalContent, blockErrors, matchStrategies } = applyBlocksSequentially(
       initialContent,
       blocks,
     );
@@ -67,13 +67,36 @@ export async function resolveEditWrites(
       continue;
     }
 
-    if (
-      finalContent.includes("<<<<<<< SEARCH") ||
-      finalContent.includes("=======") ||
-      finalContent.includes(">>>>>>> REPLACE")
-    ) {
+    // Real leaked markers are their own line, at the start of the line,
+    // exactly as the diff format requires (see diffParser.ts). A file
+    // that legitimately implements/documents the patch format — this
+    // one included — will contain these strings as quoted substrings
+    // inside otherwise-valid code; only a bare marker AT LINE START is
+    // actually corruption. Anchoring to ^ avoids flagging our own
+    // detection logic every time this file is edited.
+    //
+    // Uses .match() instead of .test() so both the line number and the
+    // match strategies used for this file are available — a bare boolean
+    // tells you a file is corrupted but not where or why, which turns
+    // every occurrence into a manual re-diff. Surfacing matchStrategies
+    // specifically calls out "condensed" since that tier strips comments
+    // from the whole file and splices into a non-original-offset copy —
+    // it's the most likely source of an unexplained leak.
+    const leakedMarkerMatch = finalContent.match(
+      /^(<{7} SEARCH|={7}|>{7} REPLACE)\s*$/m,
+    );
+    if (leakedMarkerMatch && leakedMarkerMatch.index !== undefined) {
+      const lineNumber =
+        finalContent.slice(0, leakedMarkerMatch.index).split("\n").length;
+      const strategyNote =
+        matchStrategies.length > 0
+          ? ` (blocks applied via: ${matchStrategies.join(", ")})`
+          : "";
+      const riskFlag = matchStrategies.includes("condensed")
+        ? " — includes a condensed-token-stream match, the highest-risk tier"
+        : "";
       validationErrors.push(
-        `Leaked patch marker detected in generated content for ${file}. Application aborted to prevent corruption.`,
+        `Leaked patch marker "${leakedMarkerMatch[1]}" detected in generated content for ${file}:${lineNumber}. Application aborted to prevent corruption.${strategyNote}${riskFlag}`,
       );
       continue;
     }
