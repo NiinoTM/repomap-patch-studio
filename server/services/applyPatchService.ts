@@ -1,18 +1,13 @@
 import {
   fileExists,
-  readTextFile,
   writeTextFile,
   ensureDir,
   resolvePath,
   dirnamePath,
 } from "../adapters/fsAdapter";
 import { gitMoveFile, formatFile, gitCommit } from "../adapters/gitAdapter";
-import {
-  applyBlocksSequentially,
-  validateSyntax,
-  DiffBlockInput,
-} from "./patchEngine";
-import { validateLint } from "./lintService";
+import { DiffBlockInput } from "./patchEngine";
+import { validateAndBuildFileContent } from "./applyValidationService";
 
 const CRITICAL_FILES = [
   "server/index.ts",
@@ -53,67 +48,23 @@ export async function resolveEditWrites(
   // fully checked (block application + syntax + lint) so one bad file
   // never hides problems in another, and the caller gets every error in
   // a single aggregated report instead of one-at-a-time round trips.
+  // The actual per-file gauntlet (block application, leaked-marker check,
+  // syntax, lint) lives in applyValidationService.ts — kept out of this
+  // file so a growing validation sequence doesn't push this file's line
+  // count past the project's max-lines ceiling.
   for (const [file, blocks] of blocksByFile) {
-    const fullPath = resolvePath(targetRepoPath, file);
-    const initialContent = fileExists(fullPath) ? readTextFile(fullPath) : "";
-
-    const { finalContent, blockErrors, matchStrategies } = applyBlocksSequentially(
-      initialContent,
+    const { content, errors } = await validateAndBuildFileContent(
+      targetRepoPath,
+      file,
       blocks,
     );
-
-    if (blockErrors.length > 0) {
-      validationErrors.push(...blockErrors);
+    if (errors.length > 0) {
+      validationErrors.push(...errors);
       continue;
     }
-
-    // Real leaked markers are their own line, at the start of the line,
-    // exactly as the diff format requires (see diffParser.ts). A file
-    // that legitimately implements/documents the patch format — this
-    // one included — will contain these strings as quoted substrings
-    // inside otherwise-valid code; only a bare marker AT LINE START is
-    // actually corruption. Anchoring to ^ avoids flagging our own
-    // detection logic every time this file is edited.
-    //
-    // Uses .match() instead of .test() so both the line number and the
-    // match strategies used for this file are available — a bare boolean
-    // tells you a file is corrupted but not where or why, which turns
-    // every occurrence into a manual re-diff. Surfacing matchStrategies
-    // specifically calls out "condensed" since that tier strips comments
-    // from the whole file and splices into a non-original-offset copy —
-    // it's the most likely source of an unexplained leak.
-    const leakedMarkerMatch = finalContent.match(
-      /^(<{7} SEARCH|={7}|>{7} REPLACE)\s*$/m,
-    );
-    if (leakedMarkerMatch && leakedMarkerMatch.index !== undefined) {
-      const lineNumber =
-        finalContent.slice(0, leakedMarkerMatch.index).split("\n").length;
-      const strategyNote =
-        matchStrategies.length > 0
-          ? ` (blocks applied via: ${matchStrategies.join(", ")})`
-          : "";
-      const riskFlag = matchStrategies.includes("condensed")
-        ? " — includes a condensed-token-stream match, the highest-risk tier"
-        : "";
-      validationErrors.push(
-        `Leaked patch marker "${leakedMarkerMatch[1]}" detected in generated content for ${file}:${lineNumber}. Application aborted to prevent corruption.${strategyNote}${riskFlag}`,
-      );
-      continue;
+    if (content !== undefined) {
+      pendingWrites.set(file, content);
     }
-
-    const syntaxError = validateSyntax(finalContent, file);
-    if (syntaxError) {
-      validationErrors.push(syntaxError);
-      continue;
-    }
-
-    const lintErrors = await validateLint(targetRepoPath, finalContent, file);
-    if (lintErrors.length > 0) {
-      validationErrors.push(...lintErrors);
-      continue;
-    }
-
-    pendingWrites.set(file, finalContent);
   }
 
   return { pendingWrites, validationErrors };
