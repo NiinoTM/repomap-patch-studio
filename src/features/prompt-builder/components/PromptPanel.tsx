@@ -13,6 +13,7 @@ import {
   MissingDependency,
 } from "../utils/completenessCheck";
 import { CompletenessWarningModal } from "./prompt/CompletenessWarningModal";
+import { parseFileList } from "../utils/diffParser";
 
 interface PromptPanelProps {
   onCopy: (promptText: string) => void;
@@ -171,6 +172,19 @@ export function PromptPanel({
     setMissingDependencies([]);
   };
 
+  const handlePasteSelection = async () => {
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+      if (!clipboardText) return;
+      const parsedFiles = parseFileList(clipboardText, files);
+      if (parsedFiles.length > 0) {
+        acceptAllSuggestions(parsedFiles);
+      }
+    } catch (err) {
+      console.error("Failed to read clipboard for context paste:", err);
+    }
+  };
+
   return (
     <div className="border-r border-zinc-800 flex flex-col h-full p-4 space-y-4 bg-zinc-950/50">
       <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-lg flex items-center justify-between">
@@ -245,6 +259,7 @@ export function PromptPanel({
         onDeselectAll={deselectAll}
         onToggleFile={toggleFile}
         onToggleFolder={toggleFolder}
+        onPasteSelection={handlePasteSelection}
       />
 
       <div className="space-y-2 text-xs text-zinc-300">

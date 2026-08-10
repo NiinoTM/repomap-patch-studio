@@ -11,6 +11,7 @@ import {
   Search,
   X,
   List,
+  Clipboard,
 } from "lucide-react";
 import { buildFileTree, TreeNode } from "../../utils/treeBuilder";
 import { SelectedFilesModal } from "./SelectedFilesModal";
@@ -24,6 +25,7 @@ interface FileTreeProps {
   onDeselectAll: () => void;
   onToggleFile: (filePath: string) => void;
   onToggleFolder: (folderFiles: string[], shouldSelect: boolean) => void;
+  onPasteSelection?: () => void;
 }
 
 export function FileTree({
@@ -35,6 +37,7 @@ export function FileTree({
   onDeselectAll,
   onToggleFile,
   onToggleFolder,
+  onPasteSelection,
 }: FileTreeProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     new Set(["root"]),
@@ -172,6 +175,19 @@ export function FileTree({
           )}
         </div>
         <div className="flex items-center space-x-2 text-[10px]">
+          {onPasteSelection && (
+            <>
+              <button
+                onClick={onPasteSelection}
+                className="text-indigo-400 hover:text-indigo-300 font-medium hover:underline flex items-center space-x-0.5 cursor-pointer"
+                title="Paste context file selection from clipboard"
+              >
+                <Clipboard className="w-3 h-3 mr-0.5" />
+                <span>Paste Selection</span>
+              </button>
+              <span className="text-zinc-700">|</span>
+            </>
+          )}
           <button
             onClick={onSelectAll}
             className="text-cyan-500 hover:text-cyan-400 font-medium hover:underline cursor-pointer"

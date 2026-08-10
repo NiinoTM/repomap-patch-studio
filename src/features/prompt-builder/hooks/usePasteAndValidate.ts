@@ -40,7 +40,7 @@ export function usePasteAndValidate({
         if (!clipboardText) return;
 
         if (discoveryMode) {
-          const discovered = parseFileList(clipboardText);
+          const discovered = parseFileList(clipboardText, repoFiles);
           setDiscoveredFiles(discovered);
           setDiscoveryMode(false);
           setToastMessage(

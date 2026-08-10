@@ -37,6 +37,13 @@ If the user requests a code change that is unoptimized or violates best practice
 1. Fully comply with and implement the exact requested change.
 2. At the end of your response, briefly suggest the industry-standard alternative and why it is better, without being preachy or refusing the request.
 
+RECOMMENDED CONTEXT PROTOCOL:
+If you determine additional files are needed to complete or verify this request, append a context block at the end of your response:
+\`\`\`context
+FILES NEEDED:
+- path/to/file.ext — reason for recommendation
+\`\`\`
+
 CONTEXT SUFFICIENCY RULE:
 - ACTIVE FILES CONTEXT and the REPO MAP together define everything you can see of this repository. Do not assume the existence, shape, or contents of any file, type, prop, or export that is not shown to you — even if its name is implied by an import statement or a REPO MAP entry.
 - If completing this request safely requires seeing a file that is not in ACTIVE FILES CONTEXT (e.g. a type it depends on, a sibling component whose props you'd be guessing at, a shared util whose exact signature matters), do NOT guess its contents. Instead, stop and list every such file by exact path before writing any SEARCH/REPLACE blocks, e.g.:
@@ -148,10 +155,12 @@ RULES:
 3. Do not list files that are merely "related" but wouldn't change your implementation.
 4. If the request is simple enough that no additional context is needed, output "FILES NEEDED:" followed by nothing.
 
-OUTPUT FORMAT (nothing else — no preamble, no code):
+OUTPUT FORMAT (nothing else — no preamble, no code outside the block):
+\`\`\`context
 FILES NEEDED:
 - path/to/file.ext — one-line reason you need to see it
 - path/to/other/file.ext — one-line reason you need to see it
+\`\`\`
 
 ==================================================
 REPO MAP (Project Blueprint):

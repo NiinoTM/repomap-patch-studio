@@ -132,19 +132,53 @@ export function parseDiffBlocks(rawText: string): DiffBlock[] {
  * response, not for the app. Deliberately much simpler than
  * parseDiffBlocks — no state machine needed for a flat list.
  */
-export function parseFileList(rawText: string): string[] {
+export function parseFileList(
+  rawText: string,
+  validFiles?: string[],
+): string[] {
   if (!rawText || !rawText.trim()) return [];
 
+  const validSet =
+    validFiles && validFiles.length > 0 ? new Set(validFiles) : null;
   const lines = rawText.split(/\r\n|\n|\r/);
-  const lineRegex = /^-\s*[`"']?([^\s`"']+\.[a-zA-Z0-9]+)[`"']?/;
   const files: string[] = [];
 
-  for (const line of lines) {
-    const match = line.trim().match(lineRegex);
+  const addFile = (candidate: string) => {
+    const cleaned = candidate
+      .trim()
+      .replace(/^[`"']|[`"']$/g, "")
+      .replace(/[,:]$/, "");
+    if (!cleaned) return;
+
+    if (validSet) {
+      if (validSet.has(cleaned) && !files.includes(cleaned)) {
+        files.push(cleaned);
+      }
+    } else if (!files.includes(cleaned)) {
+      files.push(cleaned);
+    }
+  };
+
+  const lineRegex =
+    /^(?:-\s*|\*\s*|\d+\.\s*)?[`"']?([a-zA-Z0-9_./\\-]+\.[a-zA-Z0-9]+)[`"']?(?:\s*(?:—|-|:)\s*.*)?$/;
+  const pathInLineRegex = /[`"']?([a-zA-Z0-9_./\\-]+\.[a-zA-Z0-9]+)[`"']?/g;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (
+      !line ||
+      line.startsWith("```") ||
+      line.toUpperCase() === "FILES NEEDED:"
+    )
+      continue;
+
+    const match = line.match(lineRegex);
     if (match) {
-      const filePath = match[1].replace(/[,:]$/, "");
-      if (!files.includes(filePath)) {
-        files.push(filePath);
+      addFile(match[1]);
+    } else {
+      let m: RegExpExecArray | null;
+      while ((m = pathInLineRegex.exec(line)) !== null) {
+        addFile(m[1]);
       }
     }
   }
