@@ -77,16 +77,19 @@ repoRouter.post("/files", (req: Request, res: Response) => {
   res.json({ success: true, contents });
 });
 
-repoRouter.post("/native-folder-dialog", (_req: Request, res: Response) => {
-  try {
-    const result = openNativeFolderDialog();
-    if (result.error) {
-      res.json({ success: false, path: "", error: result.error });
-      return;
+repoRouter.post(
+  "/native-folder-dialog",
+  async (_req: Request, res: Response) => {
+    try {
+      const result = await openNativeFolderDialog();
+      if (result.error) {
+        res.json({ success: false, path: "", error: result.error });
+        return;
+      }
+      res.json({ success: true, path: result.path });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.json({ success: false, path: "", error: message });
     }
-    res.json({ success: true, path: result.path });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.json({ success: false, path: "", error: message });
-  }
-});
+  },
+);
