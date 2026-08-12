@@ -15,6 +15,7 @@ interface FooterProps {
   hasChanges: boolean;
   diffBlocks?: DiffBlock[];
   onApplySuccess?: () => void;
+  isClean?: boolean;
 }
 
 export function Footer({
@@ -22,6 +23,7 @@ export function Footer({
   hasChanges,
   diffBlocks = [],
   onApplySuccess,
+  isClean = true,
 }: FooterProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showProgressBanner, setShowProgressBanner] = useState(false);
@@ -55,6 +57,7 @@ export function Footer({
   }, [isApplying, isValidating]);
 
   const hasErrors = stages.some((s) => s.status === "error");
+  const canCommit = hasChanges || !isClean;
 
   const handleCommitButtonClick = async () => {
     const ok = await validateDryRun();
@@ -141,7 +144,7 @@ export function Footer({
             type="text"
             value={commitMessage}
             onChange={(e) => setCommitMessage(e.target.value)}
-            disabled={!hasChanges || isApplying}
+            disabled={!canCommit || isApplying}
             className="bg-transparent border-none p-0 text-sm focus:ring-0 focus:outline-none text-zinc-100 placeholder-zinc-700 font-mono disabled:opacity-50"
             placeholder="Commit message..."
           />
@@ -191,7 +194,7 @@ export function Footer({
 
           <button
             onClick={handleCommitButtonClick}
-            disabled={!hasChanges || isApplying || isValidating}
+            disabled={!canCommit || isApplying || isValidating}
             className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 h-12 rounded-lg font-bold shadow-lg shadow-emerald-500/10 flex items-center space-x-2 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span>
@@ -199,7 +202,9 @@ export function Footer({
                 ? "Validating..."
                 : isApplying
                   ? "Committing..."
-                  : "Apply Changes & Commit"}
+                  : hasChanges
+                    ? "Apply Changes & Commit"
+                    : "Commit"}
             </span>
             <GitCommit className="w-4 h-4" />
           </button>

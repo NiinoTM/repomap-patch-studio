@@ -112,6 +112,29 @@ export function applyFuzzyIndentationMatch(
   return null;
 }
 
+function normalizeText(text: string): string {
+  return text.replace(/\r\n/g, "\n");
+}
+
+function applyCondensedMatch(
+  normContent: string,
+  normSearch: string,
+  normReplace: string,
+): string | null {
+  const range = findCondensedRange(normContent, normSearch);
+  if (!range) return null;
+
+  const cleanNormContent = normContent
+    .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
+    .replace(/\{\s*["']\s*["']\s*\}/g, "");
+
+  return (
+    cleanNormContent.slice(0, range.start) +
+    normReplace +
+    cleanNormContent.slice(range.end)
+  );
+}
+
 /**
  * Pure In-Memory Block Application Engine (Exact, Fuzzy Indentation & Condensed Token Stream).
  */
@@ -127,11 +150,10 @@ export function applyBlockToContent(
     };
   }
 
-  const normContent = content.replace(/\r\n/g, "\n");
-  const normSearch = block.search.replace(/\r\n/g, "\n");
-  const normReplace = block.replace.replace(/\r\n/g, "\n");
+  const normContent = normalizeText(content);
+  const normSearch = normalizeText(block.search);
+  const normReplace = normalizeText(block.replace);
 
-  // 1. Exact Match
   if (normContent.includes(normSearch)) {
     return {
       success: true,
@@ -140,7 +162,6 @@ export function applyBlockToContent(
     };
   }
 
-  // 2. Smart Fuzzy Indentation Match
   const fuzzyMatch = applyFuzzyIndentationMatch(
     normContent,
     normSearch,
@@ -154,23 +175,17 @@ export function applyBlockToContent(
     };
   }
 
-  // 3. Condensed Token Stream Replacement — last resort. Strips ALL
-  // whitespace/quotes/comments before matching, so it can false-positive
-  // on short/generic search text, and it splices into a comment-stripped
-  // copy of the WHOLE file, not just the matched region — a successful
-  // match here still discards every comment outside the edited span.
-  // Tagged "condensed" specifically so callers can flag it as the
-  // higher-risk path rather than treating all three tiers as equivalent.
-  const range = findCondensedRange(normContent, normSearch);
-  if (range) {
-    const cleanNormContent = normContent
-      .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
-      .replace(/\{\s*["']\s*["']\s*\}/g, "");
-    const newContent =
-      cleanNormContent.slice(0, range.start) +
-      normReplace +
-      cleanNormContent.slice(range.end);
-    return { success: true, newContent, matchStrategy: "condensed" };
+  const condensedMatch = applyCondensedMatch(
+    normContent,
+    normSearch,
+    normReplace,
+  );
+  if (condensedMatch !== null) {
+    return {
+      success: true,
+      newContent: condensedMatch,
+      matchStrategy: "condensed",
+    };
   }
 
   return {

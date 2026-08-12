@@ -27,7 +27,11 @@ patchRouter.post("/apply", async (req: Request, res: Response) => {
   const isDryRun = dryRun === true;
   const targetRepoPath = repoState.getRepoPath();
 
-  if (!blocks || !Array.isArray(blocks) || blocks.length === 0) {
+  if (
+    !blocks ||
+    !Array.isArray(blocks) ||
+    (blocks.length === 0 && !shouldCommit)
+  ) {
     return res
       .status(400)
       .json({ success: false, error: "No diff blocks provided." });

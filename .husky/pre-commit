@@ -2,7 +2,8 @@
 # patch format itself — legitimate matches, not leaked markers. Keep this
 # list in sync if those files move (see eslint.config.js header for why
 # that discipline matters in this repo).
-PATCH_MARKER_ALLOWLIST='^(src/features/prompt-builder/utils/diffParser\.ts|src/features/prompt-builder/utils/promptTemplates\.ts|src/features/prompt-builder/components/DiffPanel\.tsx|src/features/prompt-builder/components/diff/ClipboardDebugger\.tsx|src/features/prompt-builder/components/diff/DiffBlockCard\.tsx|server/services/applyPatchService\.ts|\.husky/pre-commit)$'
+PATCH_MARKER_ALLOWLIST='^(src/features/prompt-builder/utils/diffParser\.ts|src/features/prompt-builder/utils/promptTemplates\.ts|src/features/prompt-builder/components/DiffPanel\.tsx|src/features/prompt-builder/components/diff/ClipboardDebugger\.tsx|src/features/prompt-builder/components/diff/DiffBlockCard\.tsx|src/features/prompt-builder/components/diff/DiffBlockBody\.tsx|server/services/applyPatchService\.ts|\.husky/pre-commit)$'
+
 
 LEAKED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -vE "$PATCH_MARKER_ALLOWLIST" | \
   xargs -r git grep --cached -I -l -E '<<<<<<< SEARCH|=======|>>>>>>> REPLACE' -- 2>/dev/null || true)

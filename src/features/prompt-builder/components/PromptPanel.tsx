@@ -1,8 +1,13 @@
 import { useState, useEffect } from "react";
-import { Copy, Map, Eye, X, FileText, AtSign } from "lucide-react";
+import { AtSign } from "lucide-react";
 import { MentionDropdown } from "./prompt/MentionDropdown";
 import { SuggestedContextBar } from "./prompt/SuggestedContextBar";
 import { FileTree } from "./prompt/FileTree";
+import {
+  RepoMapHeader,
+  RepoMapPreviewModal,
+} from "./prompt/RepoMapPreviewModal";
+import { PromptActionButtons } from "./prompt/PromptActionButtons";
 import { useMentionPopup } from "../hooks/useMentionPopup";
 import { useSuggestedContext } from "../hooks/useSuggestedContext";
 import { useFileSelection } from "../hooks/useFileSelection";
@@ -187,29 +192,11 @@ export function PromptPanel({
 
   return (
     <div className="border-r border-zinc-800 flex flex-col h-full p-4 space-y-4 bg-zinc-950/50">
-      <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-lg flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="p-2 bg-cyan-500/10 rounded">
-            <Map className="w-4 h-4 text-cyan-500" />
-          </div>
-          <div>
-            <p className="text-xs font-semibold text-zinc-200">
-              Repo Map Ready
-            </p>
-            <p className="text-[10px] text-zinc-500">
-              ~{repoMapTokens.toLocaleString()} map tokens / {files.length}{" "}
-              files
-            </p>
-          </div>
-        </div>
-        <button
-          onClick={() => setIsMapModalOpen(true)}
-          className="text-zinc-400 hover:text-zinc-200 transition-colors p-1 rounded hover:bg-zinc-800"
-          title="Preview Repo Map"
-        >
-          <Eye className="w-4 h-4" />
-        </button>
-      </div>
+      <RepoMapHeader
+        repoMapTokens={repoMapTokens}
+        filesCount={files.length}
+        onOpenModal={() => setIsMapModalOpen(true)}
+      />
 
       <div className="space-y-2 relative">
         <div className="flex items-center justify-between">
@@ -284,87 +271,22 @@ export function PromptPanel({
         </label>
       </div>
 
-      <div className="flex space-x-2 shrink-0">
-        <button
-          onClick={() => handleCopyClick("full")}
-          disabled={isCopying || isCopyingFiles}
-          className={`flex-1 font-semibold py-2.5 rounded-lg shadow-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer text-[11px] ${
-            discoveryMode
-              ? "bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-indigo-500/10"
-              : "bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-cyan-500/10"
-          }`}
-        >
-          <Copy className="w-3.5 h-3.5 shrink-0" />
-          <span className="truncate">
-            {isCopying
-              ? "Assembling..."
-              : discoveryMode
-                ? "Ask AI What's Needed"
-                : `Full Context (${selectedFiles.size})`}
-          </span>
-        </button>
+      <PromptActionButtons
+        discoveryMode={discoveryMode}
+        selectedFilesCount={selectedFiles.size}
+        isCopying={isCopying}
+        isCopyingFiles={isCopyingFiles}
+        onCopyFull={() => handleCopyClick("full")}
+        onCopyFiles={() => handleCopyClick("files")}
+      />
 
-        <button
-          onClick={() => handleCopyClick("files")}
-          disabled={
-            isCopying ||
-            isCopyingFiles ||
-            selectedFiles.size === 0 ||
-            discoveryMode
-          }
-          className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold py-2.5 rounded-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer border border-zinc-700 text-[11px]"
-        >
-          <FileText className="w-3.5 h-3.5 shrink-0" />
-          <span className="truncate">
-            {isCopyingFiles
-              ? "Fetching..."
-              : `Files + Prompt (${selectedFiles.size})`}
-          </span>
-        </button>
-      </div>
-
-      {isMapModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-2xl flex flex-col overflow-hidden shadow-2xl">
-            <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-900">
-              <h2 className="text-sm font-bold text-zinc-200">
-                Repo Map Context Preview (~{repoMapTokens.toLocaleString()}
-                tokens)
-              </h2>
-              <button
-                onClick={() => setIsMapModalOpen(false)}
-                className="text-zinc-400 hover:text-zinc-200 p-1 rounded-md hover:bg-zinc-800 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-4 overflow-y-auto max-h-[60vh] custom-scrollbar">
-              <pre className="font-mono text-xs text-zinc-300 bg-zinc-900 p-4 rounded-lg border border-zinc-800 whitespace-pre-wrap">
-                {repoMap || "Generating Repo Map..."}
-              </pre>
-            </div>
-
-            <div className="p-4 border-t border-zinc-800 bg-zinc-900 flex justify-end space-x-3">
-              <button
-                onClick={() => setIsMapModalOpen(false)}
-                className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors border border-zinc-700 cursor-pointer"
-              >
-                Close
-              </button>
-              <button
-                onClick={() => {
-                  onCopyMap(repoMap);
-                  setIsMapModalOpen(false);
-                }}
-                className="px-4 py-2 text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-500 rounded-lg transition-colors shadow-lg shadow-cyan-900/20 cursor-pointer"
-              >
-                Copy Raw Map
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <RepoMapPreviewModal
+        isOpen={isMapModalOpen}
+        onClose={() => setIsMapModalOpen(false)}
+        repoMap={repoMap}
+        repoMapTokens={repoMapTokens}
+        onCopyMap={onCopyMap}
+      />
 
       {missingDependencies.length > 0 && pendingCopyAction && (
         <CompletenessWarningModal

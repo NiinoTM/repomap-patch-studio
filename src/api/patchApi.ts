@@ -27,7 +27,7 @@ export const patchApi = {
       body: JSON.stringify(payload),
     });
 
-    if (!res.body) {
+    if (!res.ok || !res.body) {
       return handleResponse<ApplyResponse>(res);
     }
 

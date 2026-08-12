@@ -32,6 +32,36 @@ function formatErrorDetails(
     : `${genericLabel}\n${data.error || "Unknown error"}`;
 }
 
+function normalizeBlocks(blocks: DiffBlock[]): DiffBlock[] {
+  return blocks.map((b) => ({
+    ...b,
+    file: b.matchedFile || b.file,
+  }));
+}
+
+async function performAutoValidation(
+  rawBlocks: DiffBlock[],
+  setIsValidating: (v: boolean) => void,
+  setValidationErrors: (errs: string[]) => void,
+) {
+  setIsValidating(true);
+  try {
+    const blocks = normalizeBlocks(rawBlocks);
+    const data = await patchApi.applyStream({ blocks, dryRun: true }, () => {});
+    if (data.success) {
+      setValidationErrors([]);
+    } else if (data.details) {
+      setValidationErrors(data.details);
+    } else {
+      setValidationErrors([data.error || "Unknown validation error"]);
+    }
+  } catch {
+    setValidationErrors(["Failed to connect to local server for validation."]);
+  } finally {
+    setIsValidating(false);
+  }
+}
+
 export function useApplyChanges({
   diffBlocks,
   onApplySuccess,
@@ -58,12 +88,6 @@ export function useApplyChanges({
     });
   };
 
-  const normalizeBlocks = (blocks: DiffBlock[]): DiffBlock[] =>
-    blocks.map((b) => ({
-      ...b,
-      file: b.matchedFile || b.file,
-    }));
-
   const blocksJson = JSON.stringify(diffBlocks);
 
   useEffect(() => {
@@ -75,35 +99,15 @@ export function useApplyChanges({
       return;
     }
 
-    const timer = setTimeout(async () => {
-      setIsValidating(true);
-      try {
-        const blocks = normalizeBlocks(rawBlocks);
-        const data = await patchApi.applyStream(
-          { blocks, dryRun: true },
-          () => {},
-        );
-        if (data.success) {
-          setValidationErrors([]);
-        } else if (data.details) {
-          setValidationErrors(data.details);
-        } else {
-          setValidationErrors([data.error || "Unknown validation error"]);
-        }
-      } catch {
-        setValidationErrors([
-          "Failed to connect to local server for validation.",
-        ]);
-      } finally {
-        setIsValidating(false);
-      }
+    const timer = setTimeout(() => {
+      performAutoValidation(rawBlocks, setIsValidating, setValidationErrors);
     }, 500);
 
     return () => clearTimeout(timer);
   }, [blocksJson, autoValidate]);
 
   const applyChanges = async (shouldCommit: boolean, commitMessage: string) => {
-    if (diffBlocks.length === 0) {
+    if (diffBlocks.length === 0 && !shouldCommit) {
       alert("No diff blocks detected to apply!");
       return false;
     }
@@ -140,8 +144,12 @@ export function useApplyChanges({
         ),
       );
       return false;
-    } catch {
-      alert("❌ Failed to connect to local server. Ensure server is running!");
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error && err.message
+          ? err.message
+          : "Failed to connect to local server. Ensure server is running!";
+      alert(`❌ ${msg}`);
       return false;
     } finally {
       setIsApplying(false);
@@ -150,8 +158,7 @@ export function useApplyChanges({
 
   const validateDryRun = async () => {
     if (diffBlocks.length === 0) {
-      alert("No diff blocks detected to apply!");
-      return false;
+      return true;
     }
 
     setIsValidating(true);
@@ -177,8 +184,12 @@ export function useApplyChanges({
         ),
       );
       return false;
-    } catch {
-      alert("❌ Failed to connect to local server. Ensure server is running!");
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error && err.message
+          ? err.message
+          : "Failed to connect to local server. Ensure server is running!";
+      alert(`❌ ${msg}`);
       return false;
     } finally {
       setIsValidating(false);

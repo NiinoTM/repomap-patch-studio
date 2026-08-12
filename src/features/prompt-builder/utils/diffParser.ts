@@ -1,10 +1,78 @@
 import { DiffBlock } from "../../../types/patch";
 
+interface IdleParseResult {
+  nextFile: string;
+  nextState?: "SEARCH";
+  moveBlock?: DiffBlock;
+}
+
+function parseIdleLine(trimmed: string, currentFile: string): IdleParseResult {
+  const fileMatch = trimmed.match(
+    /^(?:FILE|OVERWRITE FILE|File|Path|###|\*\*)\s*:?\s*[`"']?([^`"']+\.[a-zA-Z0-9]+)[`"']?/i,
+  );
+  const nextFile = fileMatch ? fileMatch[1] : currentFile;
+
+  const moveMatch = trimmed.match(
+    /^(MOVE|RENAME|Move|Rename)\s*:?\s*[`"']?([^`"'\n]+?)[`"']?\s*(?:->|→|to)\s*[`"']?([^`"'\n]+?)[`"']?$/i,
+  );
+
+  let moveBlock: DiffBlock | undefined;
+  if (moveMatch) {
+    const isRename = /^rename$/i.test(moveMatch[1]);
+    moveBlock = {
+      id: "",
+      file: moveMatch[2].trim(),
+      status: "match",
+      search: "",
+      replace: "",
+      type: "move",
+      changeType: isRename ? "RENAME" : "MOVE",
+      moveTo: moveMatch[3].trim(),
+    };
+  }
+
+  const isSearchStart = trimmed === "<<<<<<< SEARCH";
+  return {
+    nextFile,
+    nextState: isSearchStart ? "SEARCH" : undefined,
+    moveBlock,
+  };
+}
+
+function parseCreateOverwrites(
+  rawText: string,
+  blocks: DiffBlock[],
+  startIndex: number,
+): void {
+  const createRegex =
+    /(?:Create|Overwriting|File:)[ \t]*['"]?([^'":\n]+?\.[a-zA-Z0-9]+)['"]?:?[ \t]*\n```[a-zA-Z]*\n([\s\S]*?)\n```/gi;
+  let match;
+  let index = startIndex;
+
+  while ((match = createRegex.exec(rawText)) !== null) {
+    const filePath = match[1].trim();
+    const replaceContent = match[2];
+    const isDuplicate = blocks.some(
+      (b) => b.file === filePath && b.replace === replaceContent,
+    );
+    if (!isDuplicate) {
+      console.log(`[Parser] 📝 Found Create/Overwrite block for ${filePath}`);
+      blocks.push({
+        id: String(index++),
+        file: filePath,
+        status: "match",
+        search: "",
+        replace: replaceContent,
+        changeType: "CREATE",
+      });
+    }
+  }
+}
+
 export function parseDiffBlocks(rawText: string): DiffBlock[] {
   console.log("[Parser] Starting parse. Input length:", rawText?.length);
   if (!rawText || !rawText.trim()) return [];
 
-  // Split safely by any OS line ending
   const lines = rawText.split(/\r\n|\n|\r/);
   const blocks: DiffBlock[] = [];
   let index = 1;
@@ -14,61 +82,33 @@ export function parseDiffBlocks(rawText: string): DiffBlock[] {
   let currentReplace: string[] = [];
   let currentFile = "Active File";
 
-  console.log(`[Parser] Processing ${lines.length} lines...`);
-
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trim();
 
     if (state === "IDLE") {
-      const fileMatch = trimmed.match(
-        /^(?:FILE|OVERWRITE FILE|File|Path|###|\*\*)\s*:?\s*[`"']?([^`"']+\.[a-zA-Z0-9]+)[`"']?/i,
+      const { nextFile, nextState, moveBlock } = parseIdleLine(
+        trimmed,
+        currentFile,
       );
-      if (fileMatch) currentFile = fileMatch[1];
-
-      // MOVE/RENAME directive — its own standalone line, no SEARCH/REPLACE
-      // markers needed. Accepts "->", "→", or "to" as the separator. The
-      // verb is captured in its own group so changeType can distinguish
-      // MOVE from RENAME instead of collapsing both into one label.
-      const moveMatch = trimmed.match(
-        /^(MOVE|RENAME|Move|Rename)\s*:?\s*[`"']?([^`"'\n]+?)[`"']?\s*(?:->|→|to)\s*[`"']?([^`"'\n]+?)[`"']?$/i,
-      );
-      if (moveMatch) {
-        console.log(
-          `[Parser] 📦 Found MOVE directive: ${moveMatch[2]} -> ${moveMatch[3]}`,
-        );
-        const isRename = /^rename$/i.test(moveMatch[1]);
-        blocks.push({
-          id: String(index++),
-          file: moveMatch[2].trim(),
-          status: "match",
-          search: "",
-          replace: "",
-          type: "move",
-          changeType: isRename ? "RENAME" : "MOVE",
-          moveTo: moveMatch[3].trim(),
-        });
+      currentFile = nextFile;
+      if (moveBlock) {
+        moveBlock.id = String(index++);
+        blocks.push(moveBlock);
       }
-
-      if (trimmed === "<<<<<<< SEARCH") {
-        console.log(`[Parser] 🟢 Found SEARCH start at line ${i + 1}`);
-        state = "SEARCH";
+      if (nextState) {
+        state = nextState;
         currentSearch = [];
         currentReplace = [];
       }
     } else if (state === "SEARCH") {
       if (trimmed === "=======") {
-        console.log(`[Parser] 🟡 Found DIVIDER at line ${i + 1}`);
         state = "REPLACE";
       } else {
         currentSearch.push(line);
       }
     } else if (state === "REPLACE") {
       if (trimmed === ">>>>>>> REPLACE") {
-        console.log(
-          `[Parser] 🔴 Found REPLACE end at line ${i + 1}. Pushing block!`,
-        );
-
         const sText = currentSearch
           .join("\n")
           .replace(/^```[a-zA-Z]*\n/, "")
@@ -95,31 +135,7 @@ export function parseDiffBlocks(rawText: string): DiffBlock[] {
     }
   }
 
-  console.log(
-    `[Parser] Finished state machine. Found ${blocks.length} blocks.`,
-  );
-
-  // 2. FALLBACK FOR "Create 'file'" OVERWRITES
-  const createRegex =
-    /(?:Create|Overwriting|File:)[ \t]*['"]?([^'":\n]+?\.[a-zA-Z0-9]+)['"]?:?[ \t]*\n```[a-zA-Z]*\n([\s\S]*?)\n```/gi;
-  let match;
-  while ((match = createRegex.exec(rawText)) !== null) {
-    const filePath = match[1].trim();
-    const replaceContent = match[2];
-    if (
-      !blocks.some((b) => b.file === filePath && b.replace === replaceContent)
-    ) {
-      console.log(`[Parser] 📝 Found Create/Overwrite block for ${filePath}`);
-      blocks.push({
-        id: String(index++),
-        file: filePath,
-        status: "match",
-        search: "",
-        replace: replaceContent,
-        changeType: "CREATE",
-      });
-    }
-  }
+  parseCreateOverwrites(rawText, blocks, index);
 
   console.log(`[Parser] Final returned blocks:`, blocks);
   return blocks;

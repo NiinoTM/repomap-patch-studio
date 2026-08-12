@@ -30,6 +30,7 @@ export default function App() {
     repoMap,
     fileStats,
     dependencyMap,
+    isClean,
     logs,
     changeRepo,
     refreshHistory,
@@ -90,7 +91,7 @@ export default function App() {
 
   const handleApplySuccess = () => {
     handleClear();
-    refreshHistory();
+    handleRefreshAll();
   };
 
   const activeDiffBlocks = (diffBlocks || []).filter(
@@ -145,6 +146,7 @@ export default function App() {
         hasChanges={activeDiffBlocks.length > 0}
         diffBlocks={activeDiffBlocks}
         onApplySuccess={handleApplySuccess}
+        isClean={isClean}
       />
 
       <Toast message={toastMessage} onClose={() => setToastMessage(null)} />

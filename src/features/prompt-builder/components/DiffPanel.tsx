@@ -1,15 +1,10 @@
 import { useState, useEffect } from "react";
-import {
-  ClipboardPaste,
-  AlertTriangle,
-  Bug,
-  Copy,
-  CheckCircle2,
-} from "lucide-react";
+import { ClipboardPaste } from "lucide-react";
 import { DiffBlock } from "../../../types/patch";
-import { ClipboardDebugger } from "./diff/ClipboardDebugger";
-import { DiffBlockCard } from "./diff/DiffBlockCard";
 import { DiffFilterToolbar, type FilterMode } from "./diff/DiffFilterToolbar";
+import { DiffPanelErrorBanner } from "./diff/DiffPanelErrorBanner";
+import { EmptyDiffState } from "./diff/EmptyDiffState";
+import { DiffBlockList } from "./diff/DiffBlockList";
 import { useApplyChanges } from "../hooks/useApplyChanges";
 
 interface DiffPanelProps {
@@ -220,35 +215,11 @@ export function DiffPanel({
         onClear={onClear}
       />
 
-      {validationErrors.length > 0 && (
-        <div className="bg-rose-950/40 border border-rose-900/60 rounded-xl p-3 flex items-center justify-between shrink-0 shadow-sm">
-          <div className="flex items-center space-x-2.5 text-rose-300 text-xs font-medium min-w-0 pr-2">
-            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-            <span className="truncate">
-              {validationErrors.length} validation{" "}
-              {validationErrors.length === 1 ? "error" : "errors"} detected in
-              diff blocks
-            </span>
-          </div>
-          <button
-            onClick={handleCopyAllErrors}
-            className="px-3 py-1.5 bg-rose-900/60 hover:bg-rose-800/80 text-rose-100 text-xs font-medium rounded-lg transition-colors shrink-0 flex items-center space-x-1.5 cursor-pointer border border-rose-700/50"
-            title="Copy all validation errors to clipboard for AI resolution"
-          >
-            {copiedAllErrors ? (
-              <>
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Copied All Errors!</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5 text-rose-300" />
-                <span>Copy All Errors</span>
-              </>
-            )}
-          </button>
-        </div>
-      )}
+      <DiffPanelErrorBanner
+        validationErrors={validationErrors}
+        copiedAllErrors={copiedAllErrors}
+        onCopyAllErrors={handleCopyAllErrors}
+      />
 
       <div className="flex-1 flex flex-col space-y-4 overflow-hidden">
         {!pastedContent ? (
@@ -264,83 +235,35 @@ export function DiffPanel({
             </div>
           </div>
         ) : parsedBlocks.length === 0 ? (
-          <div className="flex-1 border border-amber-500/30 bg-amber-950/20 rounded-xl p-6 flex flex-col items-center justify-center text-center space-y-3 overflow-y-auto custom-scrollbar">
-            <AlertTriangle className="w-8 h-8 text-amber-400" />
-            <p className="text-sm font-semibold text-zinc-200">
-              No Diff Blocks Detected
-            </p>
-            <p className="text-xs text-zinc-400 max-w-md">
-              The pasted clipboard text does not contain valid{" "}
-              <code className="text-cyan-400">
-                &lt;&lt;&lt;&lt;&lt;&lt;&lt; SEARCH
-              </code>
-              , <code className="text-cyan-400">Create 'file'</code>, or{" "}
-              <code className="text-cyan-400">MOVE 'old' -&gt; 'new'</code>{" "}
-              blocks.
-            </p>
-            <div className="flex items-center space-x-3 pt-2">
-              <button
-                onClick={onClear}
-                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs rounded-lg transition-colors cursor-pointer"
-              >
-                Clear
-              </button>
-              <button
-                onClick={() => setShowDebug(!showDebug)}
-                className="px-4 py-2 bg-zinc-800/80 hover:bg-zinc-700/80 text-cyan-400 text-xs rounded-lg transition-colors cursor-pointer flex items-center space-x-1"
-              >
-                <Bug className="w-3.5 h-3.5 mr-1" />
-                <span>
-                  {showDebug ? "Hide Clipboard Text" : "Debug Clipboard Text"}
-                </span>
-              </button>
-            </div>
-            {showDebug && <ClipboardDebugger pastedContent={pastedContent} />}
-          </div>
+          <EmptyDiffState
+            onClear={onClear}
+            pastedContent={pastedContent}
+            showDebug={showDebug}
+            onToggleDebug={() => setShowDebug(!showDebug)}
+          />
         ) : (
           <>
-            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4">
-              {filteredBlocks.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-zinc-500 space-y-2 border border-zinc-800/60 rounded-xl bg-zinc-900/20">
-                  <p className="text-xs font-semibold text-zinc-400">
-                    No diff blocks match current filter (
-                    <span className="text-cyan-400 font-bold uppercase">
-                      {filterMode}
-                    </span>
-                    )
-                  </p>
-                  <button
-                    onClick={() => setFilterMode("all")}
-                    className="text-xs text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
-                  >
-                    Show all blocks
-                  </button>
-                </div>
-              ) : (
-                filteredBlocks.map((block) => (
-                  <DiffBlockCard
-                    key={block.id}
-                    block={block}
-                    validationErrors={getBlockErrors(block)}
-                    isIgnored={Boolean(effectiveIgnoredBlocks?.has?.(block.id))}
-                    isCollapsed={Boolean(collapsedBlocks?.has?.(block.id))}
-                    isEditing={editingBlockId === block.id}
-                    editSearch={editSearch}
-                    editReplace={editReplace}
-                    copiedId={copiedId}
-                    copiedErrorId={copiedErrorBlockId}
-                    onToggleBlock={toggleBlock}
-                    onToggleCollapse={toggleCollapse}
-                    onCopyBlock={handleCopyBlock}
-                    onCopyBlockWithError={handleCopyBlockWithError}
-                    onStartEditing={startEditing}
-                    onSaveEdit={saveEdit}
-                    onEditSearchChange={setEditSearch}
-                    onEditReplaceChange={setEditReplace}
-                  />
-                ))
-              )}
-            </div>
+            <DiffBlockList
+              filteredBlocks={filteredBlocks}
+              filterMode={filterMode}
+              effectiveIgnoredBlocks={effectiveIgnoredBlocks}
+              collapsedBlocks={collapsedBlocks}
+              editingBlockId={editingBlockId}
+              editSearch={editSearch}
+              editReplace={editReplace}
+              copiedId={copiedId}
+              copiedErrorBlockId={copiedErrorBlockId}
+              getBlockErrors={getBlockErrors}
+              onSelectFilter={setFilterMode}
+              onToggleBlock={toggleBlock}
+              onToggleCollapse={toggleCollapse}
+              onCopyBlock={handleCopyBlock}
+              onCopyBlockWithError={handleCopyBlockWithError}
+              onStartEditing={startEditing}
+              onSaveEdit={saveEdit}
+              onEditSearchChange={setEditSearch}
+              onEditReplaceChange={setEditReplace}
+            />
 
             <div
               onClick={() => onPaste(true)}
