@@ -5,7 +5,7 @@ import {
   resolvePath,
   dirnamePath,
 } from "../adapters/fsAdapter";
-import { gitMoveFile, formatFile, gitCommit } from "../adapters/gitAdapter";
+import { gitMoveFile, formatFiles, gitCommit } from "../adapters/gitAdapter";
 import { DiffBlockInput } from "./patchEngine";
 import { validateAndBuildFileContent } from "./applyValidationService";
 
@@ -136,9 +136,7 @@ export function formatChangedFiles(
   targetRepoPath: string,
   files: string[],
 ): void {
-  for (const file of files) {
-    formatFile(targetRepoPath, file);
-  }
+  formatFiles(targetRepoPath, files);
 }
 
 export function commitChanges(

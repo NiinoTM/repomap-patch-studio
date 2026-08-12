@@ -228,9 +228,11 @@ export const gitMoveFile = (
   }
 };
 
-export const formatFile = (basePath: string, fileRel: string): void => {
+export const formatFiles = (basePath: string, filesRel: string[]): void => {
+  if (filesRel.length === 0) return;
   try {
-    execSync(`npx prettier --write "${fileRel}"`, {
+    const quotedFiles = filesRel.map((f) => `"${f}"`).join(" ");
+    execSync(`npx prettier --write ${quotedFiles}`, {
       cwd: basePath,
       stdio: "ignore",
     });
