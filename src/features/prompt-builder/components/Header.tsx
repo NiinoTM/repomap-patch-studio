@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useHeaderActions } from "../hooks/useHeaderActions";
 import { useBranchManager } from "../../git-branch/hooks/useBranchManager";
+import { RemediationModal } from "../../project-remediation/components/RemediationModal";
 import { BranchSelectorPill } from "../../git-branch/components/BranchSelectorPill";
 import { BranchManagerModal } from "../../git-branch/components/BranchManagerModal";
 import { CreateBranchDialog } from "../../git-branch/components/CreateBranchDialog";
@@ -31,6 +32,7 @@ export function Header({
   });
 
   const branchManager = useBranchManager({ onBranchChange: onUndoSuccess });
+  const [isRemediationOpen, setIsRemediationOpen] = useState(false);
 
   // Manual path entry — an alternative to the native OS folder dialog.
   // Useful under RDP/headless setups where ShowDialog() can hang or fail
@@ -247,6 +249,15 @@ export function Header({
         />
 
         <button
+          onClick={() => setIsRemediationOpen(true)}
+          className="flex items-center space-x-1.5 bg-gradient-to-r from-purple-950/40 to-cyan-950/40 border border-purple-500/30 hover:border-purple-500/60 text-purple-300 px-3 py-1.5 rounded-md text-xs font-medium transition-all shadow-sm cursor-pointer"
+          title="Open Project Remediation & Governance Studio"
+        >
+          <span className="text-xs">✨</span>
+          <span>Remediate Architecture</span>
+        </button>
+
+        <button
           onClick={handleUndo}
           disabled={isUndoing}
           className="flex items-center space-x-2 bg-rose-950/30 border border-rose-500/30 text-rose-500 px-3 py-1.5 rounded-md text-xs font-medium hover:bg-rose-500/10 transition-colors group relative disabled:opacity-50"
@@ -258,6 +269,11 @@ export function Header({
           </div>
         </button>
       </div>
+
+      <RemediationModal
+        isOpen={isRemediationOpen}
+        onClose={() => setIsRemediationOpen(false)}
+      />
     </header>
   );
 }
