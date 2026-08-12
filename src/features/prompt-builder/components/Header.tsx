@@ -159,6 +159,15 @@ export function Header({
             </>
           )}
         </div>
+
+        <button
+          onClick={() => setIsRemediationOpen(true)}
+          className="flex items-center space-x-1.5 bg-gradient-to-r from-purple-950/50 to-cyan-950/50 border border-purple-500/30 hover:border-purple-500/60 text-purple-300 px-2.5 py-1 rounded text-xs font-medium transition-all shadow-sm cursor-pointer shrink-0"
+          title="Open Project Remediation & Governance Studio"
+        >
+          <span className="text-xs">✨</span>
+          <span>Remediate Architecture</span>
+        </button>
       </div>
 
       {tokenStats && (
@@ -247,15 +256,6 @@ export function Header({
             }
           }}
         />
-
-        <button
-          onClick={() => setIsRemediationOpen(true)}
-          className="flex items-center space-x-1.5 bg-gradient-to-r from-purple-950/40 to-cyan-950/40 border border-purple-500/30 hover:border-purple-500/60 text-purple-300 px-3 py-1.5 rounded-md text-xs font-medium transition-all shadow-sm cursor-pointer"
-          title="Open Project Remediation & Governance Studio"
-        >
-          <span className="text-xs">✨</span>
-          <span>Remediate Architecture</span>
-        </button>
 
         <button
           onClick={handleUndo}
