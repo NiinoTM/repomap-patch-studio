@@ -83,9 +83,11 @@ export async function runApplyPipeline(
     );
     const allChangedFiles = [...filesToCommit, ...movedFiles];
 
-    await runStage("format", "Formatting changed files", () =>
-      formatChangedFiles(targetRepoPath, allChangedFiles),
-    );
+    if (shouldCommit) {
+      await runStage("format", "Formatting changed files", () =>
+        formatChangedFiles(targetRepoPath, allChangedFiles),
+      );
+    }
     await runStage(
       "commit",
       shouldCommit ? "Committing to Git" : "Skipping commit",
