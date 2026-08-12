@@ -127,7 +127,20 @@ export const getGitBranch = (basePath: string = targetRepoPath): string => {
   }
 };
 
-
+export const getDirtyFiles = (basePath: string = targetRepoPath): string[] => {
+  try {
+    const raw = execSync("git status --porcelain", {
+      cwd: basePath,
+      encoding: "utf-8",
+    });
+    return raw
+      .split(/\r?\n/)
+      .map((line) => line.trim().slice(3).trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+};
 
 export const getGitStatusClean = (
   basePath: string = targetRepoPath,
@@ -174,25 +187,24 @@ export const getGitHistory = (
 };
 
 export const gitUndo = (basePath: string = targetRepoPath): void => {
-  execSync("git reset --hard HEAD~1", {
-    cwd: basePath,
-    stdio: "ignore",
-  });
+  const isClean = getGitStatusClean(basePath);
+  if (!isClean) {
+    // Revert uncommitted draft edits in working directory
+    execSync("git checkout -- . && git clean -fd", {
+      cwd: basePath,
+      stdio: "ignore",
+    });
+  } else {
+    // Revert last actual Git commit
+    execSync("git reset --hard HEAD~1", {
+      cwd: basePath,
+      stdio: "ignore",
+    });
+  }
 };
 
 export const gitSwitchBranch = (basePath: string, branch: string): void => {
   execSync(`git checkout "${branch}"`, { cwd: basePath, stdio: "ignore" });
-};
-
-export const gitSnapshotPreEdit = (basePath: string = targetRepoPath): void => {
-  try {
-    execSync('git add . && git commit -m "pre-ai-edit"', {
-      cwd: basePath,
-      encoding: "utf-8",
-    });
-  } catch {
-    return;
-  }
 };
 
 export const gitMoveFile = (

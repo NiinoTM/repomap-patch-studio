@@ -1,4 +1,4 @@
-import { gitSnapshotPreEdit } from "../adapters/gitAdapter";
+import { getDirtyFiles } from "../adapters/gitAdapter";
 import { StageRunner } from "../utils/streamProgress";
 import { DiffBlockInput } from "./patchEngine";
 import {
@@ -34,12 +34,6 @@ export async function runApplyPipeline(
   const editBlocks = blocks.filter((b) => b.type !== "move");
 
   try {
-    if (!isDryRun) {
-      await runStage("snapshot", "Snapshotting repo state", () =>
-        gitSnapshotPreEdit(targetRepoPath),
-      );
-    }
-
     const { pendingWrites, validationErrors: editErrors } = await runStage(
       "validate",
       "Validating & linting changed files",
@@ -84,8 +78,14 @@ export async function runApplyPipeline(
     const allChangedFiles = [...filesToCommit, ...movedFiles];
 
     if (shouldCommit) {
+      // Collect current batch files PLUS any previously uncommitted draft files
+      const dirtyFiles = getDirtyFiles(targetRepoPath);
+      const filesToFormat = Array.from(
+        new Set([...allChangedFiles, ...dirtyFiles])
+      );
+
       await runStage("format", "Formatting changed files", () =>
-        formatChangedFiles(targetRepoPath, allChangedFiles),
+        formatChangedFiles(targetRepoPath, filesToFormat)
       );
     }
     await runStage(
