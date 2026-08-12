@@ -4,7 +4,7 @@ import { patchRouter } from "./routes/patchRoutes";
 import { historyRouter } from "./routes/historyRoutes";
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
 
 // Mount API routes
 app.use("/api", repoRouter);
