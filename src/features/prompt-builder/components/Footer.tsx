@@ -6,9 +6,11 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
+  Sparkles,
 } from "lucide-react";
 import { DiffBlock, HistoryLog } from "../../../types/patch";
 import { useApplyChanges } from "../hooks/useApplyChanges";
+import { generateCommitMessage } from "../utils/commitMessageGenerator";
 
 interface FooterProps {
   logs: HistoryLog[];
@@ -27,12 +29,26 @@ export function Footer({
 }: FooterProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showProgressBanner, setShowProgressBanner] = useState(false);
-  const [commitMessage, setCommitMessage] = useState("ai-edit: updated files");
+  const [commitMessage, setCommitMessage] = useState("chore: update repository files");
   const [modalCommitMessage, setModalCommitMessage] = useState(
-    "ai-edit: updated files",
+    "chore: update repository files",
   );
   const commitDialogRef = useRef<HTMLDialogElement>(null);
   const prevRunningRef = useRef(false);
+
+  useEffect(() => {
+    if (diffBlocks.length > 0) {
+      const autoMsg = generateCommitMessage(diffBlocks);
+      setCommitMessage(autoMsg);
+      setModalCommitMessage(autoMsg);
+    }
+  }, [diffBlocks]);
+
+  const handleAutoGenerate = () => {
+    const autoMsg = generateCommitMessage(diffBlocks);
+    setCommitMessage(autoMsg);
+    setModalCommitMessage(autoMsg);
+  };
 
   const { isApplying, isValidating, stages, applyChanges, validateDryRun } =
     useApplyChanges({ diffBlocks, onApplySuccess });
@@ -137,9 +153,23 @@ export function Footer({
 
       <div className="h-20 border-t border-zinc-800 bg-zinc-950 flex items-center px-6 space-x-6 shrink-0 z-10">
         <div className="flex-1 flex flex-col space-y-1">
-          <label className="text-[10px] text-zinc-500 uppercase font-bold">
-            Commit Message
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="text-[10px] text-zinc-500 uppercase font-bold">
+              Commit Message
+            </label>
+            {diffBlocks.length > 0 && (
+              <button
+                type="button"
+                onClick={handleAutoGenerate}
+                disabled={isApplying}
+                className="text-[10px] text-cyan-400 hover:text-cyan-300 flex items-center space-x-1 font-mono transition-colors disabled:opacity-50"
+                title="Auto-generate commit message from diff blocks"
+              >
+                <Sparkles className="w-3 h-3" />
+                <span>Auto-generate</span>
+              </button>
+            )}
+          </div>
           <input
             type="text"
             value={commitMessage}
@@ -220,9 +250,22 @@ export function Footer({
           onSubmit={handleConfirmCommit}
           className="w-full max-w-md p-6 space-y-4"
         >
-          <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-400">
-            Commit Message
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-400">
+              Commit Message
+            </h3>
+            {diffBlocks.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setModalCommitMessage(generateCommitMessage(diffBlocks))}
+                className="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center space-x-1 font-mono transition-colors"
+                title="Regenerate message from changes"
+              >
+                <Sparkles className="w-3 h-3" />
+                <span>Auto-generate</span>
+              </button>
+            )}
+          </div>
           <input
             type="text"
             autoFocus
