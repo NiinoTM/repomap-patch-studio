@@ -24,6 +24,20 @@ export const ensureDir = (dirPath: string): void => {
   }
 };
 
+export const readDir = (dirPath: string): string[] => {
+  try {
+    return fs.readdirSync(dirPath);
+  } catch {
+    return [];
+  }
+};
+
+export const removeFile = (fullPath: string): void => {
+  if (fs.existsSync(fullPath)) {
+    fs.unlinkSync(fullPath);
+  }
+};
+
 export const joinPath = (...segments: string[]): string => path.join(...segments);
 export const resolvePath = (...segments: string[]): string => path.resolve(...segments);
 export const dirnamePath = (p: string): string => path.dirname(p);

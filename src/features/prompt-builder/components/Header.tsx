@@ -7,10 +7,16 @@ import { BranchManagerModal } from "../../git-branch/components/BranchManagerMod
 import { CreateBranchDialog } from "../../git-branch/components/CreateBranchDialog";
 import { RenameBranchDialog } from "../../git-branch/components/RenameBranchDialog";
 import { DirtyStateWarningModal } from "../../git-branch/components/DirtyStateWarningModal";
+import { ActiveTicketPill } from "../../tickets/components/ActiveTicketPill";
+import { TicketManagerModal } from "../../tickets/components/TicketManagerModal";
+import { CreateTicketDialog } from "../../tickets/components/CreateTicketDialog";
+import { useTickets } from "../../tickets/hooks/useTickets";
+import { Ticket } from "../../../types/ticket";
 
 interface HeaderProps {
   onUndoSuccess?: () => void;
   repoPath: string;
+  repoFiles?: string[];
   onChangeRepo: (newPath: string) => void;
   tokenStats?: {
     total: number;
@@ -18,13 +24,33 @@ interface HeaderProps {
     files: number;
     selectedCount: number;
   };
+  activeTicket?: Ticket | null;
+  onActiveTicketChange?: (ticket: Ticket | null) => void;
+}
+
+function extractAvailableScopes(files: string[] = []): string[] {
+  const scopes = new Set<string>();
+  for (const f of files) {
+    const match = f.match(/^src\/features\/([^/]+)/);
+    if (match) scopes.add(match[1]);
+    else if (f.startsWith("server/")) scopes.add("server");
+    else if (f.startsWith("src/types/")) scopes.add("types");
+    else if (f.startsWith("src/api/")) scopes.add("api");
+    else if (f.startsWith("src/components/")) scopes.add("ui");
+    else if (f.startsWith(".github/")) scopes.add("ci");
+  }
+  const result = Array.from(scopes).sort();
+  return result.length > 0 ? result : ["general", "ui", "server", "types"];
 }
 
 export function Header({
   onUndoSuccess,
   repoPath,
+  repoFiles = [],
   onChangeRepo,
   tokenStats,
+  activeTicket,
+  onActiveTicketChange,
 }: HeaderProps) {
   const { isUndoing, handleUndo, handleChangeRepo } = useHeaderActions({
     onUndoSuccess,
@@ -32,6 +58,7 @@ export function Header({
   });
 
   const branchManager = useBranchManager({ onBranchChange: onUndoSuccess });
+  const ticketManager = useTickets(onUndoSuccess);
   const [isRemediationOpen, setIsRemediationOpen] = useState(false);
 
   // Manual path entry — an alternative to the native OS folder dialog.
@@ -209,7 +236,12 @@ export function Header({
         </div>
       )}
 
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center space-x-3">
+        <ActiveTicketPill
+          activeTicket={activeTicket || ticketManager.activeTicket}
+          onClick={() => ticketManager.setIsManagerOpen(true)}
+        />
+
         <BranchSelectorPill
           currentBranch={branchManager.currentBranch}
           isClean={branchManager.isClean}
@@ -273,6 +305,35 @@ export function Header({
       <RemediationModal
         isOpen={isRemediationOpen}
         onClose={() => setIsRemediationOpen(false)}
+      />
+
+      <TicketManagerModal
+        isOpen={ticketManager.isManagerOpen}
+        onClose={() => ticketManager.setIsManagerOpen(false)}
+        tickets={ticketManager.tickets}
+        activeTicketId={
+          activeTicket ? activeTicket.id : ticketManager.activeTicketId
+        }
+        onSelectActive={(id) => {
+          ticketManager.setActiveTicketId(id);
+          const found = ticketManager.tickets.find((t) => t.id === id) || null;
+          onActiveTicketChange?.(found);
+        }}
+        onStatusChange={ticketManager.updateStatus}
+        onStartBranch={ticketManager.startTicketBranch}
+        onDeleteTicket={ticketManager.deleteTicket}
+        onCreateOpen={() => ticketManager.setIsCreateOpen(true)}
+      />
+
+      <CreateTicketDialog
+        isOpen={ticketManager.isCreateOpen}
+        onClose={() => ticketManager.setIsCreateOpen(false)}
+        availableScopes={extractAvailableScopes(repoFiles)}
+        onCreate={(data) => {
+          ticketManager.createTicket(data).then((created) => {
+            if (created) onActiveTicketChange?.(created);
+          });
+        }}
       />
     </header>
   );

@@ -5,10 +5,12 @@ import { DiffPanel } from "./features/prompt-builder/components/DiffPanel";
 import { Footer } from "./features/prompt-builder/components/Footer";
 import { Toast } from "./features/prompt-builder/components/Toast";
 import { DiffBlock } from "./types/patch";
+import { Ticket } from "./types/ticket";
 import { useRepoContext } from "./features/prompt-builder/hooks/useRepoContext";
 import { usePasteAndValidate } from "./features/prompt-builder/hooks/usePasteAndValidate";
 
 export default function App() {
+  const [activeTicket, setActiveTicket] = useState<Ticket | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [pastedContent, setPastedContent] = useState("");
   const [diffBlocks, setDiffBlocks] = useState<DiffBlock[]>([]);
@@ -102,9 +104,12 @@ export default function App() {
     <div className="flex flex-col h-screen w-full bg-zinc-950 overflow-hidden font-sans text-zinc-300 selection:bg-cyan-500/30 antialiased">
       <Header
         repoPath={repoPath}
+        repoFiles={repoFiles}
         onChangeRepo={handleChangeRepo}
         onUndoSuccess={handleRefreshAll}
         tokenStats={tokenStats}
+        activeTicket={activeTicket}
+        onActiveTicketChange={setActiveTicket}
       />
 
       <main className="flex-1 flex overflow-hidden">
@@ -121,6 +126,7 @@ export default function App() {
             onDiscoveryModeChange={setDiscoveryMode}
             discoveredFiles={discoveredFiles}
             onDiscoveredFilesConsumed={() => setDiscoveredFiles([])}
+            activeTicket={activeTicket}
           />
         </aside>
 

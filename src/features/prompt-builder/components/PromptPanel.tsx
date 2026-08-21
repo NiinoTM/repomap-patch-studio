@@ -19,6 +19,8 @@ import {
 } from "../utils/completenessCheck";
 import { CompletenessWarningModal } from "./prompt/CompletenessWarningModal";
 import { parseFileList } from "../utils/diffParser";
+import { Ticket } from "../../../types/ticket";
+import { CheckSquare } from "lucide-react";
 
 interface PromptPanelProps {
   onCopy: (promptText: string) => void;
@@ -42,6 +44,7 @@ interface PromptPanelProps {
   onDiscoveryModeChange: (value: boolean) => void;
   discoveredFiles: string[];
   onDiscoveredFilesConsumed: () => void;
+  activeTicket?: Ticket | null;
 }
 
 export function PromptPanel({
@@ -56,6 +59,7 @@ export function PromptPanel({
   onDiscoveryModeChange,
   discoveredFiles,
   onDiscoveredFilesConsumed,
+  activeTicket,
 }: PromptPanelProps) {
   const [request, setRequest] = useState("");
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
@@ -218,6 +222,40 @@ export function PromptPanel({
           onInsertMention={insertMention}
           onHoverMention={setActiveMentionIndex}
         />
+
+        {activeTicket && (
+          <div className="bg-indigo-950/30 border border-indigo-500/30 rounded-lg p-2 flex items-center justify-between text-xs">
+            <div className="flex items-center space-x-2 min-w-0">
+              <CheckSquare className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+              <span className="font-bold text-indigo-200 font-mono shrink-0">
+                {activeTicket.id}:
+              </span>
+              <span className="text-zinc-300 truncate font-sans">
+                {activeTicket.title}
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                let text = `[${activeTicket.id}] ${activeTicket.title}`;
+                if (activeTicket.description) {
+                  text += `\n\nContext & Description:\n${activeTicket.description}`;
+                }
+                if (
+                  activeTicket.requirements &&
+                  activeTicket.requirements.length > 0
+                ) {
+                  text += `\n\nAcceptance Criteria / Requirements Checklist:\n${activeTicket.requirements
+                    .map((r) => `- [ ] ${r}`)
+                    .join("\n")}`;
+                }
+                setRequest((prev) => text + (prev ? `\n\n${prev}` : ""));
+              }}
+              className="text-[10px] text-indigo-400 hover:text-indigo-300 font-mono shrink-0 ml-2 hover:underline cursor-pointer"
+            >
+              + Inject to prompt
+            </button>
+          </div>
+        )}
 
         <textarea
           ref={textareaRef}
