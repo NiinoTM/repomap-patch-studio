@@ -106,7 +106,22 @@ export function DiffBlockBody({
                     +
                   </span>
                   <span className="flex-1 py-0.5 pr-4 whitespace-pre font-mono">
-                    {line.text}
+                    {line.charDiffs ? (
+                      line.charDiffs.map((cd, cIdx) => (
+                        <span
+                          key={cIdx}
+                          className={
+                            cd.type === "added"
+                              ? "bg-emerald-500/30 text-emerald-100 rounded-sm"
+                              : ""
+                          }
+                        >
+                          {cd.text}
+                        </span>
+                      ))
+                    ) : (
+                      line.text
+                    )}
                   </span>
                 </div>
               );
@@ -124,7 +139,22 @@ export function DiffBlockBody({
                     -
                   </span>
                   <span className="flex-1 py-0.5 pr-4 whitespace-pre font-mono">
-                    {line.text}
+                    {line.charDiffs ? (
+                      line.charDiffs.map((cd, cIdx) => (
+                        <span
+                          key={cIdx}
+                          className={
+                            cd.type === "removed"
+                              ? "bg-rose-500/30 text-rose-100 rounded-sm"
+                              : ""
+                          }
+                        >
+                          {cd.text}
+                        </span>
+                      ))
+                    ) : (
+                      line.text
+                    )}
                   </span>
                 </div>
               );

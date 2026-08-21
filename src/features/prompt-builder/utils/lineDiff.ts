@@ -1,8 +1,11 @@
+import { enrichWithCharDiffs, type CharDiff } from "./charDiff";
+
 export interface DiffLine {
   type: "added" | "removed" | "unchanged";
   text: string;
   oldLineNumber?: number;
   newLineNumber?: number;
+  charDiffs?: CharDiff[];
 }
 
 export interface LineDiffStats {
@@ -11,10 +14,6 @@ export interface LineDiffStats {
   unchanged: number;
 }
 
-/**
- * Computes a line-by-line diff between search (old) and replace (new) text
- * using Myers / LCS line matching with prefix and suffix trimming.
- */
 function getCommonBounds(oldLines: string[], newLines: string[]) {
   let start = 0;
   while (
@@ -192,7 +191,8 @@ export function computeLineDiff(oldText: string, newText: string): DiffLine[] {
   const midNew = newLines.slice(start, newEnd + 1);
   const midDiff = computeMidDiff(midOld, midNew, start);
 
-  return [...prefixLines, ...midDiff, ...suffixLines];
+  const lines = [...prefixLines, ...midDiff, ...suffixLines];
+  return enrichWithCharDiffs(lines);
 }
 
 export function getLineDiffStats(lines: DiffLine[]): LineDiffStats {
