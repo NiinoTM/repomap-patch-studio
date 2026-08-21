@@ -1,10 +1,13 @@
 import {
   AlertTriangle,
+  ArrowLeftRight,
   CheckCircle2,
   FoldVertical,
+  GitCompare,
   UnfoldVertical,
   XCircle,
 } from "lucide-react";
+import { DiffViewMode } from "../../../../types/patch";
 
 export type FilterMode =
   "all" | "active" | "matched" | "not-matched" | "errors" | "ignored";
@@ -19,6 +22,8 @@ interface DiffFilterToolbarProps {
   isValidating: boolean;
   filterMode: FilterMode;
   onSelectFilter: (mode: FilterMode) => void;
+  viewMode?: DiffViewMode;
+  onSelectViewMode?: (mode: DiffViewMode) => void;
   allCollapsed: boolean;
   onToggleAllCollapse: () => void;
   pastedContent: string;
@@ -35,6 +40,8 @@ export function DiffFilterToolbar({
   isValidating,
   filterMode,
   onSelectFilter,
+  viewMode = "unified",
+  onSelectViewMode,
   allCollapsed,
   onToggleAllCollapse,
   pastedContent,
@@ -162,6 +169,37 @@ export function DiffFilterToolbar({
       </div>
 
       <div className="flex items-center space-x-2 shrink-0">
+        {parsedBlocksCount > 0 && onSelectViewMode && (
+          <div className="flex items-center bg-zinc-950 p-0.5 rounded-lg border border-zinc-800">
+            <button
+              type="button"
+              onClick={() => onSelectViewMode("in-out")}
+              className={`px-2 py-1 rounded text-xs font-medium transition-colors cursor-pointer flex items-center space-x-1.5 ${
+                viewMode === "in-out"
+                  ? "bg-zinc-800 text-cyan-300 font-semibold shadow-xs"
+                  : "text-zinc-400 hover:text-zinc-200"
+              }`}
+              title="Show In / Out view (Search & Replace blocks)"
+            >
+              <ArrowLeftRight className="w-3.5 h-3.5" />
+              <span>In / Out</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelectViewMode("unified")}
+              className={`px-2 py-1 rounded text-xs font-medium transition-colors cursor-pointer flex items-center space-x-1.5 ${
+                viewMode === "unified"
+                  ? "bg-zinc-800 text-cyan-300 font-semibold shadow-xs"
+                  : "text-zinc-400 hover:text-zinc-200"
+              }`}
+              title="Show Lines view (added, removed, and changed lines)"
+            >
+              <GitCompare className="w-3.5 h-3.5" />
+              <span>Line Diff</span>
+            </button>
+          </div>
+        )}
+
         {parsedBlocksCount > 0 && (
           <button
             onClick={onToggleAllCollapse}

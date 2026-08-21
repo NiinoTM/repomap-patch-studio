@@ -1,4 +1,4 @@
-import { DiffBlock } from "../../../../types/patch";
+import { DiffBlock, DiffViewMode } from "../../../../types/patch";
 import { MoveBlockCard } from "./MoveBlockCard";
 import { DiffBlockHeader } from "./DiffBlockHeader";
 import { ValidationErrorBanner } from "./ValidationErrorBanner";
@@ -6,6 +6,7 @@ import { DiffBlockBody } from "./DiffBlockBody";
 
 interface DiffBlockCardProps {
   block: DiffBlock;
+  viewMode?: DiffViewMode;
   validationErrors?: string[];
   isIgnored?: boolean;
   isCollapsed?: boolean;
@@ -26,6 +27,7 @@ interface DiffBlockCardProps {
 
 export function DiffBlockCard({
   block,
+  viewMode,
   validationErrors = [],
   isIgnored = false,
   isCollapsed = false,
@@ -99,6 +101,7 @@ export function DiffBlockCard({
 
       <DiffBlockBody
         block={block}
+        viewMode={viewMode}
         isCollapsed={isCollapsed}
         isEditing={isEditing}
         editSearch={editSearch}

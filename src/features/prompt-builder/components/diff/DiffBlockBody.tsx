@@ -1,7 +1,10 @@
-import { DiffBlock } from "../../../../types/patch";
+import { useMemo } from "react";
+import { DiffBlock, DiffViewMode } from "../../../../types/patch";
+import { computeLineDiff } from "../../utils/lineDiff";
 
 interface DiffBlockBodyProps {
   block: DiffBlock;
+  viewMode?: DiffViewMode;
   isCollapsed: boolean;
   isEditing: boolean;
   editSearch: string;
@@ -15,6 +18,7 @@ interface DiffBlockBodyProps {
 
 export function DiffBlockBody({
   block,
+  viewMode = "unified",
   isCollapsed,
   isEditing,
   editSearch,
@@ -25,6 +29,10 @@ export function DiffBlockBody({
   onEditSearchChange,
   onEditReplaceChange,
 }: DiffBlockBodyProps) {
+  const diffLines = useMemo(() => {
+    if (viewMode !== "unified") return [];
+    return computeLineDiff(block.search || "", block.replace || "");
+  }, [viewMode, block.search, block.replace]);
   if (isCollapsed) {
     return (
       <div
@@ -72,6 +80,73 @@ export function DiffBlockBody({
             spellCheck={false}
           />
         </div>
+      </div>
+    );
+  }
+
+  if (viewMode === "unified") {
+    return (
+      <div className="font-mono text-[11px] overflow-x-auto custom-scrollbar leading-relaxed min-w-0 w-full bg-zinc-950/60 divide-y divide-zinc-900/30">
+        {diffLines.length === 0 ? (
+          <div className="p-4 text-zinc-500 italic text-center">
+            No line changes in this block
+          </div>
+        ) : (
+          diffLines.map((line, idx) => {
+            if (line.type === "added") {
+              return (
+                <div
+                  key={idx}
+                  className="flex items-stretch bg-emerald-950/25 text-emerald-300 hover:bg-emerald-950/40 border-l-2 border-emerald-500/70 transition-colors"
+                >
+                  <span className="w-10 shrink-0 select-none text-right pr-2 py-0.5 text-[10px] text-emerald-500/40 font-mono">
+                    {line.newLineNumber ?? ""}
+                  </span>
+                  <span className="w-5 shrink-0 select-none text-center py-0.5 text-emerald-400 font-bold">
+                    +
+                  </span>
+                  <span className="flex-1 py-0.5 pr-4 whitespace-pre font-mono">
+                    {line.text}
+                  </span>
+                </div>
+              );
+            }
+            if (line.type === "removed") {
+              return (
+                <div
+                  key={idx}
+                  className="flex items-stretch bg-rose-950/25 text-rose-300 hover:bg-rose-950/40 border-l-2 border-rose-500/70 transition-colors"
+                >
+                  <span className="w-10 shrink-0 select-none text-right pr-2 py-0.5 text-[10px] text-rose-500/40 font-mono">
+                    {line.oldLineNumber ?? ""}
+                  </span>
+                  <span className="w-5 shrink-0 select-none text-center py-0.5 text-rose-400 font-bold">
+                    -
+                  </span>
+                  <span className="flex-1 py-0.5 pr-4 whitespace-pre font-mono">
+                    {line.text}
+                  </span>
+                </div>
+              );
+            }
+            return (
+              <div
+                key={idx}
+                className="flex items-stretch text-zinc-400 hover:bg-zinc-900/30 transition-colors"
+              >
+                <span className="w-10 shrink-0 select-none text-right pr-2 py-0.5 text-[10px] text-zinc-600 font-mono">
+                  {line.newLineNumber ?? line.oldLineNumber ?? ""}
+                </span>
+                <span className="w-5 shrink-0 select-none text-center py-0.5 text-zinc-600">
+                  {" "}
+                </span>
+                <span className="flex-1 py-0.5 pr-4 whitespace-pre font-mono text-zinc-400">
+                  {line.text}
+                </span>
+              </div>
+            );
+          })
+        )}
       </div>
     );
   }

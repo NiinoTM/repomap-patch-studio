@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { ClipboardPaste } from "lucide-react";
-import { DiffBlock } from "../../../types/patch";
+import { DiffBlock, DiffViewMode } from "../../../types/patch";
 import { DiffFilterToolbar, type FilterMode } from "./diff/DiffFilterToolbar";
 import { DiffPanelErrorBanner } from "./diff/DiffPanelErrorBanner";
 import { EmptyDiffState } from "./diff/EmptyDiffState";
@@ -33,6 +33,7 @@ export function DiffPanel({
     ignoredBlocks ?? internalIgnoredBlocks ?? new Set<string>();
 
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
+  const [viewMode, setViewMode] = useState<DiffViewMode>("unified");
   const [showDebug, setShowDebug] = useState(false);
   const [collapsedBlocks, setCollapsedBlocks] = useState<Set<string>>(
     new Set(),
@@ -209,6 +210,8 @@ export function DiffPanel({
         isValidating={isValidating}
         filterMode={filterMode}
         onSelectFilter={setFilterMode}
+        viewMode={viewMode}
+        onSelectViewMode={setViewMode}
         allCollapsed={allCollapsed}
         onToggleAllCollapse={toggleAllCollapse}
         pastedContent={pastedContent}
@@ -246,6 +249,7 @@ export function DiffPanel({
             <DiffBlockList
               filteredBlocks={filteredBlocks}
               filterMode={filterMode}
+              viewMode={viewMode}
               effectiveIgnoredBlocks={effectiveIgnoredBlocks}
               collapsedBlocks={collapsedBlocks}
               editingBlockId={editingBlockId}

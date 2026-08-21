@@ -1,3 +1,5 @@
+export type DiffViewMode = "in-out" | "unified";
+
 export interface DiffBlock {
   id: string;
   file: string;

@@ -1,10 +1,11 @@
-import { DiffBlock } from "../../../../types/patch";
+import { DiffBlock, DiffViewMode } from "../../../../types/patch";
 import { DiffBlockCard } from "./DiffBlockCard";
 import { FilterMode } from "./DiffFilterToolbar";
 
 interface DiffBlockListProps {
   filteredBlocks: DiffBlock[];
   filterMode: FilterMode;
+  viewMode?: DiffViewMode;
   effectiveIgnoredBlocks: Set<string>;
   collapsedBlocks: Set<string>;
   editingBlockId: string | null;
@@ -27,6 +28,7 @@ interface DiffBlockListProps {
 export function DiffBlockList({
   filteredBlocks,
   filterMode,
+  viewMode,
   effectiveIgnoredBlocks,
   collapsedBlocks,
   editingBlockId,
@@ -71,6 +73,7 @@ export function DiffBlockList({
         <DiffBlockCard
           key={block.id}
           block={block}
+          viewMode={viewMode}
           validationErrors={getBlockErrors(block)}
           isIgnored={Boolean(effectiveIgnoredBlocks?.has?.(block.id))}
           isCollapsed={Boolean(collapsedBlocks?.has?.(block.id))}
