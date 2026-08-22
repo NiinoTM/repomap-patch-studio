@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { BranchDetails } from "../../../types/branch";
 
 interface BranchManagerModalProps {
@@ -15,6 +15,7 @@ interface BranchManagerModalProps {
   onCreateOpen: () => void;
   onRenameOpen: (branch: string) => void;
   onDeleteBranch: (branch: string) => void;
+  onPruneMerged?: () => void;
 }
 
 export function BranchManagerModal({
@@ -31,8 +32,20 @@ export function BranchManagerModal({
   onCreateOpen,
   onRenameOpen,
   onDeleteBranch,
+  onPruneMerged,
 }: BranchManagerModalProps) {
+  const [filterTab, setFilterTab] = useState<"all" | "active" | "merged">("all");
+
   if (!isOpen) return null;
+
+  const mergedCount = branches.filter((b) => b.isMerged).length;
+  const filteredBranches = branches
+    .filter((b) => b.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    .filter((b) => {
+      if (filterTab === "active") return !b.isMerged;
+      if (filterTab === "merged") return b.isMerged;
+      return true;
+    });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-150">
@@ -100,36 +113,82 @@ export function BranchManagerModal({
           </div>
         </div>
 
-        {/* Toolbar: Search + Create */}
-        <div className="p-3 border-b border-zinc-800 bg-zinc-900/50 flex items-center space-x-2">
-          <div className="relative flex-1">
+        {/* Toolbar: Search + Tabs + Create */}
+        <div className="p-3 border-b border-zinc-800 bg-zinc-900/50 flex items-center justify-between space-x-2">
+          <div className="flex items-center space-x-2 flex-1">
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder="Search local branches..."
-              className="w-full bg-zinc-950 border border-zinc-800 focus:border-cyan-500 rounded-lg px-3 py-1.5 text-xs text-zinc-200 focus:outline-none font-mono"
+              className="w-48 bg-zinc-950 border border-zinc-800 focus:border-cyan-500 rounded-lg px-3 py-1.5 text-xs text-zinc-200 focus:outline-none font-mono"
               autoFocus
             />
+
+            {/* Filter Tabs */}
+            <div className="flex items-center space-x-1 bg-zinc-950 p-0.5 rounded-lg border border-zinc-800">
+              <button
+                onClick={() => setFilterTab("all")}
+                className={`px-2 py-1 rounded text-[10px] font-mono transition-colors cursor-pointer ${
+                  filterTab === "all"
+                    ? "bg-zinc-800 text-zinc-100 font-bold"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                All ({branches.length})
+              </button>
+              <button
+                onClick={() => setFilterTab("active")}
+                className={`px-2 py-1 rounded text-[10px] font-mono transition-colors cursor-pointer ${
+                  filterTab === "active"
+                    ? "bg-zinc-800 text-zinc-100 font-bold"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                Active ({branches.length - mergedCount})
+              </button>
+              <button
+                onClick={() => setFilterTab("merged")}
+                className={`px-2 py-1 rounded text-[10px] font-mono transition-colors cursor-pointer ${
+                  filterTab === "merged"
+                    ? "bg-zinc-800 text-zinc-100 font-bold"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                Merged ({mergedCount})
+              </button>
+            </div>
           </div>
 
-          <button
-            onClick={onCreateOpen}
-            className="flex items-center space-x-1 bg-cyan-600 hover:bg-cyan-500 text-zinc-950 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors shrink-0 cursor-pointer"
-          >
-            <span>+</span>
-            <span>New Branch</span>
-          </button>
+          <div className="flex items-center space-x-2">
+            {mergedCount > 0 && onPruneMerged && (
+              <button
+                onClick={onPruneMerged}
+                className="text-[10px] font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+                title="Delete all branches safely merged into main"
+              >
+                🧹 Prune Merged ({mergedCount})
+              </button>
+            )}
+
+            <button
+              onClick={onCreateOpen}
+              className="flex items-center space-x-1 bg-cyan-600 hover:bg-cyan-500 text-zinc-950 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors shrink-0 cursor-pointer"
+            >
+              <span>+</span>
+              <span>New Branch</span>
+            </button>
+          </div>
         </div>
 
         {/* Branch List */}
         <div className="flex-1 overflow-y-auto divide-y divide-zinc-800/50 p-2 space-y-1">
-          {branches.length === 0 ? (
+          {filteredBranches.length === 0 ? (
             <div className="text-center py-8 text-zinc-500 text-xs font-mono">
               No matching branches found
             </div>
           ) : (
-            branches.map((b) => {
+            filteredBranches.map((b) => {
               const isCurrent = b.name === currentBranch;
               return (
                 <div
@@ -158,6 +217,11 @@ export function BranchManagerModal({
                         {isCurrent && (
                           <span className="text-[9px] bg-cyan-900/50 text-cyan-300 px-1.5 py-0.5 rounded font-mono">
                             Current
+                          </span>
+                        )}
+                        {b.isMerged && !isCurrent && (
+                          <span className="text-[9px] bg-emerald-950 text-emerald-400 border border-emerald-800/50 px-1.5 py-0.2 rounded font-mono">
+                            Merged
                           </span>
                         )}
                         {b.upstream && (

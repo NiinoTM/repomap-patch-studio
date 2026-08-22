@@ -5,6 +5,8 @@ import {
   CreateBranchRequest,
   RenameBranchRequest,
   DeleteBranchRequest,
+  MergeBranchRequest,
+  PruneMergedResponse,
   ActionResponse,
 } from "../types/branch";
 
@@ -39,4 +41,18 @@ export const branchApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }).then(handleResponse<ActionResponse>),
+
+  mergeBranch: (payload: MergeBranchRequest): Promise<ActionResponse> =>
+    fetch("/api/branches/merge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(handleResponse<ActionResponse>),
+
+  pruneMergedBranches: (targetBranch = "main"): Promise<PruneMergedResponse> =>
+    fetch("/api/branches/prune-merged", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ targetBranch }),
+    }).then(handleResponse<PruneMergedResponse>),
 };

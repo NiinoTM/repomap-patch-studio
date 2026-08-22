@@ -21,6 +21,7 @@ interface TicketManagerModalProps {
   onSelectActive: (id: string | null) => void;
   onStatusChange: (id: string, status: TicketStatus) => void;
   onStartBranch: (ticket: Ticket) => void;
+  onShipTicket: (ticket: Ticket) => void;
   onDeleteTicket: (id: string) => void;
   onCreateOpen: () => void;
 }
@@ -83,6 +84,7 @@ function TicketCard({
   onSelectActive,
   onStatusChange,
   onStartBranch,
+  onShipTicket,
   onDeleteTicket,
 }: {
   ticket: Ticket;
@@ -90,6 +92,7 @@ function TicketCard({
   onSelectActive: () => void;
   onStatusChange: (status: TicketStatus) => void;
   onStartBranch: () => void;
+  onShipTicket: () => void;
   onDeleteTicket: () => void;
 }) {
   const typeStyle = TYPE_STYLES[ticket.type] || TYPE_STYLES.chore;
@@ -175,9 +178,17 @@ function TicketCard({
         )}
       </div>
 
-      {/* Footer: Start Branch & 1-Click Status Mover */}
+      {/* Footer: Start Branch, Ship & Merge, and 1-Click Status Mover */}
       <div className="pt-2 flex items-center justify-between border-t border-zinc-800/70 min-w-0">
-        {ticket.status !== "in-progress" && !ticket.branch ? (
+        {ticket.status === "in-progress" && ticket.branch ? (
+          <button
+            onClick={onShipTicket}
+            className="flex items-center space-x-1 text-emerald-400 hover:text-emerald-300 font-mono text-[10px] font-semibold bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded transition-all cursor-pointer shadow-sm hover:bg-emerald-900/60"
+            title="Merge branch to main and complete ticket"
+          >
+            <span>🚀 Ship to Main</span>
+          </button>
+        ) : !ticket.branch && ticket.status !== "done" ? (
           <button
             onClick={onStartBranch}
             className="flex items-center space-x-1 text-cyan-400 hover:text-cyan-300 text-[10px] font-mono transition-colors cursor-pointer"
@@ -223,6 +234,7 @@ export function TicketManagerModal({
   onSelectActive,
   onStatusChange,
   onStartBranch,
+  onShipTicket,
   onDeleteTicket,
   onCreateOpen,
 }: TicketManagerModalProps) {
@@ -334,6 +346,7 @@ export function TicketManagerModal({
                         }
                         onStatusChange={(st) => onStatusChange(t.id, st)}
                         onStartBranch={() => onStartBranch(t)}
+                        onShipTicket={() => onShipTicket(t)}
                         onDeleteTicket={() => onDeleteTicket(t.id)}
                       />
                     ))

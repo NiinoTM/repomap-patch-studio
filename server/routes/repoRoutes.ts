@@ -16,6 +16,8 @@ import {
   gitRenameBranch,
   gitDeleteBranch,
   gitStashChanges,
+  gitMergeBranch,
+  gitPruneMergedBranches,
 } from "../adapters/gitBranchAdapter";
 import { generateRepoMap } from "../services/repoMapService";
 import { getDependencyMap } from "../services/dependencyService";
@@ -165,6 +167,37 @@ repoRouter.put("/branches/rename", (req: Request, res: Response) => {
     const targetRepoPath = repoState.getRepoPath();
     gitRenameBranch(targetRepoPath, oldName, newName);
     res.json({ success: true });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+repoRouter.post("/branches/merge", (req: Request, res: Response) => {
+  const { sourceBranch, targetBranch = "main" } = req.body;
+  if (!sourceBranch || typeof sourceBranch !== "string") {
+    res.status(400).json({ success: false, error: "Invalid source branch name" });
+    return;
+  }
+  try {
+    const targetRepoPath = repoState.getRepoPath();
+    gitMergeBranch(targetRepoPath, sourceBranch, targetBranch);
+    res.json({
+      success: true,
+      message: `Successfully merged ${sourceBranch} into ${targetBranch}`,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+repoRouter.post("/branches/prune-merged", (req: Request, res: Response) => {
+  const { targetBranch = "main" } = req.body || {};
+  try {
+    const targetRepoPath = repoState.getRepoPath();
+    const pruned = gitPruneMergedBranches(targetRepoPath, targetBranch);
+    res.json({ success: true, pruned });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ success: false, error: message });

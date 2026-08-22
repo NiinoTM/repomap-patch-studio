@@ -4,6 +4,7 @@ export interface BranchDetails {
   commitHash: string;
   commitMessage: string;
   upstream?: string;
+  isMerged?: boolean;
 }
 
 export interface BranchListResponse {
@@ -32,6 +33,17 @@ export interface RenameBranchRequest {
 export interface DeleteBranchRequest {
   branch: string;
   force?: boolean;
+}
+
+export interface MergeBranchRequest {
+  sourceBranch: string;
+  targetBranch?: string;
+}
+
+export interface PruneMergedResponse {
+  success: boolean;
+  pruned: string[];
+  error?: string;
 }
 
 export interface ActionResponse {

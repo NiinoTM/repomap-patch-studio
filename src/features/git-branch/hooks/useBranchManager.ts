@@ -169,8 +169,18 @@ export function useBranchManager({
     createBranch,
     renameBranch,
     deleteBranch,
-  };
-}
+    pruneMergedBranches,
+    };
+    }
+
+    const pruneMergedBranches = () => {
+    execBranchAction(
+    () => branchApi.pruneMergedBranches(),
+    setIsLoading,
+    refreshBranches,
+    "Failed to prune merged branches",
+    );
+    };
 
 async function execBranchAction(
   apiCall: () => Promise<{ success: boolean; error?: string }>,

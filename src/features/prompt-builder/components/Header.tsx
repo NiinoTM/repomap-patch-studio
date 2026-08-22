@@ -256,6 +256,7 @@ export function Header({
           isClean={branchManager.isClean}
           isLoading={branchManager.isLoading}
           onRefresh={branchManager.refreshBranches}
+          onPruneMerged={branchManager.pruneMergedBranches}
           searchQuery={branchManager.searchQuery}
           onSearchChange={branchManager.setSearchQuery}
           onSelectBranch={(b) => branchManager.switchBranch(b)}
@@ -323,6 +324,12 @@ export function Header({
         }}
         onStatusChange={ticketManager.updateStatus}
         onStartBranch={ticketManager.startTicketBranch}
+        onShipTicket={(t) =>
+          ticketManager.shipTicket(t, () => {
+            onUndoSuccess?.();
+            branchManager.refreshBranches();
+          })
+        }
         onDeleteTicket={ticketManager.deleteTicket}
         onCreateOpen={() => ticketManager.setIsCreateOpen(true)}
       />

@@ -109,5 +109,35 @@ export function useTickets(onBranchChange?: () => void) {
     updateStatus,
     deleteTicket,
     startTicketBranch,
+    shipTicket,
   };
 }
+
+const shipTicket = async (ticket: Ticket, onDone?: () => void) => {
+  if (!ticket.branch) {
+    alert("This ticket does not have a dedicated branch to merge.");
+    return;
+  }
+
+  const confirmMerge = confirm(
+    `Ship & Merge: Are you ready to merge "${ticket.branch}" into main and mark ${ticket.id} as Done?`,
+  );
+  if (!confirmMerge) return;
+
+  try {
+    const res = await branchApi.mergeBranch({
+      sourceBranch: ticket.branch,
+      targetBranch: "main",
+    });
+    if (res.success) {
+      await ticketApi.updateTicket(ticket.id, { status: "done" });
+      alert(`🚀 Successfully merged ${ticket.branch} into main!`);
+      onDone?.();
+    } else {
+      alert(`Merge failed: ${res.error || "Ensure working directory is clean"}`);
+    }
+  } catch (err) {
+    console.error("Failed to ship ticket:", err);
+    alert("Failed to ship ticket. Check backend logs.");
+  }
+};

@@ -7,12 +7,36 @@ export interface BranchDetails {
   commitHash: string;
   commitMessage: string;
   upstream?: string;
+  isMerged?: boolean;
 }
+
+export const getMergedBranches = (
+  basePath: string = repoState.getRepoPath(),
+  targetBranch: string = "main",
+): string[] => {
+  try {
+    const raw = execSync(
+      `git branch --merged "${targetBranch}" --format="%(refname:short)"`,
+      { cwd: basePath, encoding: "utf-8" },
+    );
+    return raw
+      .split(/\r?\n/)
+      .map((b) => b.trim())
+      .filter(Boolean)
+      .filter((b) => b !== targetBranch && !b.startsWith("origin/"));
+  } catch {
+    return [];
+  }
+};
 
 export const getDetailedBranchList = (
   basePath: string = repoState.getRepoPath(),
 ): BranchDetails[] => {
   try {
+    const allBranches = getGitBranches(basePath);
+    const targetBranch = allBranches.includes("main") ? "main" : "master";
+    const mergedList = new Set(getMergedBranches(basePath, targetBranch));
+
     const raw = execSync(
       'git branch --format="%(refname:short)|%(HEAD)|%(objectname:short)|%(contents:subject)|%(upstream:short)"',
       { cwd: basePath, encoding: "utf-8" },
@@ -24,12 +48,14 @@ export const getDetailedBranchList = (
       .map((line) => {
         const [name, head, commitHash, commitMessage, upstream] =
           line.split("|");
+        const branchName = name || "unknown";
         return {
-          name: name || "unknown",
+          name: branchName,
           isCurrent: head === "*",
           commitHash: commitHash || "",
           commitMessage: commitMessage || "",
           upstream: upstream || undefined,
+          isMerged: branchName !== targetBranch && mergedList.has(branchName),
         };
       });
   } catch {
@@ -107,6 +133,44 @@ export const gitRenameBranch = (
     cwd: basePath,
     stdio: "ignore",
   });
+};
+
+export const gitMergeBranch = (
+  basePath: string,
+  sourceBranch: string,
+  targetBranch: string = "main",
+): void => {
+  // Checkout base branch first
+  execSync(`git checkout "${targetBranch}"`, { cwd: basePath, stdio: "ignore" });
+  // Merge the feature/ticket branch
+  execSync(`git merge "${sourceBranch}" --no-edit`, {
+    cwd: basePath,
+    encoding: "utf-8",
+  });
+};
+
+export const gitPruneMergedBranches = (
+  basePath: string = repoState.getRepoPath(),
+  targetBranch: string = "main",
+): string[] => {
+  const merged = getMergedBranches(basePath, targetBranch);
+  const current = getGitBranch(basePath);
+  const pruned: string[] = [];
+
+  for (const branch of merged) {
+    if (branch !== targetBranch && branch !== current) {
+      try {
+        execSync(`git branch -d "${branch}"`, {
+          cwd: basePath,
+          stdio: "ignore",
+        });
+        pruned.push(branch);
+      } catch {
+        // Skip branch if it can't be safely deleted
+      }
+    }
+  }
+  return pruned;
 };
 
 export const gitDeleteBranch = (
