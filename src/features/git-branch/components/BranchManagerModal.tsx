@@ -34,7 +34,9 @@ export function BranchManagerModal({
   onDeleteBranch,
   onPruneMerged,
 }: BranchManagerModalProps) {
-  const [filterTab, setFilterTab] = useState<"all" | "active" | "merged">("all");
+  const [filterTab, setFilterTab] = useState<"all" | "active" | "merged">(
+    "active",
+  );
 
   if (!isOpen) return null;
 
