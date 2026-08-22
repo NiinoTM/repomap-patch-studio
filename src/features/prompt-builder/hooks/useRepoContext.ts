@@ -59,6 +59,16 @@ export function useRepoContext() {
     fetchHistory();
   }, [loadRepo, fetchHistory]);
 
+  // Auto-sync workspace status and history when switching back to the browser window
+  useEffect(() => {
+    const handleFocus = () => {
+      loadRepo();
+      fetchHistory();
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [loadRepo, fetchHistory]);
+
   const changeRepo = async (newPath: string): Promise<boolean> => {
     if (!newPath || newPath === repoPath) return false;
 

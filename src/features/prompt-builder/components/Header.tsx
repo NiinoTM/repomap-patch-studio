@@ -254,6 +254,8 @@ export function Header({
           branches={branchManager.branches}
           currentBranch={branchManager.currentBranch}
           isClean={branchManager.isClean}
+          isLoading={branchManager.isLoading}
+          onRefresh={branchManager.refreshBranches}
           searchQuery={branchManager.searchQuery}
           onSearchChange={branchManager.setSearchQuery}
           onSelectBranch={(b) => branchManager.switchBranch(b)}

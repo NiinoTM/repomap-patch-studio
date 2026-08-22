@@ -6,22 +6,12 @@ interface UseBranchManagerParams {
   onBranchChange?: () => void;
 }
 
-export function useBranchManager({
-  onBranchChange,
-}: UseBranchManagerParams = {}) {
+function useBranchList() {
   const [branches, setBranches] = useState<BranchDetails[]>([]);
   const [currentBranch, setCurrentBranch] = useState<string>("");
   const [isClean, setIsClean] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-
-  const [isManagerOpen, setIsManagerOpen] = useState(false);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [branchToRename, setBranchToRename] = useState<string | null>(null);
-  const [dirtyTargetBranch, setDirtyTargetBranch] = useState<string | null>(
-    null,
-  );
-  const [searchQuery, setSearchQuery] = useState("");
 
   const refreshBranches = useCallback(async () => {
     setIsLoading(true);
@@ -46,6 +36,48 @@ export function useBranchManager({
   useEffect(() => {
     refreshBranches();
   }, [refreshBranches]);
+
+  useEffect(() => {
+    const handleFocus = () => refreshBranches();
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [refreshBranches]);
+
+  return {
+    branches,
+    currentBranch,
+    isClean,
+    isLoading,
+    setIsLoading,
+    error,
+    refreshBranches,
+  };
+}
+
+export function useBranchManager({
+  onBranchChange,
+}: UseBranchManagerParams = {}) {
+  const {
+    branches,
+    currentBranch,
+    isClean,
+    isLoading,
+    setIsLoading,
+    error,
+    refreshBranches,
+  } = useBranchList();
+
+  const [isManagerOpen, setIsManagerOpen] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [branchToRename, setBranchToRename] = useState<string | null>(null);
+  const [dirtyTargetBranch, setDirtyTargetBranch] = useState<string | null>(
+    null,
+  );
+  const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    if (isManagerOpen) refreshBranches();
+  }, [isManagerOpen, refreshBranches]);
 
   const onActionDone = async (closeManager = false) => {
     await refreshBranches();
@@ -110,10 +142,12 @@ export function useBranchManager({
     );
   };
 
+  const filteredBranches = branches.filter((b) =>
+    b.name.toLowerCase().includes(searchQuery.toLowerCase()),
+  );
+
   return {
-    branches: branches.filter((b) =>
-      b.name.toLowerCase().includes(searchQuery.toLowerCase()),
-    ),
+    branches: filteredBranches,
     allBranches: branches,
     currentBranch,
     isClean,

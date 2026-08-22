@@ -7,6 +7,8 @@ interface BranchManagerModalProps {
   branches: BranchDetails[];
   currentBranch: string;
   isClean: boolean;
+  isLoading?: boolean;
+  onRefresh?: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
   onSelectBranch: (branch: string) => void;
@@ -21,6 +23,8 @@ export function BranchManagerModal({
   branches,
   currentBranch,
   isClean,
+  isLoading = false,
+  onRefresh,
   searchQuery,
   onSearchChange,
   onSelectBranch,
@@ -63,12 +67,37 @@ export function BranchManagerModal({
             </span>
           </div>
 
-          <button
-            onClick={onClose}
-            className="text-zinc-500 hover:text-zinc-300 p-1 rounded-md transition-colors cursor-pointer"
-          >
-            ✕
-          </button>
+          <div className="flex items-center space-x-1">
+            {onRefresh && (
+              <button
+                onClick={onRefresh}
+                className="text-zinc-500 hover:text-zinc-300 p-1 rounded-md transition-colors cursor-pointer"
+                title="Refresh Git status and branches"
+              >
+                <svg
+                  className={`w-4 h-4 ${
+                    isLoading ? "animate-spin text-cyan-400" : ""
+                  }`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="text-zinc-500 hover:text-zinc-300 p-1 rounded-md transition-colors cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* Toolbar: Search + Create */}
