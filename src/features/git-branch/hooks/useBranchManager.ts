@@ -142,6 +142,15 @@ export function useBranchManager({
     );
   };
 
+  const pruneMergedBranches = () => {
+    execBranchAction(
+      () => branchApi.pruneMergedBranches(),
+      setIsLoading,
+      refreshBranches,
+      "Failed to prune merged branches",
+    );
+  };
+
   const filteredBranches = branches.filter((b) =>
     b.name.toLowerCase().includes(searchQuery.toLowerCase()),
   );
@@ -170,17 +179,8 @@ export function useBranchManager({
     renameBranch,
     deleteBranch,
     pruneMergedBranches,
-    };
-    }
-
-    const pruneMergedBranches = () => {
-    execBranchAction(
-    () => branchApi.pruneMergedBranches(),
-    setIsLoading,
-    refreshBranches,
-    "Failed to prune merged branches",
-    );
-    };
+  };
+}
 
 async function execBranchAction(
   apiCall: () => Promise<{ success: boolean; error?: string }>,
