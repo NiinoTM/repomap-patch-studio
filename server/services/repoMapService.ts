@@ -42,9 +42,10 @@ function extractSymbolFromLine(trimmedLine: string, ext: string): string | null 
 
 function extractSymbolsFromContent(content: string, ext: string): string[] {
   const symbols: string[] = [];
-  for (const line of content.split("\n")) {
-    const symbol = extractSymbolFromLine(line.trim(), ext);
-    if (symbol) symbols.push(symbol);
+  const lines = content.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const symbol = extractSymbolFromLine(lines[i].trim(), ext);
+    if (symbol) symbols.push(`[L${i + 1}] ${symbol}`);
   }
   return symbols;
 }

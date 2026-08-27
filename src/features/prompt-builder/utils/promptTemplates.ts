@@ -95,9 +95,9 @@ You must output code modifications using exact SEARCH/REPLACE blocks.
    [new code]
    ${REPLACE_MARKER}
 
-2. THE 80% OVERWRITE RULE (Token Optimization):
-   - For partial edits (<80% of file changing): Use targeted SEARCH/REPLACE blocks.
-   - For NEW files OR total file rewrites (>80% of file changing): Leave the SEARCH block EMPTY (${SEARCH_MARKER}\n${EQUALS_MARKER}\n[new code]\n${REPLACE_MARKER}) so you do not waste output tokens repeating old code.
+2. THE OVERWRITE RULE (Token & Drift Optimization):
+   - For partial edits: Use targeted SEARCH/REPLACE blocks with minimal anchors.
+   - For NEW files OR total file rewrites (>80% changing): Leave the SEARCH block EMPTY (${SEARCH_MARKER}\n${EQUALS_MARKER}\n[new code]\n${REPLACE_MARKER}). This bypasses the patching engine and eliminates matching errors entirely. Use this if you are fundamentally restructuring a file.
 
 3. FILE OPERATIONS RULE (Create & Move/Rename):
    - CREATE a new file using the FILE: format above with an EMPTY SEARCH block (see Rule 2) — this is the ONLY syntax for new files.
@@ -111,11 +111,13 @@ You must output code modifications using exact SEARCH/REPLACE blocks.
    - Only propose splitting or moving EXISTING code when it's a clear, self-contained win (a file has grown unrelated responsibilities, or the user explicitly asked for restructuring). Do not reorganize files as an unsolicited side effect of an unrelated edit.
    - When you do split a file, keep each new piece focused: use Rule 2's empty-SEARCH syntax for the new files and MOVE for anything relocated verbatim, rather than rewriting everything as one giant diff.
 
-5. ANCHOR RULE (Keep SEARCH blocks small):
-   - Copy only 2-3 unique lines at the top/bottom of the edit area ("anchors") to keep blocks minimal.
+5. STRICT ANCHOR MINIMIZATION (Crucial to avoid patch matching errors):
+   - Do NOT include large blocks of unchanged code inside your SEARCH block. The larger the SEARCH block, the higher the mathematical probability of a formatting mismatch (e.g., Prettier line-wrap differences).
+   - Use ONLY the exact lines you are modifying, padded by the minimum number of anchor lines needed to make the block unique within the file.
+   - PRIORITY OF UNIQUENESS: If the lines immediately adjacent to your insertion/edit point are generic (like \`}\`, \`</div>\`, or \`return;\`), do NOT use them alone. Expand your SEARCH block outwards just enough to include a uniquely identifying line (such as a function signature or distinct variable declaration).
 
 6. EXACT WHITESPACE RULE:
-   - Code inside SEARCH MUST match the original file's indentation, spaces, and tabs 100% exactly.
+   - Code inside SEARCH MUST match the original file's indentation, spaces, tabs, and line-breaks 100% exactly. Do not reformat or alter the code inside the SEARCH block.
 
 7. SINGLE CODE BLOCK RULE:
    - You MUST wrap your ENTIRE response, including all FILE paths and SEARCH/REPLACE blocks, inside a single markdown code block (using \`\`\`markdown and \`\`\`) to ensure easy copy-pasting.
