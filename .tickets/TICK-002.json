@@ -1,0 +1,15 @@
+{
+  "id": "TICK-002",
+  "title": "Add Telemetry to Remediation Project",
+  "status": "todo",
+  "type": "feat",
+  "scope": "project-remediation",
+  "branch": "",
+  "description": "/backend/logs/telemetry.sqlite\n\nAn Express middleware in `server.js` that records every request's `route`, `method`, `status_code`, and `duration_ms` into SQLite if it takes longer than 50ms.",
+  "requirements": [
+    "Database being created in all projects with Remediation activated.",
+    "All data request beyond the criteria chosen being recorded."
+  ],
+  "createdAt": "2026-09-01T11:00:20.272Z",
+  "updatedAt": "2026-09-01T11:00:20.272Z"
+}
