@@ -1,10 +1,11 @@
-import { Code2 } from "lucide-react";
+import { Code2, AlertTriangle } from "lucide-react";
 
 interface StatusBadgeProps {
   status: string;
   matchLabel?: string;
   noMatchLabel?: string;
   isCodeMatched?: boolean;
+  hasWarnings?: boolean;
   // When "CREATE", a real search/match was never attempted against file
   // content, so a MATCH FOUND / NOT FOUND pill would be misleading — show
   // a neutral "NEW FILE" pill instead. Any other changeType (or omitted)
@@ -17,6 +18,7 @@ export function StatusBadge({
   matchLabel = "Match Found",
   noMatchLabel = "Not Found",
   isCodeMatched = false,
+  hasWarnings = false,
   changeType,
 }: StatusBadgeProps) {
   return (
@@ -29,9 +31,23 @@ export function StatusBadge({
         <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase shrink-0">
           {matchLabel}
         </span>
+      ) : status === "warning" ? (
+        <span className="bg-amber-500/20 text-amber-400 text-[10px] px-1.5 py-0.5 rounded border border-amber-500/30 font-bold uppercase shrink-0">
+          {matchLabel || "Warning"}
+        </span>
       ) : (
         <span className="bg-rose-500/20 text-rose-400 text-[10px] px-1.5 py-0.5 rounded border border-rose-500/20 font-bold uppercase shrink-0">
           {noMatchLabel}
+        </span>
+      )}
+
+      {hasWarnings && status !== "warning" && (
+        <span
+          className="bg-amber-500/20 text-amber-400 text-[10px] px-1.5 py-0.5 rounded border border-amber-500/30 font-bold uppercase shrink-0 flex items-center"
+          title="Block matched but triggered ESLint warnings"
+        >
+          <AlertTriangle className="w-3 h-3 mr-1" />
+          <span>Warning</span>
         </span>
       )}
 

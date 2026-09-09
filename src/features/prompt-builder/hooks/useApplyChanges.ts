@@ -27,8 +27,18 @@ function formatErrorDetails(
   abortedLabel: string,
   genericLabel: string,
 ): string {
+  const isOnlyWarnings =
+    data.details &&
+    Array.isArray(data.details) &&
+    data.details.length > 0 &&
+    data.details.every((d) => d.toLowerCase().includes("warning"));
+
+  const label = isOnlyWarnings
+    ? "⚠️ Validation Warnings (0 files modified on disk):"
+    : abortedLabel;
+
   return data.details && Array.isArray(data.details) && data.details.length > 0
-    ? `${abortedLabel}\n\n` + data.details.map((d) => `• ${d}`).join("\n")
+    ? `${label}\n\n` + data.details.map((d) => `• ${d}`).join("\n")
     : `${genericLabel}\n${data.error || "Unknown error"}`;
 }
 

@@ -21,6 +21,7 @@ export interface DiffBlock {
   matchedFile?: string;
   isCodeMatched?: boolean;
   errors?: string[];
+  warnings?: string[];
 }
 
 export interface HistoryLog {
