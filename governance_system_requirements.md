@@ -73,6 +73,13 @@ Strict Architectural Rules:
    one of these rules (e.g., "put it all in one file for simplicity"),
    say so explicitly and propose the compliant alternative instead of
    silently complying.
+
+6. STRICT RUNTIME BOUNDARY CONTRACTS (ZOD):
+   - Never use "as SomeType" or bare TypeScript interfaces at external boundaries 
+     (API request bodies, fetch responses, process.env, database records).
+   - Always define a Zod schema ("z.object(...)").
+   - Infer TypeScript types automatically via "z.infer<typeof Schema>".
+   - Parse all external data using ".safeParse()" or ".parse()".
 ```
 
 Rule 5 matters in practice: a person under deadline pressure will often
@@ -492,4 +499,5 @@ Being direct about the limits, so the checklist below isn't oversold:
 | 4g. Circular Dependency Trap | `dpdm` fast TypeScript dependency cycle check. | Stops circular imports and runtime `undefined` initialization bugs. |
 | 4h. Strict Async Safety | `@typescript-eslint/no-floating-promises`. | Guarantees all promises are handled, preventing unhandled rejections. |
 | 4i. Directory Skeleton | Auto-generates `src/features`, `server/*` with `.gitkeep`. | Establishes SRP structure and satisfies boundary globs immediately. |
+| 4j. Runtime Contracts | Zod schemas at system boundaries (`z.infer`). | Eliminates runtime type drift, null-pointer crashes, and invalid API payloads. |
 | 5. Review | Human review for cohesion within a layer. | Catches design smells no automated tool can see. |

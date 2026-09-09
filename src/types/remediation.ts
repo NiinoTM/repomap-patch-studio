@@ -10,6 +10,7 @@ export interface GovernanceScaffoldOptions {
   strictAsyncSafety: boolean;
   featureDirectorySkeleton: boolean;
   autoInstallDependencies: boolean;
+  zodRuntimeContracts: boolean;
   softTechnicalDebtMode: boolean; // Sets boundary rules to 'warn' instead of 'error'
 }
 

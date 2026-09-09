@@ -19,6 +19,7 @@ const DEFAULT_SCAFFOLD_OPTIONS: GovernanceScaffoldOptions = {
   strictAsyncSafety: true,
   featureDirectorySkeleton: true,
   autoInstallDependencies: true,
+  zodRuntimeContracts: true,
   softTechnicalDebtMode: true,
 };
 

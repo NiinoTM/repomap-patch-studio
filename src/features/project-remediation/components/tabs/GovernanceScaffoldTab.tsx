@@ -148,6 +148,19 @@ const SCAFFOLD_OPTIONS_LIST: ScaffoldOptionItemConfig[] = [
       </span>
     ),
   },
+  {
+    key: "zodRuntimeContracts",
+    title: (
+      <span>
+        11. Runtime Boundary Contracts (<code className="text-cyan-400">zod</code>)
+      </span>
+    ),
+    description: (
+      <span>
+        Enforces schema validation at external boundaries (API request bodies, fetch responses, env vars) to eliminate runtime type drift and null-pointer crashes.
+      </span>
+    ),
+  },
 ];
 
 export function GovernanceScaffoldTab({
@@ -235,7 +248,7 @@ export function GovernanceScaffoldTab({
         <div>✓ server/adapters/telemetryAdapter.ts (SQLite APM logger with auto-clean)</div>
         <div>✓ Feature directories: src/api, src/features, src/types, server/*</div>
         <div>
-        ✓ package.json (devDependencies: dpdm, knip, husky + sideEffects: ["**/*.css"])
+        ✓ package.json (dependencies: zod, devDependencies: dpdm, knip, husky + sideEffects: ["**/*.css"])
         </div>
       </div>
 
