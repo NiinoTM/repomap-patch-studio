@@ -40,10 +40,11 @@ code.
 
 Strict Architectural Rules:
 
-1. NO GOD FILES: No single file may exceed ~250 lines of code. If logic
-   grows beyond this, split it into sub-components, custom hooks, or
-   utility services. (This is a soft signal to guide your own generation —
-   the project's linter enforces the hard limit; see Strategy 4.)
+1. NO GOD FILES: No single file may exceed size limits (~250 lines for .ts,
+   ~350 lines for .tsx UI files). If logic grows beyond this, split it into
+   sub-components, custom hooks, or utility services. (This is a soft signal
+   to guide your own generation — the project's linter enforces the hard
+   limit; see Strategy 4.)
 
 2. ONE DOMAIN PER FILE:
    - UI components MUST NOT contain business logic or raw fetch()/network
@@ -154,12 +155,13 @@ stating them. It has two layers: a **size check** (cheap, catches the
 obvious cases) and a **dependency/boundary check** (does the real work of
 enforcing SRP and layering).
 
-### 4a. Size check — ESLint `max-lines`
+### 4a. Size check — ESLint `max-lines` & `max-lines-per-function`
 
-Use one number consistently across every tool in the pipeline. Pick a
-single threshold — don't let the prompt say 250 and the pre-commit hook
-say 300, since that just moves the goalposts and confuses contributors.
-This document uses **250** everywhere.
+Calibrate thresholds by file type rather than enforcing a single rigid number.
+JSX markup inflates line counts without indicating mixed responsibilities, while
+pure TypeScript logic should stay lean:
+- **TypeScript logic (`.ts`)**: `max-lines: 250`, `max-lines-per-function: 50` (or up to 130 for complex hooks/parsers)
+- **React UI components (`.tsx`)**: `max-lines: 350`, `max-lines-per-function: 280` (markup-tolerant)
 
 **Use flat config, not `.eslintrc.json`.** Since ESLint v9 (April 2024),
 flat config (`eslint.config.js` / `.mjs` / `.cjs`) is the default and the
@@ -171,12 +173,22 @@ or plan the migration rather than building new tooling on the old system.
 ```js
 // eslint.config.js
 export default [
+  // TypeScript logic & backend services (.ts)
   {
-    files: ["**/*.{js,jsx,ts,tsx}"],
+    files: ["**/*.ts"],
     rules: {
       "max-lines": ["error", { max: 250, skipBlankLines: true, skipComments: true }],
       "max-lines-per-function": ["warn", { max: 50, skipBlankLines: true }],
       "complexity": ["warn", { max: 10 }]
+    }
+  },
+  // React presentation components (.tsx)
+  {
+    files: ["**/*.tsx"],
+    rules: {
+      "max-lines": ["error", { max: 350, skipBlankLines: true, skipComments: true }],
+      "max-lines-per-function": ["warn", { max: 280, skipBlankLines: true }],
+      "complexity": ["warn", { max: 35 }]
     }
   }
 ];
@@ -352,7 +364,7 @@ Being direct about the limits, so the checklist below isn't oversold:
 | 1. Prompt | Paste the Golden System Instruction into the AI session, including the "declare violations" rule. | Steers generation *before* code exists; weakest guarantee, cheapest to apply. |
 | 2. Design | Require the file tree / blueprint before any code, in small scoped requests. | Prevents the AI from defaulting to one file under generation pressure. |
 | 3. Structure | Start from the feature-driven directory skeleton. | Removes ambiguity about where new code belongs. |
-| 4a. Size lint | `eslint max-lines: 250`, same number everywhere in the pipeline. | Flags oversized files as a proxy signal. |
+| 4a. Size lint | `eslint max-lines: 250 (.ts) / 350 (.tsx)` | Flags oversized files as a proxy signal. |
 | 4b. Boundary lint | `dependency-cruiser` or `eslint-plugin-boundaries` rules per layer. | Actually enforces "UI can't fetch," "controllers can't query DB" — the part size checks can't do. |
 | 4c. CI + pre-commit | Run both in Husky pre-commit *and* CI. | Makes enforcement non-optional instead of relying on memory. |
 | 5. Review | Human review for cohesion within a layer. | Catches design smells no automated tool can see. |

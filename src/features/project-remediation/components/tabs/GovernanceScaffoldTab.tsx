@@ -48,11 +48,11 @@ export function GovernanceScaffoldTab({
           <div className="space-y-0.5">
             <span className="font-semibold text-zinc-200 block">
               1. File & Function Size Limits (
-              <code className="text-cyan-400">max-lines: 250</code>)
+              <code className="text-cyan-400">250 .ts / 350 .tsx</code>)
             </span>
             <span className="text-zinc-500 block text-[11px]">
-              Warns when single files grow into God-files, prompting the AI to
-              extract components or hooks.
+              Warns when single files grow into God-files (separated: 250 lines for
+              .ts, 350 for .tsx), prompting the AI to extract components or hooks.
             </span>
           </div>
         </label>
@@ -127,10 +127,10 @@ export function GovernanceScaffoldTab({
           <FileCode className="w-3 h-3 text-cyan-400" />
           <span>Files to be created/updated in target repo:</span>
         </div>
-        <div>✓ eslint.config.js (Flat Config with boundary globs)</div>
+        <div>✓ eslint.config.js (Flat Config with separated limits: 250 .ts / 350 .tsx)</div>
         <div>✓ .husky/pre-commit (Marker leak detector)</div>
         <div>
-          ✓ package.json (devDependenies: eslint-plugin-boundaries, husky)
+          ✓ package.json (devDependencies: eslint-plugin-boundaries, husky)
         </div>
       </div>
 
