@@ -134,6 +134,24 @@ export function GovernanceScaffoldTab({
           </div>
         </label>
 
+        <label className="flex items-start space-x-3 p-3 bg-zinc-900/50 border border-zinc-800/80 rounded-lg hover:border-zinc-700 transition-colors cursor-pointer">
+          <input
+            type="checkbox"
+            checked={options.knipDeadCodeDetection}
+            onChange={() => onToggleOption("knipDeadCodeDetection")}
+            className="accent-cyan-500 mt-0.5 rounded"
+          />
+          <div className="space-y-0.5">
+            <span className="font-semibold text-zinc-200 block">
+              6. Zombie Code & Unused Export Detector (
+              <code className="text-cyan-400">knip</code>)
+            </span>
+            <span className="text-zinc-500 block text-[11px]">
+              Flags dead utility functions, abandoned components, and unused npm packages left behind after AI refactors.
+            </span>
+          </div>
+        </label>
+
         <label className="flex items-start space-x-3 p-3 bg-amber-950/20 border border-amber-800/40 rounded-lg hover:border-amber-700/60 transition-colors cursor-pointer">
           <input
             type="checkbox"

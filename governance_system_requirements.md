@@ -383,6 +383,34 @@ To prevent barrel file imports (`index.ts`) from pulling unneeded sibling module
 ```
 This instructs bundlers (Vite/Rollup/Webpack) to aggressively tree-shake unused exports from domain barrels while preserving stylesheet imports.
 
+### 4f. Dead Code & Orphan Export Sweeper (`knip`)
+
+AI assistants excel at extracting and writing new code, but rarely clean up
+the functions, types, or dependencies they replace. Over time, repositories
+accumulate dead exports and unused npm packages that waste context window
+tokens in AI prompts and bloat production bundles.
+
+Integrating `knip` into pre-commit or CI scans the entire project from entry
+points (`src/main.tsx`, `server/index.ts`):
+
+```bash
+npx knip
+```
+
+```json
+// knip.json
+{
+  "$schema": "https://unpkg.com/knip@5/overview/schema.json",
+  "entry": ["src/main.tsx!", "server/index.ts!"],
+  "project": ["src/**/*.{ts,tsx}!", "server/**/*.ts!"]
+}
+```
+
+This automatically catches:
+- Unused exports (functions/types exported but never referenced elsewhere).
+- Unused files (modules with zero inbound references).
+- Unused dependencies listed in `package.json`.
+
 ---
 
 ## What This System Cannot Do
@@ -418,4 +446,5 @@ Being direct about the limits, so the checklist below isn't oversold:
 | 4c. CI + pre-commit | Run both in Husky pre-commit *and* CI. | Makes enforcement non-optional instead of relying on memory. |
 | 4d. Telemetry | SQLite `api_telemetria.db` with rolling auto-clean. | Spots slowest processes, bottlenecks, and optimizable functions. |
 | 4e. Public API Barrier | Enforce `index.ts` cross-feature import contracts. | Eliminates hidden deep coupling between feature modules. |
+| 4f. Dead Code Sweeper | `knip` static entrypoint graph analysis. | Eliminates zombie functions, orphaned components, and unused npm packages. |
 | 5. Review | Human review for cohesion within a layer. | Catches design smells no automated tool can see. |

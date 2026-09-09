@@ -11,6 +11,7 @@ const DEFAULT_SCAFFOLD_OPTIONS: GovernanceScaffoldOptions = {
   huskyLeakedMarkerCheck: true,
   telemetryDbMonitoring: true,
   featurePublicApiBarrier: true,
+  knipDeadCodeDetection: true,
   softTechnicalDebtMode: true,
 };
 
