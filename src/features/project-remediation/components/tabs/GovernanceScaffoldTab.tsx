@@ -235,10 +235,14 @@ export function GovernanceScaffoldTab({
           <FileCode className="w-3 h-3 text-cyan-400" />
           <span>Files to be created/updated in target repo:</span>
         </div>
-        <div>✓ eslint.config.js (Flat Config with separated limits: 250 .ts / 350 .tsx)</div>
-        <div>✓ .husky/pre-commit (Marker leak detector)</div>
+        <div>✓ tsconfig.json (Base TypeScript config for projectService)</div>
+        <div>✓ eslint.config.js (Flat Config with boundary globs & typed async rules)</div>
+        <div>✓ .husky/pre-commit (Marker leak detector & circular import gate)</div>
+        <div>✓ knip.json (Dead code & unused export analyzer)</div>
+        <div>✓ server/adapters/telemetryAdapter.ts (SQLite APM logger with auto-clean)</div>
+        <div>✓ Feature directories: src/api, src/features, src/types, server/*</div>
         <div>
-          ✓ package.json (devDependencies: eslint-plugin-boundaries, husky)
+          ✓ package.json (devDependencies: dpdm, knip, husky, better-sqlite3 + sideEffects: ["**/*.css"])
         </div>
       </div>
 

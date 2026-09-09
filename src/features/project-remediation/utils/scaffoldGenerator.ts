@@ -212,6 +212,24 @@ function buildPackageJson(opts: GovernanceScaffoldOptions): string {
   return JSON.stringify(pkg, null, 2);
 }
 
+function buildTsConfig(): string {
+  return JSON.stringify(
+    {
+      compilerOptions: {
+        target: "ES2022",
+        module: "NodeNext",
+        moduleResolution: "NodeNext",
+        esModuleInterop: true,
+        strict: true,
+        skipLibCheck: true,
+      },
+      include: ["src/**/*", "server/**/*"],
+    },
+    null,
+    2,
+  );
+}
+
 const SKELETON_DIRS = [
   "src/api",
   "src/features",
@@ -224,6 +242,7 @@ const SKELETON_DIRS = [
 
 export function generateGovernanceDiffBlocks(opts: GovernanceScaffoldOptions): DiffBlock[] {
   const blocks: DiffBlock[] = [
+    makeCreateBlock("tsconfig.json", buildTsConfig()),
     makeCreateBlock("eslint.config.js", buildEslintConfig(opts)),
     makeCreateBlock("package.json", buildPackageJson(opts)),
   ];

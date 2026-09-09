@@ -483,7 +483,7 @@ Being direct about the limits, so the checklist below isn't oversold:
 | 1. Prompt | Paste the Golden System Instruction into the AI session, including the "declare violations" rule. | Steers generation *before* code exists; weakest guarantee, cheapest to apply. |
 | 2. Design | Require the file tree / blueprint before any code, in small scoped requests. | Prevents the AI from defaulting to one file under generation pressure. |
 | 3. Structure | Start from the feature-driven directory skeleton. | Removes ambiguity about where new code belongs. |
-| 4a. Size lint | `eslint max-lines: 250 (.ts) / 350 (.tsx)` | Flags oversized files as a proxy signal. |
+| 4a. Size & Config | Baseline `tsconfig.json` + `eslint max-lines: 250 (.ts) / 350 (.tsx)` | Sets up typed `projectService` resolution and flags oversized files. |
 | 4b. Boundary lint | `dependency-cruiser` or `eslint-plugin-boundaries` rules per layer. | Actually enforces "UI can't fetch," "controllers can't query DB" — the part size checks can't do. |
 | 4c. CI + pre-commit | Run both in Husky pre-commit *and* CI. | Makes enforcement non-optional instead of relying on memory. |
 | 4d. Telemetry | SQLite `api_telemetria.db` with rolling auto-clean. | Spots slowest processes, bottlenecks, and optimizable functions. |
