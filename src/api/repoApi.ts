@@ -5,6 +5,13 @@ import {
   FilesResponse,
 } from "../types/api";
 
+export interface BootstrapResponse {
+  success: boolean;
+  packageManager?: string;
+  output?: string;
+  error?: string;
+}
+
 export const repoApi = {
   fetchRepo: (): Promise<RepoContextResponse> =>
     fetch("/api/repo").then(handleResponse<RepoContextResponse>),
@@ -29,6 +36,11 @@ export const repoApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ branch }),
     }).then(handleResponse<{ success: boolean; error?: string }>),
+
+  bootstrapRepo: (): Promise<BootstrapResponse> =>
+    fetch("/api/repo/bootstrap", {
+      method: "POST",
+    }).then(handleResponse<BootstrapResponse>),
 };
 
 export const filesApi = {

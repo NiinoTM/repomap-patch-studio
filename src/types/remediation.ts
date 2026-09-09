@@ -9,6 +9,7 @@ export interface GovernanceScaffoldOptions {
   dpdmCircularCheck: boolean;
   strictAsyncSafety: boolean;
   featureDirectorySkeleton: boolean;
+  autoInstallDependencies: boolean;
   softTechnicalDebtMode: boolean; // Sets boundary rules to 'warn' instead of 'error'
 }
 

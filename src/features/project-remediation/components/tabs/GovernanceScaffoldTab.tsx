@@ -6,21 +6,157 @@ import {
   AlertTriangle,
   CheckCircle2,
   Loader2,
+  Sparkles,
 } from "lucide-react";
 
 interface GovernanceScaffoldTabProps {
   options: GovernanceScaffoldOptions;
   onToggleOption: (key: keyof GovernanceScaffoldOptions) => void;
   isScaffolding: boolean;
+  isBootstrapping?: boolean;
   scaffoldDone: boolean;
+  bootstrapOutput?: string | null;
   onApplyScaffold: () => void;
 }
+
+interface ScaffoldOptionItemConfig {
+  key: keyof GovernanceScaffoldOptions;
+  title: React.ReactNode;
+  description: React.ReactNode;
+  containerClass?: string;
+}
+
+const SCAFFOLD_OPTIONS_LIST: ScaffoldOptionItemConfig[] = [
+  {
+    key: "eslintSizeLimits",
+    title: (
+      <span>
+        1. File & Function Size Limits (<code className="text-cyan-400">250 .ts / 350 .tsx</code>)
+      </span>
+    ),
+    description:
+      "Warns when single files grow into God-files (separated: 250 lines for .ts, 350 for .tsx), prompting the AI to extract components or hooks.",
+  },
+  {
+    key: "eslintLayerBoundaries",
+    title: (
+      <span>
+        2. Layering & Boundary Rules (<code className="text-cyan-400">eslint-plugin-boundaries</code>)
+      </span>
+    ),
+    description:
+      "Blocks illegal imports (e.g. Components importing API directly, or Adapters importing Services).",
+  },
+  {
+    key: "huskyPreCommitHook",
+    title: (
+      <span>
+        3. Husky Git Pre-Commit Hook (<code className="text-cyan-400">.husky/pre-commit</code>)
+      </span>
+    ),
+    description: (
+      <span>
+        Prevents Git commits if leaked patch markers (
+        <code className="text-rose-400">&lt;&lt;&lt;&lt;&lt;&lt;&lt; SEARCH</code>) or lint failures exist.
+      </span>
+    ),
+  },
+  {
+    key: "telemetryDbMonitoring",
+    title: (
+      <span>
+        4. Process Telemetry & Auto-Clean Profiler (<code className="text-cyan-400">api_telemetry.db</code>)
+      </span>
+    ),
+    description: (
+      <span>
+        Logs route and function latencies (<code className="text-cyan-400">duration_ms</code>, query params, status) to a lightweight SQLite DB with auto-cleaning to quickly spot slow, optimizable bottlenecks.
+      </span>
+    ),
+  },
+  {
+    key: "featurePublicApiBarrier",
+    title: (
+      <span>
+        5. Feature Encapsulation (<code className="text-cyan-400">Public API Barrier</code>)
+      </span>
+    ),
+    description: (
+      <span>
+        Blocks deep cross-feature imports via strict <code className="text-cyan-400">index.ts</code> contracts and automatically configures <code className="text-cyan-400">sideEffects</code> in package.json to guarantee clean tree-shaking.
+      </span>
+    ),
+  },
+  {
+    key: "knipDeadCodeDetection",
+    title: (
+      <span>
+        6. Zombie Code & Unused Export Detector (<code className="text-cyan-400">knip</code>)
+      </span>
+    ),
+    description:
+      "Flags dead utility functions, abandoned components, and unused npm packages left behind after AI refactors.",
+  },
+  {
+    key: "dpdmCircularCheck",
+    title: (
+      <span>
+        7. Circular Dependency Trap (<code className="text-cyan-400">dpdm</code>)
+      </span>
+    ),
+    description: (
+      <span>
+        Prevents circular import loops that cause silent runtime <code className="text-cyan-400">undefined</code> crashes in production bundles.
+      </span>
+    ),
+  },
+  {
+    key: "strictAsyncSafety",
+    title: (
+      <span>
+        8. Strict Async Safety (<code className="text-cyan-400">no-floating-promises</code>)
+      </span>
+    ),
+    description:
+      "Ensures all backend promises and API calls are explicitly awaited, preventing silent unhandled rejections.",
+  },
+  {
+    key: "featureDirectorySkeleton",
+    title: (
+      <span>
+        9. Feature-Driven Directory Skeleton (<code className="text-cyan-400">src/features, server/*</code>)
+      </span>
+    ),
+    description: (
+      <span>
+        Provisions domain skeleton folders (<code className="text-cyan-400">src/features</code>, <code className="text-cyan-400">src/api</code>, <code className="text-cyan-400">server/adapters</code>, etc.) with <code className="text-cyan-400">.gitkeep</code> anchors.
+      </span>
+    ),
+  },
+  {
+    key: "autoInstallDependencies",
+    containerClass: "bg-cyan-950/20 border border-cyan-800/40 hover:border-cyan-700/60",
+    title: (
+      <span className="text-cyan-300 flex items-center space-x-1.5">
+        <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+        <span>10. 1-Click Environment Bootstrap (Auto-Install & Activate Hooks)</span>
+      </span>
+    ),
+    description: (
+      <span>
+        Automatically detects package manager (<code className="text-cyan-400">npm/pnpm/yarn/bun</code>), installs dependencies, and activates Git hooks (<code className="text-cyan-400">npx husky</code>) right after injecting files.
+      </span>
+    ),
+  },
+];
 
 export function GovernanceScaffoldTab({
   options,
   onToggleOption,
   isScaffolding,
+  isBootstrapping = false,
   scaffoldDone,
+  bootstrapOutput,
   onApplyScaffold,
 }: GovernanceScaffoldTabProps) {
   return (
@@ -38,173 +174,30 @@ export function GovernanceScaffoldTab({
       </div>
 
       <div className="space-y-3">
-        <label className="flex items-start space-x-3 p-3 bg-zinc-900/50 border border-zinc-800/80 rounded-lg hover:border-zinc-700 transition-colors cursor-pointer">
-          <input
-            type="checkbox"
-            checked={options.eslintSizeLimits}
-            onChange={() => onToggleOption("eslintSizeLimits")}
-            className="accent-cyan-500 mt-0.5 rounded"
-          />
-          <div className="space-y-0.5">
-            <span className="font-semibold text-zinc-200 block">
-              1. File & Function Size Limits (
-              <code className="text-cyan-400">250 .ts / 350 .tsx</code>)
-            </span>
-            <span className="text-zinc-500 block text-[11px]">
-              Warns when single files grow into God-files (separated: 250 lines for
-              .ts, 350 for .tsx), prompting the AI to extract components or hooks.
-            </span>
-          </div>
-        </label>
-
-        <label className="flex items-start space-x-3 p-3 bg-zinc-900/50 border border-zinc-800/80 rounded-lg hover:border-zinc-700 transition-colors cursor-pointer">
-          <input
-            type="checkbox"
-            checked={options.eslintLayerBoundaries}
-            onChange={() => onToggleOption("eslintLayerBoundaries")}
-            className="accent-cyan-500 mt-0.5 rounded"
-          />
-          <div className="space-y-0.5">
-            <span className="font-semibold text-zinc-200 block">
-              2. Layering & Boundary Rules (
-              <code className="text-cyan-400">eslint-plugin-boundaries</code>)
-            </span>
-            <span className="text-zinc-500 block text-[11px]">
-              Blocks illegal imports (e.g. Components importing API directly, or
-              Adapters importing Services).
-            </span>
-          </div>
-        </label>
-
-        <label className="flex items-start space-x-3 p-3 bg-zinc-900/50 border border-zinc-800/80 rounded-lg hover:border-zinc-700 transition-colors cursor-pointer">
-          <input
-            type="checkbox"
-            checked={options.huskyPreCommitHook}
-            onChange={() => onToggleOption("huskyPreCommitHook")}
-            className="accent-cyan-500 mt-0.5 rounded"
-          />
-          <div className="space-y-0.5">
-            <span className="font-semibold text-zinc-200 block">
-              3. Husky Git Pre-Commit Hook (
-              <code className="text-cyan-400">.husky/pre-commit</code>)
-            </span>
-            <span className="text-zinc-500 block text-[11px]">
-              Prevents Git commits if leaked patch markers (
-              <code className="text-rose-400">
-                &lt;&lt;&lt;&lt;&lt;&lt;&lt; SEARCH
-              </code>
-              ) or lint failures exist.
-            </span>
-          </div>
-        </label>
-
-        <label className="flex items-start space-x-3 p-3 bg-zinc-900/50 border border-zinc-800/80 rounded-lg hover:border-zinc-700 transition-colors cursor-pointer">
-          <input
-            type="checkbox"
-            checked={options.telemetryDbMonitoring}
-            onChange={() => onToggleOption("telemetryDbMonitoring")}
-            className="accent-cyan-500 mt-0.5 rounded"
-          />
+        {SCAFFOLD_OPTIONS_LIST.map((item) => (
+          <label
+            key={item.key}
+            className={`flex items-start space-x-3 p-3 rounded-lg transition-colors cursor-pointer ${
+              item.containerClass ||
+              "bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700"
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={options[item.key]}
+              onChange={() => onToggleOption(item.key)}
+              className="accent-cyan-500 mt-0.5 rounded"
+            />
             <div className="space-y-0.5">
               <span className="font-semibold text-zinc-200 block">
-                4. Process Telemetry & Auto-Clean Profiler (
-                <code className="text-cyan-400">api_telemetry.db</code>)
+                {item.title}
               </span>
               <span className="text-zinc-500 block text-[11px]">
-                Logs route and function latencies (<code className="text-cyan-400">duration_ms</code>, query params, status) to a lightweight SQLite DB with auto-cleaning to quickly spot slow, optimizable bottlenecks.
+                {item.description}
               </span>
             </div>
-        </label>
-
-        <label className="flex items-start space-x-3 p-3 bg-zinc-900/50 border border-zinc-800/80 rounded-lg hover:border-zinc-700 transition-colors cursor-pointer">
-          <input
-            type="checkbox"
-            checked={options.featurePublicApiBarrier}
-            onChange={() => onToggleOption("featurePublicApiBarrier")}
-            className="accent-cyan-500 mt-0.5 rounded"
-          />
-          <div className="space-y-0.5">
-            <span className="font-semibold text-zinc-200 block">
-              5. Feature Encapsulation (
-              <code className="text-cyan-400">Public API Barrier</code>)
-            </span>
-            <span className="text-zinc-500 block text-[11px]">
-              Blocks deep cross-feature imports via strict <code className="text-cyan-400">index.ts</code> contracts and automatically configures <code className="text-cyan-400">sideEffects</code> in package.json to guarantee clean tree-shaking.
-            </span>
-          </div>
-        </label>
-
-        <label className="flex items-start space-x-3 p-3 bg-zinc-900/50 border border-zinc-800/80 rounded-lg hover:border-zinc-700 transition-colors cursor-pointer">
-          <input
-            type="checkbox"
-            checked={options.knipDeadCodeDetection}
-            onChange={() => onToggleOption("knipDeadCodeDetection")}
-            className="accent-cyan-500 mt-0.5 rounded"
-          />
-          <div className="space-y-0.5">
-            <span className="font-semibold text-zinc-200 block">
-              6. Zombie Code & Unused Export Detector (
-              <code className="text-cyan-400">knip</code>)
-            </span>
-            <span className="text-zinc-500 block text-[11px]">
-              Flags dead utility functions, abandoned components, and unused npm packages left behind after AI refactors.
-            </span>
-          </div>
-        </label>
-
-        <label className="flex items-start space-x-3 p-3 bg-zinc-900/50 border border-zinc-800/80 rounded-lg hover:border-zinc-700 transition-colors cursor-pointer">
-          <input
-            type="checkbox"
-            checked={options.dpdmCircularCheck}
-            onChange={() => onToggleOption("dpdmCircularCheck")}
-            className="accent-cyan-500 mt-0.5 rounded"
-          />
-          <div className="space-y-0.5">
-            <span className="font-semibold text-zinc-200 block">
-              7. Circular Dependency Trap (
-              <code className="text-cyan-400">dpdm</code>)
-            </span>
-            <span className="text-zinc-500 block text-[11px]">
-              Prevents circular import loops that cause silent runtime <code className="text-cyan-400">undefined</code> crashes in production bundles.
-            </span>
-          </div>
-        </label>
-
-        <label className="flex items-start space-x-3 p-3 bg-zinc-900/50 border border-zinc-800/80 rounded-lg hover:border-zinc-700 transition-colors cursor-pointer">
-          <input
-            type="checkbox"
-            checked={options.strictAsyncSafety}
-            onChange={() => onToggleOption("strictAsyncSafety")}
-            className="accent-cyan-500 mt-0.5 rounded"
-          />
-          <div className="space-y-0.5">
-            <span className="font-semibold text-zinc-200 block">
-              8. Strict Async Safety (
-              <code className="text-cyan-400">no-floating-promises</code>)
-            </span>
-            <span className="text-zinc-500 block text-[11px]">
-              Ensures all backend promises and API calls are explicitly awaited, preventing silent unhandled rejections.
-            </span>
-          </div>
-        </label>
-
-        <label className="flex items-start space-x-3 p-3 bg-zinc-900/50 border border-zinc-800/80 rounded-lg hover:border-zinc-700 transition-colors cursor-pointer">
-          <input
-            type="checkbox"
-            checked={options.featureDirectorySkeleton}
-            onChange={() => onToggleOption("featureDirectorySkeleton")}
-            className="accent-cyan-500 mt-0.5 rounded"
-          />
-          <div className="space-y-0.5">
-            <span className="font-semibold text-zinc-200 block">
-              9. Feature-Driven Directory Skeleton (
-              <code className="text-cyan-400">src/features, server/*</code>)
-            </span>
-            <span className="text-zinc-500 block text-[11px]">
-              Provisions domain skeleton folders (<code className="text-cyan-400">src/features</code>, <code className="text-cyan-400">src/api</code>, <code className="text-cyan-400">server/adapters</code>, etc.) with <code className="text-cyan-400">.gitkeep</code> anchors.
-            </span>
-          </div>
-        </label>
+          </label>
+        ))}
 
         <label className="flex items-start space-x-3 p-3 bg-amber-950/20 border border-amber-800/40 rounded-lg hover:border-amber-700/60 transition-colors cursor-pointer">
           <input
@@ -246,6 +239,18 @@ export function GovernanceScaffoldTab({
         </div>
       </div>
 
+      {bootstrapOutput && (
+        <div className="p-3 bg-zinc-950 rounded-lg border border-emerald-900/40 text-[11px] text-zinc-400 space-y-1 font-mono">
+          <div className="text-emerald-400 uppercase font-bold text-[10px] flex items-center space-x-1">
+            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+            <span>Bootstrap Execution Log:</span>
+          </div>
+          <pre className="max-h-24 overflow-y-auto text-[10px] text-zinc-300 custom-scrollbar whitespace-pre-wrap">
+            {bootstrapOutput}
+          </pre>
+        </div>
+      )}
+
       <div className="flex justify-end pt-2">
         <button
           onClick={onApplyScaffold}
@@ -255,12 +260,16 @@ export function GovernanceScaffoldTab({
           {isScaffolding ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Injecting Governance Files...</span>
+              <span>
+                {isBootstrapping
+                  ? "Installing Packages & Activating Hooks..."
+                  : "Injecting Governance Files..."}
+              </span>
             </>
           ) : scaffoldDone ? (
             <>
               <CheckCircle2 className="w-4 h-4 text-emerald-950" />
-              <span>Governance Injected Successfully!</span>
+              <span>Governance Injected & Ready!</span>
             </>
           ) : (
             <>

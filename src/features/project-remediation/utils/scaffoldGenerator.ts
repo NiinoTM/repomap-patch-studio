@@ -73,7 +73,7 @@ export default tseslint.config(
 }
 
 function buildHuskyPreCommit(opts: GovernanceScaffoldOptions): string {
-  const lines: string[] = ["#!/bin/sh", '. "$(dirname "$0")/_/husky.sh"', ""];
+  const lines: string[] = [];
   if (opts.huskyLeakedMarkerCheck) {
     lines.push(
       'if git diff --cached | grep -E "<{7} SEARCH|>{7} REPLACE"; then',
@@ -94,8 +94,9 @@ function buildKnipConfig(): string {
   return JSON.stringify(
     {
       $schema: "https://unpkg.com/knip@5/overview/schema.json",
-      entry: ["src/main.{ts,tsx}!", "src/index.{ts,tsx}!", "server/index.ts!"],
+      entry: ["src/main.{ts,tsx}", "src/index.{ts,tsx}", "server/index.ts"],
       project: ["src/**/*.{ts,tsx}!", "server/**/*.ts!"],
+      ignoreDependencies: ["husky", "lint-staged"],
     },
     null,
     2,
@@ -174,12 +175,13 @@ export const telemetryAdapter = new TelemetryAdapter();
 
 function buildPackageJson(opts: GovernanceScaffoldOptions): string {
   const devDeps: Record<string, string> = {
+    "@eslint/js": "^9.0.0",
     eslint: "^9.0.0",
     typescript: "^5.0.0",
     "typescript-eslint": "^8.0.0",
   };
   if (opts.eslintLayerBoundaries || opts.featurePublicApiBarrier) {
-    devDeps["eslint-plugin-boundaries"] = "^5.0.0";
+    devDeps["eslint-plugin-boundaries"] = "^7.0.0";
   }
   if (opts.huskyPreCommitHook) {
     devDeps["husky"] = "^9.0.0";
@@ -199,6 +201,7 @@ function buildPackageJson(opts: GovernanceScaffoldOptions): string {
     type: "module",
     scripts: {
       lint: "eslint .",
+      typecheck: "tsc --noEmit",
       ...(opts.knipDeadCodeDetection ? { knip: "knip" } : {}),
       ...(opts.dpdmCircularCheck ? { "check:circular": "dpdm --warning=false --tree=false --exit-code circular:1 src/" } : {}),
     },
@@ -256,6 +259,7 @@ export function generateGovernanceDiffBlocks(opts: GovernanceScaffoldOptions): D
     for (const dir of SKELETON_DIRS) {
       blocks.push(makeCreateBlock(`${dir}/.gitkeep`, ""));
     }
+    blocks.push(makeCreateBlock("src/index.ts", "export const ready = true;\n"));
   }
 
   return blocks;
