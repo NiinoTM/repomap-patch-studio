@@ -49,68 +49,73 @@ function TokenBudgetWidget({
   availableScopes,
   onActiveScopeChange,
 }: TokenBudgetWidgetProps) {
-  const percentage = Math.min(100, Math.round((tokenStats.total / 30000) * 100));
-  let status = { label: "Optimal Focus", bg: "bg-emerald-500", text: "text-emerald-400" };
+  let statusBg = "bg-emerald-500";
   if (tokenStats.total > 30000) {
-    status = { label: "Context Overload", bg: "bg-rose-500", text: "text-rose-400" };
+    statusBg = "bg-rose-500";
   } else if (tokenStats.total > 15000) {
-    status = { label: "Heavy Context", bg: "bg-amber-500", text: "text-amber-400" };
+    statusBg = "bg-amber-500";
   }
 
+  const formattedTotal =
+    tokenStats.total >= 1000
+      ? `${(tokenStats.total / 1000).toFixed(1)}k`
+      : String(tokenStats.total);
+
   return (
-    <div className="absolute left-1/2 -translate-x-1/2 flex flex-col justify-center space-y-1 bg-zinc-900/90 border border-zinc-800 rounded-lg px-3 py-1 w-[360px] shadow-sm">
-      <div className="flex items-center justify-between w-full">
-        <div className="flex items-center space-x-2">
-          <span className={`w-1.5 h-1.5 rounded-full ${status.bg} animate-pulse`} />
-          <span className="text-[11px] font-semibold text-zinc-200">Token Budget</span>
-          <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded bg-zinc-800 ${status.text}`}>
-            {status.label}
-          </span>
-        </div>
-        <span className="font-mono text-[10px] font-bold text-zinc-100">
-          {tokenStats.total.toLocaleString()}{" "}
-          <span className="text-zinc-500 font-normal">/ 30k</span>
+    <div className="absolute left-1/2 -translate-x-1/2 flex items-center space-x-2.5 bg-zinc-900/95 border border-zinc-800 rounded-full px-3 py-1 shadow-sm shrink-0 z-10">
+      <div
+        className="flex items-center space-x-1.5 shrink-0"
+        title={`Total Tokens: ${tokenStats.total.toLocaleString()} / 30,000 (Map: ${tokenStats.map.toLocaleString()} tks)`}
+      >
+        <span
+          className={`w-1.5 h-1.5 rounded-full ${statusBg} ${
+            tokenStats.total > 15000 ? "animate-pulse" : ""
+          }`}
+        />
+        <span className="font-mono text-[10px] font-bold text-zinc-200">
+          {formattedTotal}
+          <span className="text-zinc-500 font-normal">/30k</span>
         </span>
       </div>
 
-      <div className="w-full bg-zinc-800/80 h-1 rounded-full overflow-hidden flex">
-        <div className={`h-full transition-all duration-300 ${status.bg}`} style={{ width: `${percentage}%` }} />
+      <div className="h-3 w-[1px] bg-zinc-800 shrink-0" />
+
+      <div className="flex items-center space-x-1 shrink-0">
+        <span className="text-[10px] text-zinc-500 font-medium">Scope:</span>
+        <select
+          value={activeScope}
+          onChange={(e) => onActiveScopeChange?.(e.target.value)}
+          className="bg-zinc-950 text-cyan-400 text-[10px] font-mono rounded px-1.5 py-0.5 border border-zinc-800 focus:outline-none focus:border-cyan-500 cursor-pointer max-w-[130px] truncate"
+          title="Filter Repo Map symbols to this domain (works on any size project)"
+        >
+          <option value="all">all (full repo)</option>
+          {availableScopes.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
       </div>
 
-      <div className="flex justify-between text-[9px] text-zinc-500 font-mono">
-        <span>Map: {tokenStats.map.toLocaleString()} tks</span>
-        <span>
-          Files ({tokenStats.selectedCount}): {tokenStats.files.toLocaleString()} tks
-        </span>
-      </div>
+      {activeScope !== "all" && (
+        <button
+          onClick={() => onActiveScopeChange?.("all")}
+          className="text-[10px] text-zinc-500 hover:text-rose-400 px-1 py-0.2 rounded transition-colors cursor-pointer"
+          title="Reset scope to full repo"
+        >
+          ✕
+        </button>
+      )}
 
-      <div className="flex items-center justify-between text-[9px] text-zinc-400 pt-1 border-t border-zinc-800/60">
-        <div className="flex items-center space-x-1.5">
-          <span className="text-zinc-500 font-medium">Domain Scope:</span>
-          <select
-            value={activeScope}
-            onChange={(e) => onActiveScopeChange?.(e.target.value)}
-            className="bg-zinc-800 text-zinc-200 text-[9px] font-mono rounded px-1.5 py-0.5 border border-zinc-700 focus:outline-none focus:border-cyan-500 cursor-pointer"
-            title="Limit Repo Map symbols to a specific domain or subsystem"
-          >
-            <option value="all">all (full repo)</option>
-            {availableScopes.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </div>
-        {tokenStats.total > 15000 && activeScope === "all" && availableScopes.length > 0 && (
-          <button
-            onClick={() => onActiveScopeChange?.(availableScopes[0])}
-            className="text-[9px] text-cyan-400 hover:text-cyan-300 bg-cyan-950/60 border border-cyan-500/30 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
-            title="Token count is heavy. Click to scope to primary domain."
-          >
-            ⚡ Scope Domain
-          </button>
-        )}
-      </div>
+      {tokenStats.total > 15000 && activeScope === "all" && availableScopes.length > 0 && (
+        <button
+          onClick={() => onActiveScopeChange?.(availableScopes[0])}
+          className="text-[9px] font-semibold text-amber-300 bg-amber-950/60 border border-amber-500/30 px-1.5 py-0.5 rounded-full hover:bg-amber-900/50 transition-colors cursor-pointer shrink-0"
+          title="Context is heavy. Click to scope to primary domain."
+        >
+          ⚡ Scope
+        </button>
+      )}
     </div>
   );
 }
