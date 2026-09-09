@@ -12,6 +12,7 @@ const DEFAULT_SCAFFOLD_OPTIONS: GovernanceScaffoldOptions = {
   telemetryDbMonitoring: true,
   featurePublicApiBarrier: true,
   knipDeadCodeDetection: true,
+  dpdmCircularCheck: true,
   softTechnicalDebtMode: true,
 };
 

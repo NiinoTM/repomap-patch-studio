@@ -6,6 +6,7 @@ export interface GovernanceScaffoldOptions {
   telemetryDbMonitoring: boolean;
   featurePublicApiBarrier: boolean;
   knipDeadCodeDetection: boolean;
+  dpdmCircularCheck: boolean;
   softTechnicalDebtMode: boolean; // Sets boundary rules to 'warn' instead of 'error'
 }
 

@@ -411,6 +411,22 @@ This automatically catches:
 - Unused files (modules with zero inbound references).
 - Unused dependencies listed in `package.json`.
 
+### 4g. Circular Dependency Blocker (`dpdm`)
+
+When modularizing code into fine-grained sub-components, custom hooks, and
+utility functions, mutual imports (`A` imports `B`, `B` imports `A`) easily
+creep in. In TypeScript/ESM environments, circular imports usually compile
+without error, but produce silent `undefined` module initialization crashes
+at runtime.
+
+Integrating `dpdm` into `.husky/pre-commit` or CI enforces a strict zero-cycle gate:
+
+```bash
+npx dpdm --warning=false --tree=false --exit-code circular:1 src/
+```
+
+This runs statically in milliseconds and rejects any commit containing cyclic module references before code hits remote branches.
+
 ---
 
 ## What This System Cannot Do
@@ -447,4 +463,5 @@ Being direct about the limits, so the checklist below isn't oversold:
 | 4d. Telemetry | SQLite `api_telemetria.db` with rolling auto-clean. | Spots slowest processes, bottlenecks, and optimizable functions. |
 | 4e. Public API Barrier | Enforce `index.ts` cross-feature import contracts. | Eliminates hidden deep coupling between feature modules. |
 | 4f. Dead Code Sweeper | `knip` static entrypoint graph analysis. | Eliminates zombie functions, orphaned components, and unused npm packages. |
+| 4g. Circular Dependency Trap | `dpdm` fast TypeScript dependency cycle check. | Stops circular imports and runtime `undefined` initialization bugs. |
 | 5. Review | Human review for cohesion within a layer. | Catches design smells no automated tool can see. |

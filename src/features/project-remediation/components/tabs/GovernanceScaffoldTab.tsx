@@ -152,6 +152,24 @@ export function GovernanceScaffoldTab({
           </div>
         </label>
 
+        <label className="flex items-start space-x-3 p-3 bg-zinc-900/50 border border-zinc-800/80 rounded-lg hover:border-zinc-700 transition-colors cursor-pointer">
+          <input
+            type="checkbox"
+            checked={options.dpdmCircularCheck}
+            onChange={() => onToggleOption("dpdmCircularCheck")}
+            className="accent-cyan-500 mt-0.5 rounded"
+          />
+          <div className="space-y-0.5">
+            <span className="font-semibold text-zinc-200 block">
+              7. Circular Dependency Trap (
+              <code className="text-cyan-400">dpdm</code>)
+            </span>
+            <span className="text-zinc-500 block text-[11px]">
+              Prevents circular import loops that cause silent runtime <code className="text-cyan-400">undefined</code> crashes in production bundles.
+            </span>
+          </div>
+        </label>
+
         <label className="flex items-start space-x-3 p-3 bg-amber-950/20 border border-amber-800/40 rounded-lg hover:border-amber-700/60 transition-colors cursor-pointer">
           <input
             type="checkbox"
