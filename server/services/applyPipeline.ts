@@ -49,14 +49,20 @@ function emitDryRunResult(
   pendingWrites: Map<string, string>,
   moveBlocks: DiffBlockInput[],
   emit: StageRunner["emit"],
+  warnings: string[] = [],
 ) {
   emit({
     type: "result",
     success: true,
     dryRun: true,
-    message: "✅ Pre-flight validation passed. No files were modified.",
+    message:
+      warnings.length > 0
+        ? `⚠️ Pre-flight validation passed with ${warnings.length} warning(s). No files were modified.`
+        : "✅ Pre-flight validation passed. No files were modified.",
     validatedFiles: Array.from(pendingWrites.keys()),
     validatedMoves: moveBlocks.map((b) => `${b.file} -> ${b.moveTo}`),
+    details: warnings.length > 0 ? warnings : undefined,
+    warnings: warnings.length > 0 ? warnings : undefined,
   });
 }
 
@@ -97,6 +103,31 @@ async function executeApplyWrites(
   return allChangedFiles;
 }
 
+function checkHardErrors(errors: string[]): boolean {
+  return errors.some(
+    (err) =>
+      !err.toLowerCase().startsWith("eslint warning") &&
+      !err.toLowerCase().includes("warning"),
+  );
+}
+
+function emitApplySuccess(
+  emit: StageRunner["emit"],
+  appliedFiles: string[],
+  shouldCommit: boolean,
+  validationErrors: string[],
+) {
+  const warnings = validationErrors.length > 0 ? validationErrors : undefined;
+  emit({
+    type: "result",
+    success: true,
+    message: buildApplySuccessMessage(shouldCommit),
+    appliedFiles,
+    details: warnings,
+    warnings,
+  });
+}
+
 export async function runApplyPipeline(
   targetRepoPath: string,
   blocks: DiffBlockInput[],
@@ -115,7 +146,8 @@ export async function runApplyPipeline(
       moveBlocks,
       runStage,
     );
-    if (validationErrors.length > 0) {
+
+    if (checkHardErrors(validationErrors)) {
       emit({
         type: "result",
         success: false,
@@ -125,7 +157,7 @@ export async function runApplyPipeline(
     }
 
     if (isDryRun) {
-      emitDryRunResult(pendingWrites, moveBlocks, emit);
+      emitDryRunResult(pendingWrites, moveBlocks, emit, validationErrors);
       return;
     }
 
@@ -136,12 +168,7 @@ export async function runApplyPipeline(
       { shouldCommit, commitMessage },
       runStage,
     );
-    emit({
-      type: "result",
-      success: true,
-      message: buildApplySuccessMessage(shouldCommit),
-      appliedFiles,
-    });
+    emitApplySuccess(emit, appliedFiles, shouldCommit, validationErrors);
   } catch (err: unknown) {
     const error = err instanceof Error ? err.message : String(err);
     emit({ type: "result", success: false, error });

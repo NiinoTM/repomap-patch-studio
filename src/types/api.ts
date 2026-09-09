@@ -55,6 +55,7 @@ export interface ApplyResponse {
   message?: string;
   error?: string;
   details?: string[];
+  warnings?: string[];
   dryRun?: boolean;
   validatedFiles?: string[];
   validatedMoves?: string[];

@@ -20,6 +20,7 @@ interface ApplyResult {
   success: boolean;
   error?: string;
   details?: string[];
+  warnings?: string[];
 }
 
 function formatErrorDetails(
@@ -49,6 +50,26 @@ function normalizeBlocks(blocks: DiffBlock[]): DiffBlock[] {
   }));
 }
 
+function updateStages(prev: ApplyStageState[], event: ApplyProgressEvent): ApplyStageState[] {
+  const idx = prev.findIndex((s) => s.stage === event.stage);
+  const updated: ApplyStageState = {
+    stage: event.stage,
+    label: event.label,
+    status: event.status,
+    durationMs: event.durationMs,
+  };
+  if (idx === -1) return [...prev, updated];
+  const next = [...prev];
+  next[idx] = updated;
+  return next;
+}
+
+function getErrorMessage(err: unknown): string {
+  return err instanceof Error && err.message
+    ? err.message
+    : "Failed to connect to local server. Ensure server is running!";
+}
+
 async function performAutoValidation(
   rawBlocks: DiffBlock[],
   setIsValidating: (v: boolean) => void,
@@ -59,7 +80,8 @@ async function performAutoValidation(
     const blocks = normalizeBlocks(rawBlocks);
     const data = await patchApi.applyStream({ blocks, dryRun: true }, () => {});
     if (data.success) {
-      setValidationErrors([]);
+      const warnings = data.warnings || data.details || [];
+      setValidationErrors(warnings);
     } else if (data.details) {
       setValidationErrors(data.details);
     } else {
@@ -83,19 +105,7 @@ export function useApplyChanges({
   const [stages, setStages] = useState<ApplyStageState[]>([]);
 
   const handleProgress = (event: ApplyProgressEvent) => {
-    setStages((prev) => {
-      const idx = prev.findIndex((s) => s.stage === event.stage);
-      const updated: ApplyStageState = {
-        stage: event.stage,
-        label: event.label,
-        status: event.status,
-        durationMs: event.durationMs,
-      };
-      if (idx === -1) return [...prev, updated];
-      const next = [...prev];
-      next[idx] = updated;
-      return next;
-    });
+    setStages((prev) => updateStages(prev, event));
   };
 
   const blocksJson = JSON.stringify(diffBlocks);
@@ -137,29 +147,17 @@ export function useApplyChanges({
       );
 
       if (data.success) {
-        alert(
-          shouldCommit
-            ? "✅ Edits written to disk & committed to Git!"
-            : "✅ Edits written to disk!",
-        );
+        const warnings = data.warnings || data.details || [];
+        if (warnings.length > 0) setValidationErrors(warnings);
+        alert(shouldCommit ? "✅ Edits written to disk & committed to Git!" : "✅ Edits written to disk!");
         onApplySuccess?.();
         return true;
       }
 
-      alert(
-        formatErrorDetails(
-          data,
-          "❌ Transaction Aborted (0 files modified on disk):",
-          "❌ Error applying edits:",
-        ),
-      );
+      alert(formatErrorDetails(data, "❌ Transaction Aborted (0 files modified on disk):", "❌ Error applying edits:"));
       return false;
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error && err.message
-          ? err.message
-          : "Failed to connect to local server. Ensure server is running!";
-      alert(`❌ ${msg}`);
+      alert(`❌ ${getErrorMessage(err)}`);
       return false;
     } finally {
       setIsApplying(false);
@@ -167,9 +165,7 @@ export function useApplyChanges({
   };
 
   const validateDryRun = async () => {
-    if (diffBlocks.length === 0) {
-      return true;
-    }
+    if (diffBlocks.length === 0) return true;
 
     setIsValidating(true);
     try {
@@ -179,27 +175,20 @@ export function useApplyChanges({
         handleProgress,
       );
       if (data.success) {
-        setValidationErrors([]);
+        const warnings = data.warnings || data.details || [];
+        setValidationErrors(warnings);
+        if (warnings.length > 0) {
+          alert(formatErrorDetails(data, "⚠️ Pre-flight validation passed with warnings:", "⚠️ Validation Warnings:"));
+        }
         return true;
       }
 
       const errors = data.details || [data.error || "Unknown error"];
       setValidationErrors(errors);
-
-      alert(
-        formatErrorDetails(
-          data,
-          "❌ Validation failed (0 files modified on disk):",
-          "❌ Error validating edits:",
-        ),
-      );
+      alert(formatErrorDetails(data, "❌ Validation failed (0 files modified on disk):", "❌ Error validating edits:"));
       return false;
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error && err.message
-          ? err.message
-          : "Failed to connect to local server. Ensure server is running!";
-      alert(`❌ ${msg}`);
+      alert(`❌ ${getErrorMessage(err)}`);
       return false;
     } finally {
       setIsValidating(false);

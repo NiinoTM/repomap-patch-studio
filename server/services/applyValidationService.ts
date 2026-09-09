@@ -270,10 +270,16 @@ export async function validateAndBuildFileContent(
     return { errors: [syntaxError] };
   }
 
-  const lintErrors = await validateLint(targetRepoPath, finalContent, file);
-  if (lintErrors.length > 0) {
-    return { errors: lintErrors };
+  const lintFindings = await validateLint(targetRepoPath, finalContent, file);
+  const hardLintErrors = lintFindings.filter(
+    (e) =>
+      !e.toLowerCase().startsWith("eslint warning") &&
+      !e.toLowerCase().includes("warning"),
+  );
+
+  if (hardLintErrors.length > 0) {
+    return { content: undefined, errors: lintFindings };
   }
 
-  return { content: finalContent, errors: [] };
+  return { content: finalContent, errors: lintFindings };
 }
