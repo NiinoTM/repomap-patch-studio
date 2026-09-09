@@ -129,8 +129,7 @@ export function GovernanceScaffoldTab({
               <code className="text-cyan-400">Public API Barrier</code>)
             </span>
             <span className="text-zinc-500 block text-[11px]">
-              Blocks deep cross-feature imports, forcing features to consume peer domains strictly via an explicit{" "}
-              <code className="text-cyan-400">index.ts</code> contract and keeping internals isolated.
+              Blocks deep cross-feature imports via strict <code className="text-cyan-400">index.ts</code> contracts and automatically configures <code className="text-cyan-400">sideEffects</code> in package.json to guarantee clean tree-shaking.
             </span>
           </div>
         </label>

@@ -369,6 +369,20 @@ import { useAuth } from "@/features/auth";
 
 This prevents architectural entanglement, limits blast radius during refactoring, and ensures individual domains can be moved or rewritten independently.
 
+#### Automated Tree-Shaking Guarantee (`package.json`)
+To prevent barrel file imports (`index.ts`) from pulling unneeded sibling modules into client production bundles, the scaffold automatically configures the `sideEffects` field in `package.json`:
+
+```json
+{
+  "sideEffects": [
+    "**/*.css",
+    "**/*.scss",
+    "src/index.css"
+  ]
+}
+```
+This instructs bundlers (Vite/Rollup/Webpack) to aggressively tree-shake unused exports from domain barrels while preserving stylesheet imports.
+
 ---
 
 ## What This System Cannot Do
