@@ -39,7 +39,15 @@ export function useRepoContext() {
       const data = await repoApi.fetchRepo();
       if (data.success) {
         setRepoPath(data.path);
-        setRepoFiles(data.files);
+        setRepoFiles((prev) => {
+          if (
+            prev.length === data.files.length &&
+            prev.every((f, i) => f === data.files[i])
+          ) {
+            return prev;
+          }
+          return data.files;
+        });
         setRepoMap(data.repoMap);
         setFileStats(data.fileStats || {});
         setDependencyMap(data.dependencyMap || { outbound: {}, inbound: {} });
@@ -59,15 +67,14 @@ export function useRepoContext() {
     fetchHistory();
   }, [loadRepo, fetchHistory]);
 
-  // Auto-sync workspace status and history when switching back to the browser window
+  // Auto-sync workspace history when switching back to the browser window without reloading the whole repo
   useEffect(() => {
     const handleFocus = () => {
-      loadRepo();
       fetchHistory();
     };
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
-  }, [loadRepo, fetchHistory]);
+  }, [fetchHistory]);
 
   const changeRepo = async (newPath: string): Promise<boolean> => {
     if (!newPath || newPath === repoPath) return false;
