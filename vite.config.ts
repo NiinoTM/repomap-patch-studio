@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
@@ -6,6 +7,11 @@ import checker from "vite-plugin-checker";
 
 export default defineConfig(() => {
   return {
+    test: {
+      globals: true,
+      environment: "node",
+      include: ["src/**/*.{test,spec}.ts", "server/**/*.{test,spec}.ts"],
+    },
     plugins: [
       react(),
       tailwindcss(),
