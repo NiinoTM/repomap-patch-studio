@@ -427,6 +427,32 @@ npx dpdm --warning=false --tree=false --exit-code circular:1 src/
 
 This runs statically in milliseconds and rejects any commit containing cyclic module references before code hits remote branches.
 
+### 4h. Strict Async Safety (`no-floating-promises`)
+
+In asynchronous Node.js backends and React event flows, unhandled promises are one of
+the most pervasive bugs. When asynchronous operations (database queries, external API calls,
+or filesystem writes) are called without an `await` or `.catch()`, errors are silently dropped
+or trigger unhandled rejection warnings in modern Node.js runtimes.
+
+Enabling typed promise rules in `eslint.config.js` via `typescript-eslint`:
+
+```javascript
+// eslint.config.js
+{
+  files: ["src/**/*.{ts,tsx}", "server/**/*.ts"],
+  rules: {
+    "@typescript-eslint/no-floating-promises": "error",
+    "@typescript-eslint/await-thenable": "error",
+    "@typescript-eslint/no-misused-promises": [
+      "error",
+      { "checksVoidReturn": { "attributes": false } }
+    ]
+  }
+}
+```
+
+This ensures all promises must either be explicitly awaited, returned, or handled with a catch handler (`void asyncFunc().catch(...)`), preventing race conditions and crashed background tasks.
+
 ---
 
 ## What This System Cannot Do
@@ -464,4 +490,5 @@ Being direct about the limits, so the checklist below isn't oversold:
 | 4e. Public API Barrier | Enforce `index.ts` cross-feature import contracts. | Eliminates hidden deep coupling between feature modules. |
 | 4f. Dead Code Sweeper | `knip` static entrypoint graph analysis. | Eliminates zombie functions, orphaned components, and unused npm packages. |
 | 4g. Circular Dependency Trap | `dpdm` fast TypeScript dependency cycle check. | Stops circular imports and runtime `undefined` initialization bugs. |
+| 4h. Strict Async Safety | `@typescript-eslint/no-floating-promises`. | Guarantees all promises are handled, preventing unhandled rejections. |
 | 5. Review | Human review for cohesion within a layer. | Catches design smells no automated tool can see. |

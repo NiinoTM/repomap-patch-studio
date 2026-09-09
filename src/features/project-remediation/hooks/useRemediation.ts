@@ -13,6 +13,7 @@ const DEFAULT_SCAFFOLD_OPTIONS: GovernanceScaffoldOptions = {
   featurePublicApiBarrier: true,
   knipDeadCodeDetection: true,
   dpdmCircularCheck: true,
+  strictAsyncSafety: true,
   softTechnicalDebtMode: true,
 };
 
