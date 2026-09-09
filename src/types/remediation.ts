@@ -8,6 +8,7 @@ export interface GovernanceScaffoldOptions {
   knipDeadCodeDetection: boolean;
   dpdmCircularCheck: boolean;
   strictAsyncSafety: boolean;
+  featureDirectorySkeleton: boolean;
   softTechnicalDebtMode: boolean; // Sets boundary rules to 'warn' instead of 'error'
 }
 

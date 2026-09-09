@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { patchApi } from "../../../api/patchApi";
+import { generateGovernanceDiffBlocks } from "../utils/scaffoldGenerator";
 import {
   GovernanceScaffoldOptions,
   FeatureBlueprintDomain,
@@ -14,6 +16,7 @@ const DEFAULT_SCAFFOLD_OPTIONS: GovernanceScaffoldOptions = {
   knipDeadCodeDetection: true,
   dpdmCircularCheck: true,
   strictAsyncSafety: true,
+  featureDirectorySkeleton: true,
   softTechnicalDebtMode: true,
 };
 
@@ -107,10 +110,29 @@ export function useRemediation() {
 
   const handleApplyScaffold = async () => {
     setIsScaffolding(true);
-    // Placeholder API call simulation
-    await new Promise((res) => setTimeout(res, 1200));
-    setIsScaffolding(false);
-    setScaffoldDone(true);
+    try {
+      const blocks = generateGovernanceDiffBlocks(scaffoldOptions);
+      const res = await patchApi.applyStream(
+        {
+          blocks,
+          commitMessage: "chore: inject architecture governance guardrails and directory skeleton",
+          skipCommit: true,
+          commit: false,
+        },
+        () => {},
+      );
+
+      if (res.success) {
+        setScaffoldDone(true);
+      } else {
+        alert(`❌ Failed to inject governance: ${res.error || "Unknown error"}`);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(`❌ Error applying governance scaffold: ${msg}`);
+    } finally {
+      setIsScaffolding(false);
+    }
   };
 
   const handleAnalyzeProject = async () => {

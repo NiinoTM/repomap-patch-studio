@@ -491,4 +491,5 @@ Being direct about the limits, so the checklist below isn't oversold:
 | 4f. Dead Code Sweeper | `knip` static entrypoint graph analysis. | Eliminates zombie functions, orphaned components, and unused npm packages. |
 | 4g. Circular Dependency Trap | `dpdm` fast TypeScript dependency cycle check. | Stops circular imports and runtime `undefined` initialization bugs. |
 | 4h. Strict Async Safety | `@typescript-eslint/no-floating-promises`. | Guarantees all promises are handled, preventing unhandled rejections. |
+| 4i. Directory Skeleton | Auto-generates `src/features`, `server/*` with `.gitkeep`. | Establishes SRP structure and satisfies boundary globs immediately. |
 | 5. Review | Human review for cohesion within a layer. | Catches design smells no automated tool can see. |

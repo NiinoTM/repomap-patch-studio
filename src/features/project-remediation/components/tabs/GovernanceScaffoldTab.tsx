@@ -188,6 +188,24 @@ export function GovernanceScaffoldTab({
           </div>
         </label>
 
+        <label className="flex items-start space-x-3 p-3 bg-zinc-900/50 border border-zinc-800/80 rounded-lg hover:border-zinc-700 transition-colors cursor-pointer">
+          <input
+            type="checkbox"
+            checked={options.featureDirectorySkeleton}
+            onChange={() => onToggleOption("featureDirectorySkeleton")}
+            className="accent-cyan-500 mt-0.5 rounded"
+          />
+          <div className="space-y-0.5">
+            <span className="font-semibold text-zinc-200 block">
+              9. Feature-Driven Directory Skeleton (
+              <code className="text-cyan-400">src/features, server/*</code>)
+            </span>
+            <span className="text-zinc-500 block text-[11px]">
+              Provisions domain skeleton folders (<code className="text-cyan-400">src/features</code>, <code className="text-cyan-400">src/api</code>, <code className="text-cyan-400">server/adapters</code>, etc.) with <code className="text-cyan-400">.gitkeep</code> anchors.
+            </span>
+          </div>
+        </label>
+
         <label className="flex items-start space-x-3 p-3 bg-amber-950/20 border border-amber-800/40 rounded-lg hover:border-amber-700/60 transition-colors cursor-pointer">
           <input
             type="checkbox"
