@@ -13,7 +13,7 @@ interface UseCopyPromptParams {
   repoMap: string;
   request: string;
   discoveryMode: boolean;
-  onCopy: (promptText: string) => void;
+  onCopy: (promptText: string) => void | Promise<void>;
 }
 
 // Extracted from PromptPanel.tsx — the two "copy" button handlers were
@@ -33,6 +33,9 @@ export function useCopyPrompt({
   const [isCopyingTests, setIsCopyingTests] = useState(false);
 
   const fetchActiveFilesText = async () => {
+    if (selectedFiles.size === 0) {
+      return "No specific files selected.";
+    }
     const data = await filesApi.fetchFiles(Array.from(selectedFiles));
     return formatActiveFilesContext(selectedFiles, data.contents || {});
   };
@@ -45,7 +48,7 @@ export function useCopyPrompt({
           repoMap,
           userRequest: request,
         });
-        onCopy(discoveryPrompt);
+        await onCopy(discoveryPrompt);
         return;
       }
       const activeFilesText = await fetchActiveFilesText();
@@ -54,7 +57,7 @@ export function useCopyPrompt({
         activeFilesText,
         userRequest: request,
       });
-      onCopy(finalPrompt);
+      await onCopy(finalPrompt);
     } finally {
       setIsCopying(false);
     }
@@ -68,7 +71,7 @@ export function useCopyPrompt({
         activeFilesText,
         userRequest: request,
       });
-      onCopy(finalPrompt);
+      await onCopy(finalPrompt);
     } finally {
       setIsCopyingFiles(false);
     }
@@ -82,7 +85,7 @@ export function useCopyPrompt({
         activeFilesText,
         userRequest: request,
       });
-      onCopy(finalPrompt);
+      await onCopy(finalPrompt);
     } finally {
       setIsCopyingTests(false);
     }

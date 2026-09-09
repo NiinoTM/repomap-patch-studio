@@ -71,7 +71,18 @@ export default function App() {
   };
 
   const handleCopy = async (promptText: string) => {
-    await navigator.clipboard.writeText(promptText);
+    try {
+      await navigator.clipboard.writeText(promptText);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = promptText;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    }
     setToastMessage("Context and Prompt copied to clipboard!");
   };
 

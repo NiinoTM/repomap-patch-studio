@@ -8,3 +8,6 @@ coverage/
 !.env.example
 .eslintcache
 codebase_context.txt
+# Playwright artifacts
+/playwright-report/
+/test-results/
