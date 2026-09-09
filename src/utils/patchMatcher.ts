@@ -15,7 +15,7 @@ export interface ApplyBlockResult {
   // check) can name the actual culprit instead of just "corruption
   // detected" — "condensed" is the risky, comment-stripping fallback and
   // is the tier most likely to explain an unexplained leak.
-  matchStrategy?: "full-overwrite" | "exact" | "fuzzy-indent" | "condensed";
+  matchStrategy?: "full-overwrite" | "exact" | "fuzzy-indent" | "condensed" | "ast-structural";
 }
 
 export interface CondensedRange {
@@ -23,53 +23,109 @@ export interface CondensedRange {
   end: number;
 }
 
+interface Token {
+  char: string;
+  index: number;
+}
+
+function skipComment(text: string, i: number): number {
+  if (text.startsWith("/*", i)) {
+    const end = text.indexOf("*/", i + 2);
+    return end !== -1 ? end + 2 : text.length;
+  }
+  if (text.startsWith("//", i)) {
+    const end = text.indexOf("\n", i + 2);
+    return end !== -1 ? end + 1 : text.length;
+  }
+  return i;
+}
+
+function cleanChar(char: string, ignorePunc: boolean): string | null {
+  if (ignorePunc) return /[,;'"`();]/.test(char) ? null : char;
+  return char === "'" || char === "`" ? '"' : char;
+}
+
+function getCleanTokens(text: string, ignorePunctuation: boolean): Token[] {
+  const tokens: Token[] = [];
+  let i = 0;
+  while (i < text.length) {
+    if (/\s/.test(text[i])) {
+      i++;
+      continue;
+    }
+    const nextI = skipComment(text, i);
+    if (nextI !== i) {
+      i = nextI;
+      continue;
+    }
+    const char = cleanChar(text[i], ignorePunctuation);
+    if (char !== null) tokens.push({ char, index: i });
+    i++;
+  }
+  return tokens;
+}
+
+function findSubsequence(haystack: Token[], needle: Token[]): number {
+  const max = haystack.length - needle.length;
+  for (let i = 0; i <= max; i++) {
+    if (needle.every((tok, j) => haystack[i + j].char === tok.char)) return i;
+  }
+  return -1;
+}
+
+function expandRange(
+  content: string,
+  search: string,
+  c: number,
+  s: number,
+  dir: -1 | 1,
+): number {
+  let ci = c;
+  let si = s;
+  while (
+    ci + dir >= 0 &&
+    ci + dir < content.length &&
+    si + dir >= 0 &&
+    si + dir < search.length
+  ) {
+    if (content[ci + dir] !== search[si + dir]) break;
+    ci += dir;
+    si += dir;
+  }
+  return ci;
+}
+
+function matchTokenRange(
+  content: string,
+  search: string,
+  ignorePunc: boolean,
+): CondensedRange | null {
+  const sTokens = getCleanTokens(search, ignorePunc);
+  if (sTokens.length === 0) return null;
+  const cTokens = getCleanTokens(content, ignorePunc);
+  const idx = findSubsequence(cTokens, sTokens);
+  if (idx === -1) return null;
+
+  const cStart = expandRange(content, search, cTokens[idx].index, sTokens[0].index, -1);
+  const cEnd = expandRange(
+    content,
+    search,
+    cTokens[idx + sTokens.length - 1].index,
+    sTokens[sTokens.length - 1].index,
+    1,
+  );
+  return { start: cStart, end: cEnd + 1 };
+}
+
 /**
  * Finds a condensed range match in content for search text.
+ * Returns the exact start and end string indices in the original content.
  */
 export function findCondensedRange(
   content: string,
   search: string,
 ): CondensedRange | null {
-  const preCleanContent = content
-    .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
-    .replace(/\{\s*["']\s*["']\s*\}/g, "");
-  const cleanSearch = search
-    .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
-    .replace(/\{\s*["']\s*["']\s*\}/g, "")
-    .replace(/[\s,'"`();]+/g, "");
-
-  if (!cleanSearch) return null;
-
-  let cIdx = 0;
-  let sIdx = 0;
-  let startMatchPos = -1;
-
-  while (cIdx < preCleanContent.length && sIdx < cleanSearch.length) {
-    if (/[\s,'"`();]/.test(preCleanContent[cIdx])) {
-      cIdx++;
-      continue;
-    }
-
-    if (preCleanContent[cIdx] === cleanSearch[sIdx]) {
-      if (sIdx === 0) startMatchPos = cIdx;
-      sIdx++;
-      cIdx++;
-    } else {
-      if (startMatchPos !== -1) {
-        cIdx = startMatchPos + 1;
-        startMatchPos = -1;
-        sIdx = 0;
-      } else {
-        cIdx++;
-      }
-    }
-  }
-
-  if (sIdx === cleanSearch.length && startMatchPos !== -1) {
-    return { start: startMatchPos, end: cIdx };
-  }
-
-  return null;
+  return matchTokenRange(content, search, false) ?? matchTokenRange(content, search, true);
 }
 
 export function applyFuzzyIndentationMatch(
@@ -124,14 +180,14 @@ function applyCondensedMatch(
   const range = findCondensedRange(normContent, normSearch);
   if (!range) return null;
 
-  const cleanNormContent = normContent
-    .replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "")
-    .replace(/\{\s*["']\s*["']\s*\}/g, "");
-
+  // Splice the replacement directly into the original content using the 
+  // true character offsets mapped by the boundary-expanding tokenizer.
+  // (The old implementation stripped comments from the ENTIRE file and 
+  // returned it, permanently deleting all comments across the codebase!)
   return (
-    cleanNormContent.slice(0, range.start) +
+    normContent.slice(0, range.start) +
     normReplace +
-    cleanNormContent.slice(range.end)
+    normContent.slice(range.end)
   );
 }
 

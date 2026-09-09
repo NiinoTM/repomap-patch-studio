@@ -6,6 +6,7 @@ import {
   findCondensedRange,
   applyBlockToContent,
 } from "../../src/utils/patchMatcher";
+import { applyAstMatch } from "./astMatcher";
 
 export interface BlockApplyOutcome {
   finalContent: string;
@@ -37,12 +38,29 @@ export function applyBlocksSequentially(
   const blockErrors: string[] = [];
   const matchStrategies: string[] = [];
 
-  for (const block of blocks) {
+  for (let bIdx = 0; bIdx < blocks.length; bIdx++) {
+    const block = blocks[bIdx];
+    console.log(`\n--------------------------------------------------`);
+    console.log(`[PatchEngine] 📦 Processing Block ${bIdx + 1}/${blocks.length} for file: "${block.file}"`);
+
+    // 1. Try AST-based structural matching first for supported code files
+    const astResult = applyAstMatch(currentContent, block.search, block.replace, block.file);
+    if (astResult !== null) {
+      console.log(`[PatchEngine] ✅ Applied Block ${bIdx + 1} via "ast-structural" strategy.`);
+      currentContent = astResult;
+      matchStrategies.push("ast-structural");
+      continue;
+    }
+
+    // 2. Fall back to standard block matcher (exact, fuzzy-indent, condensed)
+    console.log(`[PatchEngine] 🔄 Running text-based fallback matcher (exact -> fuzzy-indent -> condensed)...`);
     const result = applyBlockToContent(currentContent, block);
     if (result.success && result.newContent !== undefined) {
+      console.log(`[PatchEngine] ✅ Applied Block ${bIdx + 1} via "${result.matchStrategy}" strategy.`);
       currentContent = result.newContent;
       if (result.matchStrategy) matchStrategies.push(result.matchStrategy);
     } else if (result.error) {
+      console.log(`[PatchEngine] ❌ Block ${bIdx + 1} FAILED: ${result.error}`);
       blockErrors.push(result.error);
     }
   }
@@ -57,4 +75,5 @@ export {
   findCondensedRange,
   applyBlockToContent,
   validateSyntax,
+  applyAstMatch,
 };

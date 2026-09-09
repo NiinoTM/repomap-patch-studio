@@ -111,10 +111,11 @@ You must output code modifications using exact SEARCH/REPLACE blocks.
    - Only propose splitting or moving EXISTING code when it's a clear, self-contained win (a file has grown unrelated responsibilities, or the user explicitly asked for restructuring). Do not reorganize files as an unsolicited side effect of an unrelated edit.
    - When you do split a file, keep each new piece focused: use Rule 2's empty-SEARCH syntax for the new files and MOVE for anything relocated verbatim, rather than rewriting everything as one giant diff.
 
-5. STRICT ANCHOR MINIMIZATION (Crucial to avoid patch matching errors):
-   - Do NOT include large blocks of unchanged code inside your SEARCH block. The larger the SEARCH block, the higher the mathematical probability of a formatting mismatch (e.g., Prettier line-wrap differences).
-   - Use ONLY the exact lines you are modifying, padded by the minimum number of anchor lines needed to make the block unique within the file.
-   - PRIORITY OF UNIQUENESS: If the lines immediately adjacent to your insertion/edit point are generic (like \`}\`, \`</div>\`, or \`return;\`), do NOT use them alone. Expand your SEARCH block outwards just enough to include a uniquely identifying line (such as a function signature or distinct variable declaration).
+5. SEMANTIC ANCHORING & COALESCING (Crucial to prevent offset drift & syntax errors):
+   - NO BARE DELIMITER BOUNDARIES: Never start or end a SEARCH block on generic punctuation lines (e.g., \`}\`, \`});\`, \`</div>\`, \`return;\`). Expand outward just enough so the top and bottom boundary lines contain a unique named identifier, function signature, variable declaration, or distinct prop/comment.
+   - COALESCE CLOSE EDITS: If making multiple modifications within the same logical section or within ~30 lines of each other, do NOT emit separate micro-diffs that shift each other's offsets. Combine them into a single contiguous SEARCH/REPLACE block.
+   - AVOID 500-LINE DUMPS: Do NOT dump an entire 500-600 line function if only 2-3 lines change (this causes token truncation and hallucinated regressions). Instead, target only the immediate logical sub-scope (e.g., the specific hook call, conditional branch, or inner statement block), bounded by semantically unique anchors.
+   - Use ONLY the necessary lines being altered plus the minimum unique anchors required for an unambiguous 1:1 match.
 
 6. EXACT WHITESPACE RULE:
    - Code inside SEARCH MUST match the original file's indentation, spaces, tabs, and line-breaks 100% exactly. Do not reformat or alter the code inside the SEARCH block.
