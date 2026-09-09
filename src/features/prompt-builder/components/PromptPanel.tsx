@@ -47,6 +47,19 @@ interface PromptPanelProps {
   activeTicket?: Ticket | null;
 }
 
+function formatTicketPromptText(ticket: Ticket): string {
+  let text = `[${ticket.id}] ${ticket.title}`;
+  if (ticket.description) {
+    text += `\n\nContext & Description:\n${ticket.description}`;
+  }
+  if (ticket.requirements && ticket.requirements.length > 0) {
+    text += `\n\nAcceptance Criteria / Requirements Checklist:\n${ticket.requirements
+      .map((r) => `- [ ] ${r}`)
+      .join("\n")}`;
+  }
+  return text;
+}
+
 export function PromptPanel({
   onCopy,
   onCopyMap,
@@ -68,7 +81,7 @@ export function PromptPanel({
     MissingDependency[]
   >([]);
   const [pendingCopyAction, setPendingCopyAction] = useState<
-    "full" | "files" | null
+    "full" | "files" | "tests" | null
   >(null);
   const [autoConfirmCopy, setAutoConfirmCopy] = useState(false);
 
@@ -116,18 +129,26 @@ export function PromptPanel({
     onTokenStatsChange,
   });
 
-  const { isCopying, isCopyingFiles, copyFullContext, copyFilesAndPrompt } =
-    useCopyPrompt({ selectedFiles, repoMap, request, discoveryMode, onCopy });
+  const {
+    isCopying,
+    isCopyingFiles,
+    isCopyingTests,
+    copyFullContext,
+    copyFilesAndPrompt,
+    copyUnitTestPrompt,
+  } = useCopyPrompt({ selectedFiles, repoMap, request, discoveryMode, onCopy });
+
+  const executeCopyAction = (action: "full" | "files" | "tests") => {
+    if (action === "full") copyFullContext();
+    else if (action === "files") copyFilesAndPrompt();
+    else if (action === "tests") copyUnitTestPrompt();
+  };
 
   // Runs after selectedFiles updates (post acceptAllSuggestions) so the
   // copy actions below read the freshly-added files, not a stale closure.
   useEffect(() => {
     if (!pendingCopyAction || !autoConfirmCopy) return;
-    if (pendingCopyAction === "full") {
-      copyFullContext();
-    } else {
-      copyFilesAndPrompt();
-    }
+    executeCopyAction(pendingCopyAction);
     setPendingCopyAction(null);
     setAutoConfirmCopy(false);
     setMissingDependencies([]);
@@ -143,7 +164,7 @@ export function PromptPanel({
     onDiscoveredFilesConsumed();
   }, [discoveredFiles]);
 
-  const handleCopyClick = (action: "full" | "files") => {
+  const handleCopyClick = (action: "full" | "files" | "tests") => {
     if (discoveryMode) {
       copyFullContext();
       return;
@@ -154,11 +175,7 @@ export function PromptPanel({
       setPendingCopyAction(action);
       return;
     }
-    if (action === "full") {
-      copyFullContext();
-    } else {
-      copyFilesAndPrompt();
-    }
+    executeCopyAction(action);
   };
 
   const handleAddMissingAndCopy = () => {
@@ -167,11 +184,7 @@ export function PromptPanel({
   };
 
   const handleCopyAnyway = () => {
-    if (pendingCopyAction === "full") {
-      copyFullContext();
-    } else if (pendingCopyAction === "files") {
-      copyFilesAndPrompt();
-    }
+    if (pendingCopyAction) executeCopyAction(pendingCopyAction);
     setPendingCopyAction(null);
     setMissingDependencies([]);
   };
@@ -236,18 +249,7 @@ export function PromptPanel({
             </div>
             <button
               onClick={() => {
-                let text = `[${activeTicket.id}] ${activeTicket.title}`;
-                if (activeTicket.description) {
-                  text += `\n\nContext & Description:\n${activeTicket.description}`;
-                }
-                if (
-                  activeTicket.requirements &&
-                  activeTicket.requirements.length > 0
-                ) {
-                  text += `\n\nAcceptance Criteria / Requirements Checklist:\n${activeTicket.requirements
-                    .map((r) => `- [ ] ${r}`)
-                    .join("\n")}`;
-                }
+                const text = formatTicketPromptText(activeTicket);
                 setRequest((prev) => text + (prev ? `\n\n${prev}` : ""));
               }}
               className="text-[10px] text-indigo-400 hover:text-indigo-300 font-mono shrink-0 ml-2 hover:underline cursor-pointer"
@@ -314,8 +316,10 @@ export function PromptPanel({
         selectedFilesCount={selectedFiles.size}
         isCopying={isCopying}
         isCopyingFiles={isCopyingFiles}
+        isCopyingTests={isCopyingTests}
         onCopyFull={() => handleCopyClick("full")}
         onCopyFiles={() => handleCopyClick("files")}
+        onCopyTests={() => handleCopyClick("tests")}
       />
 
       <RepoMapPreviewModal

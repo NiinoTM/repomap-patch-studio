@@ -189,3 +189,46 @@ export function buildFilesAndPromptOnly({
 }: FilesAndPromptParams): string {
   return `==================================================\nACTIVE FILES CONTEXT:\n${activeFilesText}==================================================\nUSER REQUEST:\n${userRequest}`;
 }
+
+interface UnitTestPromptParams {
+  activeFilesText: string;
+  userRequest?: string;
+}
+
+export function buildUnitTestPrompt({
+  activeFilesText,
+  userRequest,
+}: UnitTestPromptParams): string {
+  const SEARCH_MARKER = "<".repeat(7) + " SEARCH";
+  const EQUALS_MARKER = "=".repeat(7);
+  const REPLACE_MARKER = ">".repeat(7) + " REPLACE";
+
+  const userInstructions = userRequest?.trim()
+    ? `\nADDITIONAL USER INSTRUCTIONS:\n${userRequest.trim()}\n`
+    : "";
+
+  return `ROLE: Senior QA & Elite TypeScript Developer
+You write thorough, production-grade, and type-safe unit tests using Vitest to verify algorithms and business logic without hallucinating missing APIs.
+
+TASK:
+Write comprehensive Vitest unit tests for the code in ACTIVE FILES CONTEXT.
+
+REQUIREMENTS:
+1. Create collocated unit test file(s) with the ".test.ts" (or ".test.tsx") extension matching the source file path (e.g. "path/to/myUtil.ts" -> "path/to/myUtil.test.ts").
+2. Use Vitest test APIs: import { describe, it, expect, vi, beforeEach } from "vitest".
+3. Thoroughly cover:
+   - Primary functionality & algorithmic happy paths
+   - Edge cases and boundary conditions (empty inputs, null/undefined, off-by-one bounds)
+   - Error branches and expected exception throwing
+4. Do NOT mock internal algorithms unless external side-effects (network, file system, process) require it. Test pure logic directly against its real implementation.
+5. Output the new test file(s) using the exact CREATE diff format with an empty SEARCH block:
+   FILE: path/to/file.test.ts
+   ${SEARCH_MARKER}
+   ${EQUALS_MARKER}
+   [new test code]
+   ${REPLACE_MARKER}
+${userInstructions}
+==================================================
+ACTIVE FILES CONTEXT:
+${activeFilesText}`;
+}

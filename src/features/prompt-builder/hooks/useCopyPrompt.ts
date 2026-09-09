@@ -5,6 +5,7 @@ import {
   buildFullContextPrompt,
   buildFilesAndPromptOnly,
   buildDiscoveryPrompt,
+  buildUnitTestPrompt,
 } from "../utils/promptTemplates";
 
 interface UseCopyPromptParams {
@@ -29,6 +30,7 @@ export function useCopyPrompt({
 }: UseCopyPromptParams) {
   const [isCopying, setIsCopying] = useState(false);
   const [isCopyingFiles, setIsCopyingFiles] = useState(false);
+  const [isCopyingTests, setIsCopyingTests] = useState(false);
 
   const fetchActiveFilesText = async () => {
     const data = await filesApi.fetchFiles(Array.from(selectedFiles));
@@ -72,5 +74,26 @@ export function useCopyPrompt({
     }
   };
 
-  return { isCopying, isCopyingFiles, copyFullContext, copyFilesAndPrompt };
+  const copyUnitTestPrompt = async () => {
+    setIsCopyingTests(true);
+    try {
+      const activeFilesText = await fetchActiveFilesText();
+      const finalPrompt = buildUnitTestPrompt({
+        activeFilesText,
+        userRequest: request,
+      });
+      onCopy(finalPrompt);
+    } finally {
+      setIsCopyingTests(false);
+    }
+  };
+
+  return {
+    isCopying,
+    isCopyingFiles,
+    isCopyingTests,
+    copyFullContext,
+    copyFilesAndPrompt,
+    copyUnitTestPrompt,
+  };
 }
