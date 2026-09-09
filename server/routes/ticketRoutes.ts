@@ -19,6 +19,7 @@ export interface TicketData {
   type: "feat" | "fix" | "chore" | "refactor";
   scope?: string;
   branch?: string;
+  targetBranch?: string;
   description?: string;
   requirements?: string[];
   createdAt: string;
@@ -76,26 +77,29 @@ ticketRouter.get("/tickets", (_req: Request, res: Response) => {
   }
 });
 
+function buildTicketData(body: Partial<TicketData>, id: string): TicketData {
+  const now = new Date().toISOString();
+  return {
+    id,
+    title: body.title || "Untitled Ticket",
+    status: body.status || "todo",
+    type: body.type || "feat",
+    scope: body.scope || "",
+    branch: body.branch || "",
+    targetBranch: body.targetBranch || "",
+    description: body.description || "",
+    requirements: Array.isArray(body.requirements) ? body.requirements : [],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 ticketRouter.post("/tickets", (req: Request, res: Response) => {
   try {
     const repoPath = repoState.getRepoPath();
     const existing = readAllTickets(repoPath);
     const id = req.body.id || generateNextId(existing);
-
-    const newTicket: TicketData = {
-      id,
-      title: req.body.title || "Untitled Ticket",
-      status: req.body.status || "todo",
-      type: req.body.type || "feat",
-      scope: req.body.scope || "",
-      branch: req.body.branch || "",
-      description: req.body.description || "",
-      requirements: Array.isArray(req.body.requirements)
-        ? req.body.requirements
-        : [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    const newTicket = buildTicketData(req.body, id);
 
     const dir = getTicketsDir(repoPath);
     const filePath = joinPath(dir, `${id}.json`);

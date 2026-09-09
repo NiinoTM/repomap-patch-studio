@@ -69,7 +69,10 @@ export function useTickets(onBranchChange?: () => void) {
     }
   };
 
-  const startTicketBranch = async (ticket: Ticket) => {
+  const startTicketBranch = async (
+    ticket: Ticket,
+    customTargetBranch?: string,
+  ) => {
     const slug = ticket.title
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
@@ -77,11 +80,22 @@ export function useTickets(onBranchChange?: () => void) {
     const branchName = `${ticket.type}/${ticket.id}-${slug}`;
 
     try {
+      let baseBranch = customTargetBranch || ticket.targetBranch || "main";
+      try {
+        const branchRes = await branchApi.fetchBranches();
+        if (branchRes.success && branchRes.currentBranch) {
+          baseBranch = customTargetBranch || branchRes.currentBranch;
+        }
+      } catch {
+        // Fallback to existing or main
+      }
+
       const res = await branchApi.createBranch({ name: branchName });
       if (res.success) {
         await ticketApi.updateTicket(ticket.id, {
           status: "in-progress",
           branch: branchName,
+          targetBranch: baseBranch,
         });
         setActiveTicketId(ticket.id);
         await refreshTickets();
@@ -113,26 +127,41 @@ export function useTickets(onBranchChange?: () => void) {
   };
 }
 
-const shipTicket = async (ticket: Ticket, onDone?: () => void) => {
+export const shipTicket = async (
+  ticket: Ticket,
+  targetBranchOrOnDone?: string | (() => void),
+  onDone?: () => void,
+) => {
   if (!ticket.branch) {
     alert("This ticket does not have a dedicated branch to merge.");
     return;
   }
 
-  const confirmMerge = confirm(
-    `Ship & Merge: Are you ready to merge "${ticket.branch}" into main and mark ${ticket.id} as Done?`,
-  );
-  if (!confirmMerge) return;
+  const customTarget =
+    typeof targetBranchOrOnDone === "string" ? targetBranchOrOnDone : undefined;
+  const callback =
+    typeof targetBranchOrOnDone === "function" ? targetBranchOrOnDone : onDone;
+  const target = customTarget || ticket.targetBranch || "main";
+
+  if (!customTarget) {
+    const confirmMerge = confirm(
+      `Ship & Merge: Are you ready to merge "${ticket.branch}" into "${target}" and mark ${ticket.id} as Done?`,
+    );
+    if (!confirmMerge) return;
+  }
 
   try {
     const res = await branchApi.mergeBranch({
       sourceBranch: ticket.branch,
-      targetBranch: "main",
+      targetBranch: target,
     });
     if (res.success) {
-      await ticketApi.updateTicket(ticket.id, { status: "done" });
-      alert(`🚀 Successfully merged ${ticket.branch} into main!`);
-      onDone?.();
+      await ticketApi.updateTicket(ticket.id, {
+        status: "done",
+        targetBranch: target,
+      });
+      alert(`🚀 Successfully merged ${ticket.branch} into ${target}!`);
+      callback?.();
     } else {
       alert(`Merge failed: ${res.error || "Ensure working directory is clean"}`);
     }

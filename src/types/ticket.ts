@@ -8,6 +8,7 @@ export interface Ticket {
   type: TicketType;
   scope?: string;
   branch?: string;
+  targetBranch?: string;
   description?: string;
   requirements?: string[];
   createdAt: string;
