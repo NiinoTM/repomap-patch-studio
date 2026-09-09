@@ -1,4 +1,4 @@
-import { ESLint } from "eslint";
+import { ESLint, type Linter } from "eslint";
 import { resolvePath } from "../adapters/fsAdapter";
 
 const LINTABLE_EXTENSIONS = [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"];
@@ -17,7 +17,7 @@ function getLinter(repoPath: string): ESLint {
   return instance;
 }
 
-function formatLintMessage(filePath: string, msg: ESLint.LintMessage): string {
+function formatLintMessage(filePath: string, msg: Linter.LintMessage): string {
   const prefix = msg.severity === 1 ? "ESLint warning" : "ESLint error";
   const rule = msg.ruleId ? ` (${msg.ruleId})` : "";
   const line = msg.line ?? "?";
