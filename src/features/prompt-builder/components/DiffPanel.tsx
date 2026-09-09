@@ -3,6 +3,7 @@ import { ClipboardPaste } from "lucide-react";
 import { DiffBlock, DiffViewMode } from "../../../types/patch";
 import { DiffFilterToolbar, type FilterMode } from "./diff/DiffFilterToolbar";
 import { DiffPanelErrorBanner } from "./diff/DiffPanelErrorBanner";
+import { UntestedFilesBanner } from "./diff/UntestedFilesBanner";
 import { EmptyDiffState } from "./diff/EmptyDiffState";
 import { DiffBlockList } from "./diff/DiffBlockList";
 import { useApplyChanges } from "../hooks/useApplyChanges";
@@ -15,6 +16,9 @@ interface DiffPanelProps {
   onBlockEdit?: (id: string, search: string, replace: string) => void;
   ignoredBlocks?: Set<string>;
   onToggleBlock?: (id: string) => void;
+  untestedFiles?: string[];
+  onDismissUntested?: () => void;
+  onGenerateTestsForUntested?: (files: string[]) => void;
 }
 
 export function DiffPanel({
@@ -25,6 +29,9 @@ export function DiffPanel({
   onBlockEdit,
   ignoredBlocks,
   onToggleBlock,
+  untestedFiles = [],
+  onDismissUntested,
+  onGenerateTestsForUntested,
 }: DiffPanelProps) {
   const [internalIgnoredBlocks, setInternalIgnoredBlocks] = useState<
     Set<string>
@@ -223,6 +230,14 @@ export function DiffPanel({
         copiedAllErrors={copiedAllErrors}
         onCopyAllErrors={handleCopyAllErrors}
       />
+
+      {untestedFiles.length > 0 && onDismissUntested && onGenerateTestsForUntested && (
+        <UntestedFilesBanner
+          untestedFiles={untestedFiles}
+          onDismiss={onDismissUntested}
+          onGenerateTests={onGenerateTestsForUntested}
+        />
+      )}
 
       <div className="flex-1 flex flex-col space-y-4 overflow-hidden">
         {!pastedContent ? (

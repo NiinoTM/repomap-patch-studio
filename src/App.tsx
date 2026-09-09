@@ -8,6 +8,12 @@ import { DiffBlock } from "./types/patch";
 import { Ticket } from "./types/ticket";
 import { useRepoContext } from "./features/prompt-builder/hooks/useRepoContext";
 import { usePasteAndValidate } from "./features/prompt-builder/hooks/usePasteAndValidate";
+import { findUntestedFiles } from "./features/prompt-builder/utils/testDetection";
+import { filesApi } from "./api/repoApi";
+import {
+  formatActiveFilesContext,
+  buildUnitTestPrompt,
+} from "./features/prompt-builder/utils/promptTemplates";
 
 export default function App() {
   const [activeTicket, setActiveTicket] = useState<Ticket | null>(null);
@@ -25,6 +31,7 @@ export default function App() {
   });
   const [discoveryMode, setDiscoveryMode] = useState(false);
   const [discoveredFiles, setDiscoveredFiles] = useState<string[]>([]);
+  const [untestedFiles, setUntestedFiles] = useState<string[]>([]);
 
   const {
     repoPath,
@@ -91,9 +98,40 @@ export default function App() {
     });
   };
 
-  const handleApplySuccess = () => {
+  const handleApplySuccess = (appliedFiles?: string[]) => {
+    const files =
+      appliedFiles && appliedFiles.length > 0
+        ? appliedFiles
+        : activeDiffBlocks.map((b) => b.matchedFile || b.file).filter(Boolean);
+
+    const untested = findUntestedFiles(files, repoFiles);
+    setUntestedFiles(untested);
+
     handleClear();
     handleRefreshAll();
+  };
+
+  const handleGenerateTestsForUntested = async (filesToTest: string[]) => {
+    try {
+      setDiscoveredFiles(filesToTest);
+      setUntestedFiles([]);
+      const data = await filesApi.fetchFiles(filesToTest);
+      const activeFilesText = formatActiveFilesContext(
+        filesToTest,
+        data.contents || {},
+      );
+      const prompt = buildUnitTestPrompt({ activeFilesText });
+      await navigator.clipboard.writeText(prompt);
+      setToastMessage(
+        `🧪 Unit test prompt copied to clipboard for ${filesToTest.length} file(s)!`,
+      );
+    } catch {
+      setDiscoveredFiles(filesToTest);
+      setUntestedFiles([]);
+      setToastMessage(
+        `Selected ${filesToTest.length} untested file(s) in Prompt Builder.`,
+      );
+    }
   };
 
   const activeDiffBlocks = (diffBlocks || []).filter(
@@ -143,6 +181,9 @@ export default function App() {
                 prev.map((b) => (b.id === id ? { ...b, search, replace } : b)),
               );
             }}
+            untestedFiles={untestedFiles}
+            onDismissUntested={() => setUntestedFiles([])}
+            onGenerateTestsForUntested={handleGenerateTestsForUntested}
           />
         </section>
       </main>

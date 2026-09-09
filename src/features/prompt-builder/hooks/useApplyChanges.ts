@@ -12,7 +12,7 @@ interface ApplyStageState {
 
 interface UseApplyChangesParams {
   diffBlocks: DiffBlock[];
-  onApplySuccess?: () => void;
+  onApplySuccess?: (appliedFiles: string[]) => void;
   autoValidate?: boolean;
 }
 
@@ -150,7 +150,10 @@ export function useApplyChanges({
         const warnings = data.warnings || data.details || [];
         if (warnings.length > 0) setValidationErrors(warnings);
         alert(shouldCommit ? "✅ Edits written to disk & committed to Git!" : "✅ Edits written to disk!");
-        onApplySuccess?.();
+        const appliedFiles = normalizedBlocks
+          .map((b) => b.matchedFile || b.file)
+          .filter(Boolean);
+        onApplySuccess?.(appliedFiles);
         return true;
       }
 
