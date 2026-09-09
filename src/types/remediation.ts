@@ -4,6 +4,7 @@ export interface GovernanceScaffoldOptions {
   huskyPreCommitHook: boolean;
   huskyLeakedMarkerCheck: boolean;
   telemetryDbMonitoring: boolean;
+  featurePublicApiBarrier: boolean;
   softTechnicalDebtMode: boolean; // Sets boundary rules to 'warn' instead of 'error'
 }
 

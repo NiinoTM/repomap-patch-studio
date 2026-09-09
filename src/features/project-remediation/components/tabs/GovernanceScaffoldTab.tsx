@@ -116,6 +116,25 @@ export function GovernanceScaffoldTab({
           </div>
         </label>
 
+        <label className="flex items-start space-x-3 p-3 bg-zinc-900/50 border border-zinc-800/80 rounded-lg hover:border-zinc-700 transition-colors cursor-pointer">
+          <input
+            type="checkbox"
+            checked={options.featurePublicApiBarrier}
+            onChange={() => onToggleOption("featurePublicApiBarrier")}
+            className="accent-cyan-500 mt-0.5 rounded"
+          />
+          <div className="space-y-0.5">
+            <span className="font-semibold text-zinc-200 block">
+              5. Feature Encapsulation (
+              <code className="text-cyan-400">Public API Barrier</code>)
+            </span>
+            <span className="text-zinc-500 block text-[11px]">
+              Blocks deep cross-feature imports, forcing features to consume peer domains strictly via an explicit{" "}
+              <code className="text-cyan-400">index.ts</code> contract and keeping internals isolated.
+            </span>
+          </div>
+        </label>
+
         <label className="flex items-start space-x-3 p-3 bg-amber-950/20 border border-amber-800/40 rounded-lg hover:border-amber-700/60 transition-colors cursor-pointer">
           <input
             type="checkbox"

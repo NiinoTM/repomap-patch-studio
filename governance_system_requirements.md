@@ -352,6 +352,23 @@ zero-SaaS telemetry module injects an automated monitor into your backend:
   via SQL/DBeaver (`SELECT rota, AVG(duracao_ms) GROUP BY rota ORDER BY 2 DESC`)
   to flag functions in need of indexing, caching, or splitting.
 
+### 4e. Feature Domain Encapsulation (The "Public API" Barrier)
+
+In feature-driven directory structures (`src/features/auth`, `src/features/billing`),
+modules must not reach into another feature's private subfolders, hooks, or components.
+This rule enforces that cross-feature imports only pass through the domain's root
+public contract (`src/features/<domain>/index.ts`):
+
+```typescript
+// ❌ Disallowed: Deep internal import coupling features together
+import { internalHelper } from "@/features/auth/hooks/internal/helper";
+
+// ✅ Allowed: Explicit Public API exposed by the domain
+import { useAuth } from "@/features/auth";
+```
+
+This prevents architectural entanglement, limits blast radius during refactoring, and ensures individual domains can be moved or rewritten independently.
+
 ---
 
 ## What This System Cannot Do
@@ -386,4 +403,5 @@ Being direct about the limits, so the checklist below isn't oversold:
 | 4b. Boundary lint | `dependency-cruiser` or `eslint-plugin-boundaries` rules per layer. | Actually enforces "UI can't fetch," "controllers can't query DB" — the part size checks can't do. |
 | 4c. CI + pre-commit | Run both in Husky pre-commit *and* CI. | Makes enforcement non-optional instead of relying on memory. |
 | 4d. Telemetry | SQLite `api_telemetria.db` with rolling auto-clean. | Spots slowest processes, bottlenecks, and optimizable functions. |
+| 4e. Public API Barrier | Enforce `index.ts` cross-feature import contracts. | Eliminates hidden deep coupling between feature modules. |
 | 5. Review | Human review for cohesion within a layer. | Catches design smells no automated tool can see. |

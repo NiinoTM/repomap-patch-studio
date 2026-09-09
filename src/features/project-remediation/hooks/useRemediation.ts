@@ -10,6 +10,7 @@ const DEFAULT_SCAFFOLD_OPTIONS: GovernanceScaffoldOptions = {
   huskyPreCommitHook: true,
   huskyLeakedMarkerCheck: true,
   telemetryDbMonitoring: true,
+  featurePublicApiBarrier: true,
   softTechnicalDebtMode: true,
 };
 
