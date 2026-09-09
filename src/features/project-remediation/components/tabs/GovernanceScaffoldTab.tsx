@@ -98,6 +98,24 @@ export function GovernanceScaffoldTab({
           </div>
         </label>
 
+        <label className="flex items-start space-x-3 p-3 bg-zinc-900/50 border border-zinc-800/80 rounded-lg hover:border-zinc-700 transition-colors cursor-pointer">
+          <input
+            type="checkbox"
+            checked={options.telemetryDbMonitoring}
+            onChange={() => onToggleOption("telemetryDbMonitoring")}
+            className="accent-cyan-500 mt-0.5 rounded"
+          />
+          <div className="space-y-0.5">
+            <span className="font-semibold text-zinc-200 block">
+              4. Process Telemetry & Auto-Clean Profiler (
+              <code className="text-cyan-400">api_telemetria.db</code>)
+            </span>
+            <span className="text-zinc-500 block text-[11px]">
+              Logs route and function latencies (<code className="text-cyan-400">duracao_ms</code>, query params, status) to a lightweight SQLite DB with auto-cleaning to quickly spot slow, optimizable bottlenecks.
+            </span>
+          </div>
+        </label>
+
         <label className="flex items-start space-x-3 p-3 bg-amber-950/20 border border-amber-800/40 rounded-lg hover:border-amber-700/60 transition-colors cursor-pointer">
           <input
             type="checkbox"

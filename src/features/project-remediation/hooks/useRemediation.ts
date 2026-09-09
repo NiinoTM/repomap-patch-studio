@@ -4,93 +4,97 @@ import {
   FeatureBlueprintDomain,
 } from "../../../types/remediation";
 
+const DEFAULT_SCAFFOLD_OPTIONS: GovernanceScaffoldOptions = {
+  eslintSizeLimits: true,
+  eslintLayerBoundaries: true,
+  huskyPreCommitHook: true,
+  huskyLeakedMarkerCheck: true,
+  telemetryDbMonitoring: true,
+  softTechnicalDebtMode: true,
+};
+
+// Mock initial blueprint data representing a messy, flat project being migrated into Feature-Driven domains
+const INITIAL_BLUEPRINT: FeatureBlueprintDomain[] = [
+  {
+    name: "Authentication & Users",
+    description: "Encapsulate auth forms, session hooks, and token utils",
+    proposedPath: "src/features/auth",
+    filesToMove: [
+      {
+        id: "m1",
+        sourcePath: "src/components/LoginModal.tsx",
+        targetPath: "src/features/auth/components/LoginModal.tsx",
+        targetFeature: "auth",
+        reason: "UI component specific to user login flows",
+        dependentFilesCount: 3,
+        status: "pending",
+      },
+      {
+        id: "m2",
+        sourcePath: "src/hooks/useAuth.ts",
+        targetPath: "src/features/auth/hooks/useAuth.ts",
+        targetFeature: "auth",
+        reason: "Authentication state management and token storage",
+        dependentFilesCount: 8,
+        status: "pending",
+      },
+      {
+        id: "m3",
+        sourcePath: "src/utils/jwtParser.ts",
+        targetPath: "src/features/auth/utils/jwtParser.ts",
+        targetFeature: "auth",
+        reason: "Pure helper functions for decoding auth tokens",
+        dependentFilesCount: 2,
+        status: "pending",
+      },
+    ],
+  },
+  {
+    name: "Billing & Subscriptions",
+    description: "Isolate payment gateways, pricing cards, and Stripe clients",
+    proposedPath: "src/features/billing",
+    filesToMove: [
+      {
+        id: "m4",
+        sourcePath: "src/components/PricingTable.tsx",
+        targetPath: "src/features/billing/components/PricingTable.tsx",
+        targetFeature: "billing",
+        reason: "Presentation component for plans and tiers",
+        dependentFilesCount: 1,
+        status: "pending",
+      },
+      {
+        id: "m5",
+        sourcePath: "src/services/stripeClient.ts",
+        targetPath: "src/features/billing/api/stripeClient.ts",
+        targetFeature: "billing",
+        reason: "Direct API integration client for payment processor",
+        dependentFilesCount: 4,
+        status: "pending",
+      },
+    ],
+  },
+];
+
+const INITIAL_SELECTED_MOVE_IDS = ["m1", "m2", "m3", "m4", "m5"];
+
 export function useRemediation() {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"scaffold" | "refactor">(
-    "scaffold",
-  );
+  const [activeTab, setActiveTab] = useState<"scaffold" | "refactor">("scaffold");
   const [isScaffolding, setIsScaffolding] = useState(false);
   const [scaffoldDone, setScaffoldDone] = useState(false);
 
   const [scaffoldOptions, setScaffoldOptions] =
-    useState<GovernanceScaffoldOptions>({
-      eslintSizeLimits: true,
-      eslintLayerBoundaries: true,
-      huskyPreCommitHook: true,
-      huskyLeakedMarkerCheck: true,
-      softTechnicalDebtMode: true,
-    });
+    useState<GovernanceScaffoldOptions>(DEFAULT_SCAFFOLD_OPTIONS);
 
   const [refactorStep, setRefactorStep] = useState<
     "idle" | "analyzing" | "blueprint-ready" | "executing" | "done"
   >("idle");
 
-  // Mock initial blueprint data representing a messy, flat project being migrated into Feature-Driven domains
-  const [blueprint] = useState<FeatureBlueprintDomain[]>([
-    {
-      name: "Authentication & Users",
-      description: "Encapsulate auth forms, session hooks, and token utils",
-      proposedPath: "src/features/auth",
-      filesToMove: [
-        {
-          id: "m1",
-          sourcePath: "src/components/LoginModal.tsx",
-          targetPath: "src/features/auth/components/LoginModal.tsx",
-          targetFeature: "auth",
-          reason: "UI component specific to user login flows",
-          dependentFilesCount: 3,
-          status: "pending",
-        },
-        {
-          id: "m2",
-          sourcePath: "src/hooks/useAuth.ts",
-          targetPath: "src/features/auth/hooks/useAuth.ts",
-          targetFeature: "auth",
-          reason: "Authentication state management and token storage",
-          dependentFilesCount: 8,
-          status: "pending",
-        },
-        {
-          id: "m3",
-          sourcePath: "src/utils/jwtParser.ts",
-          targetPath: "src/features/auth/utils/jwtParser.ts",
-          targetFeature: "auth",
-          reason: "Pure helper functions for decoding auth tokens",
-          dependentFilesCount: 2,
-          status: "pending",
-        },
-      ],
-    },
-    {
-      name: "Billing & Subscriptions",
-      description:
-        "Isolate payment gateways, pricing cards, and Stripe clients",
-      proposedPath: "src/features/billing",
-      filesToMove: [
-        {
-          id: "m4",
-          sourcePath: "src/components/PricingTable.tsx",
-          targetPath: "src/features/billing/components/PricingTable.tsx",
-          targetFeature: "billing",
-          reason: "Presentation component for plans and tiers",
-          dependentFilesCount: 1,
-          status: "pending",
-        },
-        {
-          id: "m5",
-          sourcePath: "src/services/stripeClient.ts",
-          targetPath: "src/features/billing/api/stripeClient.ts",
-          targetFeature: "billing",
-          reason: "Direct API integration client for payment processor",
-          dependentFilesCount: 4,
-          status: "pending",
-        },
-      ],
-    },
-  ]);
+  const [blueprint] = useState<FeatureBlueprintDomain[]>(INITIAL_BLUEPRINT);
 
   const [selectedMoveIds, setSelectedMoveIds] = useState<Set<string>>(
-    new Set(["m1", "m2", "m3", "m4", "m5"]),
+    () => new Set(INITIAL_SELECTED_MOVE_IDS),
   );
 
   const toggleOption = (key: keyof GovernanceScaffoldOptions) => {

@@ -3,6 +3,7 @@ export interface GovernanceScaffoldOptions {
   eslintLayerBoundaries: boolean;
   huskyPreCommitHook: boolean;
   huskyLeakedMarkerCheck: boolean;
+  telemetryDbMonitoring: boolean;
   softTechnicalDebtMode: boolean; // Sets boundary rules to 'warn' instead of 'error'
 }
 
