@@ -103,54 +103,54 @@ function buildKnipConfig(): string {
 }
 
 function buildTelemetryAdapter(): string {
-  return `import Database from "better-sqlite3";
+  return `import { DatabaseSync } from "node:sqlite";
 import path from "path";
 
 export interface TelemetryRecord {
-  metodo: string;
-  rota: string;
+  method: string;
+  route: string;
   status_code: number;
-  duracao_ms: number;
+  duration_ms: number;
   query_params?: Record<string, unknown> | string;
   ip?: string;
 }
 
 class TelemetryAdapter {
-  private db: Database.Database;
+  private db: DatabaseSync;
 
   constructor(dbPath = "telemetry.db") {
-    this.db = new Database(path.resolve(process.cwd(), dbPath));
-    this.db.pragma("journal_mode = WAL");
+    this.db = new DatabaseSync(path.resolve(process.cwd(), dbPath));
+    this.db.exec("PRAGMA journal_mode = WAL;");
     this.initTable();
   }
 
   private initTable() {
     this.db.exec(\`
-      CREATE TABLE IF NOT EXISTS api_telemetria (
+      CREATE TABLE IF NOT EXISTS api_telemetry (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-        metodo TEXT NOT NULL,
-        rota TEXT NOT NULL,
+        method TEXT NOT NULL,
+        route TEXT NOT NULL,
         status_code INTEGER NOT NULL,
-        duracao_ms REAL NOT NULL,
+        duration_ms REAL NOT NULL,
         query_params TEXT,
         ip TEXT
       );
-      CREATE INDEX IF NOT EXISTS idx_telemetria_rota ON api_telemetria (rota);
-      CREATE INDEX IF NOT EXISTS idx_telemetria_timestamp ON api_telemetria (timestamp);
+      CREATE INDEX IF NOT EXISTS idx_telemetry_route ON api_telemetry (route);
+      CREATE INDEX IF NOT EXISTS idx_telemetry_timestamp ON api_telemetry (timestamp);
     \`);
   }
 
   public record(entry: TelemetryRecord): void {
     try {
       const stmt = this.db.prepare(\`
-        INSERT INTO api_telemetria (timestamp, metodo, rota, status_code, duracao_ms, query_params, ip)
+        INSERT INTO api_telemetry (timestamp, method, route, status_code, duration_ms, query_params, ip)
         VALUES (datetime('now', 'localtime'), ?, ?, ?, ?, ?, ?)
       \`);
       const paramsJson = typeof entry.query_params === "string"
         ? entry.query_params
         : JSON.stringify(entry.query_params || {});
-      stmt.run(entry.metodo, entry.rota, entry.status_code, Math.round(entry.duracao_ms * 100) / 100, paramsJson, entry.ip || null);
+      stmt.run(entry.method, entry.route, entry.status_code, Math.round(entry.duration_ms * 100) / 100, paramsJson, entry.ip || null);
     } catch (err) {
       console.error("[Telemetry] Failed to record:", err);
     }
@@ -158,8 +158,8 @@ class TelemetryAdapter {
 
   public autoClean(retentionDays = 7): number {
     try {
-      const stmt = this.db.prepare(\`DELETE FROM api_telemetria WHERE timestamp < datetime('now', 'localtime', '-' || ? || ' days')\`);
-      const res = stmt.run(retentionDays);
+      const stmt = this.db.prepare(\`DELETE FROM api_telemetry WHERE timestamp < datetime('now', 'localtime', '-' || ? || ' days')\`);
+      const res = stmt.run(retentionDays) as { changes: number };
       return res.changes;
     } catch (err) {
       console.error("[Telemetry Auto-Clean Error]:", err);
@@ -190,10 +190,6 @@ function buildPackageJson(opts: GovernanceScaffoldOptions): string {
   }
   if (opts.dpdmCircularCheck) {
     devDeps["dpdm"] = "^3.14.0";
-  }
-  if (opts.telemetryDbMonitoring) {
-    devDeps["better-sqlite3"] = "^11.0.0";
-    devDeps["@types/better-sqlite3"] = "^7.6.0";
   }
 
   const pkg = {

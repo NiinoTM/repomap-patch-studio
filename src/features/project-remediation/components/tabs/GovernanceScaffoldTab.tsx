@@ -105,15 +105,15 @@ export function GovernanceScaffoldTab({
             onChange={() => onToggleOption("telemetryDbMonitoring")}
             className="accent-cyan-500 mt-0.5 rounded"
           />
-          <div className="space-y-0.5">
-            <span className="font-semibold text-zinc-200 block">
-              4. Process Telemetry & Auto-Clean Profiler (
-              <code className="text-cyan-400">api_telemetria.db</code>)
-            </span>
-            <span className="text-zinc-500 block text-[11px]">
-              Logs route and function latencies (<code className="text-cyan-400">duracao_ms</code>, query params, status) to a lightweight SQLite DB with auto-cleaning to quickly spot slow, optimizable bottlenecks.
-            </span>
-          </div>
+            <div className="space-y-0.5">
+              <span className="font-semibold text-zinc-200 block">
+                4. Process Telemetry & Auto-Clean Profiler (
+                <code className="text-cyan-400">api_telemetry.db</code>)
+              </span>
+              <span className="text-zinc-500 block text-[11px]">
+                Logs route and function latencies (<code className="text-cyan-400">duration_ms</code>, query params, status) to a lightweight SQLite DB with auto-cleaning to quickly spot slow, optimizable bottlenecks.
+              </span>
+            </div>
         </label>
 
         <label className="flex items-start space-x-3 p-3 bg-zinc-900/50 border border-zinc-800/80 rounded-lg hover:border-zinc-700 transition-colors cursor-pointer">
@@ -242,7 +242,7 @@ export function GovernanceScaffoldTab({
         <div>✓ server/adapters/telemetryAdapter.ts (SQLite APM logger with auto-clean)</div>
         <div>✓ Feature directories: src/api, src/features, src/types, server/*</div>
         <div>
-          ✓ package.json (devDependencies: dpdm, knip, husky, better-sqlite3 + sideEffects: ["**/*.css"])
+        ✓ package.json (devDependencies: dpdm, knip, husky + sideEffects: ["**/*.css"])
         </div>
       </div>
 

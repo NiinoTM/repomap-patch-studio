@@ -334,14 +334,14 @@ Pre-commit catches violations before they're even pushed; CI is the
 backstop for anyone who bypasses hooks locally (`--no-verify`) or opens a
 PR from a fork.
 
-### 4d. Process Telemetry & Auto-Clean Profiler (`api_telemetria.db`)
+### 4d. Process Telemetry & Auto-Clean Profiler (`api_telemetry.db`)
 
 Size and boundary checks verify code structure at write time, but they
 cannot predict runtime bottlenecks or slow queries. Adding a lightweight,
 zero-SaaS telemetry module injects an automated monitor into your backend:
 
-- **Target Schema (`api_telemetria`)**: Logs `timestamp`, `metodo`, `rota`,
-  `status_code`, `duracao_ms`, `query_params`, and client `ip`.
+- **Target Schema (`api_telemetry`)**: Logs `timestamp`, `method`, `route`,
+  `status_code`, `duration_ms`, `query_params`, and client `ip`.
 - **Non-Blocking WAL Mode**: Operates SQLite with Write-Ahead Logging
   (`PRAGMA journal_mode = WAL`) and fire-and-forget execution to record
   timings without delaying client response cycles.
@@ -349,7 +349,7 @@ zero-SaaS telemetry module injects an automated monitor into your backend:
   older than a configured threshold (e.g. 7 or 14 days) on startup or
   daily interval, preventing unbounded `.db` file growth.
 - **Bottleneck Spotting**: Easily query worst-offender processes directly
-  via SQL/DBeaver (`SELECT rota, AVG(duracao_ms) GROUP BY rota ORDER BY 2 DESC`)
+  via SQL/DBeaver (`SELECT route, AVG(duration_ms) GROUP BY route ORDER BY 2 DESC`)
   to flag functions in need of indexing, caching, or splitting.
 
 ### 4e. Feature Domain Encapsulation (The "Public API" Barrier)
@@ -486,7 +486,7 @@ Being direct about the limits, so the checklist below isn't oversold:
 | 4a. Size & Config | Baseline `tsconfig.json` + `eslint max-lines: 250 (.ts) / 350 (.tsx)` | Sets up typed `projectService` resolution and flags oversized files. |
 | 4b. Boundary lint | `dependency-cruiser` or `eslint-plugin-boundaries` rules per layer. | Actually enforces "UI can't fetch," "controllers can't query DB" — the part size checks can't do. |
 | 4c. CI + pre-commit | Run both in Husky pre-commit *and* CI. | Makes enforcement non-optional instead of relying on memory. |
-| 4d. Telemetry | SQLite `api_telemetria.db` with rolling auto-clean. | Spots slowest processes, bottlenecks, and optimizable functions. |
+| 4d. Telemetry | SQLite `api_telemetry.db` with rolling auto-clean. | Spots slowest processes, bottlenecks, and optimizable functions. |
 | 4e. Public API Barrier | Enforce `index.ts` cross-feature import contracts. | Eliminates hidden deep coupling between feature modules. |
 | 4f. Dead Code Sweeper | `knip` static entrypoint graph analysis. | Eliminates zombie functions, orphaned components, and unused npm packages. |
 | 4g. Circular Dependency Trap | `dpdm` fast TypeScript dependency cycle check. | Stops circular imports and runtime `undefined` initialization bugs. |
