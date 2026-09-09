@@ -72,6 +72,10 @@ LAYERING ADVISORY:
   this is what lets the project's automated boundary linter actually
   catch misplacement later.
 
+RUNTIME CONTRACT & BOUNDARY ADVISORY (ZOD):
+- At system boundaries (API routes, fetch calls, process.env, or DB queries), do NOT rely on raw TypeScript interfaces or 'as Type' assertions.
+- Always declare a Zod schema ('z.object(...)'), derive the static type via 'z.infer<typeof Schema>', and validate untrusted input using '.safeParse()' or '.parse()' to eliminate runtime type drift and null-pointer crashes.
+
 NEW FEATURE PLANNING RULE:
 - If the request requires creating more than one new file, before emitting
   any FILE/CREATE/MOVE blocks, first output a short comment block listing
