@@ -4,12 +4,14 @@ interface RepoMapHeaderProps {
   repoMapTokens: number;
   filesCount: number;
   onOpenModal: () => void;
+  activeScope?: string;
 }
 
 export function RepoMapHeader({
   repoMapTokens,
   filesCount,
   onOpenModal,
+  activeScope,
 }: RepoMapHeaderProps) {
   return (
     <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-lg flex items-center justify-between">
@@ -18,7 +20,14 @@ export function RepoMapHeader({
           <Map className="w-4 h-4 text-cyan-500" />
         </div>
         <div>
-          <p className="text-xs font-semibold text-zinc-200">Repo Map Ready</p>
+          <div className="flex items-center space-x-1.5">
+            <p className="text-xs font-semibold text-zinc-200">Repo Map Ready</p>
+            {activeScope && activeScope !== "all" && (
+              <span className="text-[9px] font-mono bg-cyan-950/80 text-cyan-400 px-1.5 py-0.2 rounded border border-cyan-800/60">
+                scope: {activeScope}
+              </span>
+            )}
+          </div>
           <p className="text-[10px] text-zinc-500">
             ~{repoMapTokens.toLocaleString()} map tokens / {filesCount} files
           </p>

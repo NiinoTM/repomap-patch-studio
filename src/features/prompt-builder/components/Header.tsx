@@ -12,6 +12,7 @@ import { TicketManagerModal } from "../../tickets/components/TicketManagerModal"
 import { CreateTicketDialog } from "../../tickets/components/CreateTicketDialog";
 import { useTickets } from "../../tickets/hooks/useTickets";
 import { Ticket } from "../../../types/ticket";
+import { extractAvailableScopes } from "../utils/scopeFilter";
 
 interface HeaderProps {
   onUndoSuccess?: () => void;
@@ -26,21 +27,92 @@ interface HeaderProps {
   };
   activeTicket?: Ticket | null;
   onActiveTicketChange?: (ticket: Ticket | null) => void;
+  activeScope?: string;
+  onActiveScopeChange?: (scope: string) => void;
 }
 
-function extractAvailableScopes(files: string[] = []): string[] {
-  const scopes = new Set<string>();
-  for (const f of files) {
-    const match = f.match(/^src\/features\/([^/]+)/);
-    if (match) scopes.add(match[1]);
-    else if (f.startsWith("server/")) scopes.add("server");
-    else if (f.startsWith("src/types/")) scopes.add("types");
-    else if (f.startsWith("src/api/")) scopes.add("api");
-    else if (f.startsWith("src/components/")) scopes.add("ui");
-    else if (f.startsWith(".github/")) scopes.add("ci");
+interface TokenBudgetWidgetProps {
+  tokenStats: {
+    total: number;
+    map: number;
+    files: number;
+    selectedCount: number;
+  };
+  activeScope: string;
+  availableScopes: string[];
+  onActiveScopeChange?: (scope: string) => void;
+}
+
+function TokenBudgetWidget({
+  tokenStats,
+  activeScope,
+  availableScopes,
+  onActiveScopeChange,
+}: TokenBudgetWidgetProps) {
+  const percentage = Math.min(100, Math.round((tokenStats.total / 30000) * 100));
+  let status = { label: "Optimal Focus", bg: "bg-emerald-500", text: "text-emerald-400" };
+  if (tokenStats.total > 30000) {
+    status = { label: "Context Overload", bg: "bg-rose-500", text: "text-rose-400" };
+  } else if (tokenStats.total > 15000) {
+    status = { label: "Heavy Context", bg: "bg-amber-500", text: "text-amber-400" };
   }
-  const result = Array.from(scopes).sort();
-  return result.length > 0 ? result : ["general", "ui", "server", "types"];
+
+  return (
+    <div className="absolute left-1/2 -translate-x-1/2 flex flex-col justify-center space-y-1 bg-zinc-900/90 border border-zinc-800 rounded-lg px-3 py-1 w-[360px] shadow-sm">
+      <div className="flex items-center justify-between w-full">
+        <div className="flex items-center space-x-2">
+          <span className={`w-1.5 h-1.5 rounded-full ${status.bg} animate-pulse`} />
+          <span className="text-[11px] font-semibold text-zinc-200">Token Budget</span>
+          <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded bg-zinc-800 ${status.text}`}>
+            {status.label}
+          </span>
+        </div>
+        <span className="font-mono text-[10px] font-bold text-zinc-100">
+          {tokenStats.total.toLocaleString()}{" "}
+          <span className="text-zinc-500 font-normal">/ 30k</span>
+        </span>
+      </div>
+
+      <div className="w-full bg-zinc-800/80 h-1 rounded-full overflow-hidden flex">
+        <div className={`h-full transition-all duration-300 ${status.bg}`} style={{ width: `${percentage}%` }} />
+      </div>
+
+      <div className="flex justify-between text-[9px] text-zinc-500 font-mono">
+        <span>Map: {tokenStats.map.toLocaleString()} tks</span>
+        <span>
+          Files ({tokenStats.selectedCount}): {tokenStats.files.toLocaleString()} tks
+        </span>
+      </div>
+
+      <div className="flex items-center justify-between text-[9px] text-zinc-400 pt-1 border-t border-zinc-800/60">
+        <div className="flex items-center space-x-1.5">
+          <span className="text-zinc-500 font-medium">Domain Scope:</span>
+          <select
+            value={activeScope}
+            onChange={(e) => onActiveScopeChange?.(e.target.value)}
+            className="bg-zinc-800 text-zinc-200 text-[9px] font-mono rounded px-1.5 py-0.5 border border-zinc-700 focus:outline-none focus:border-cyan-500 cursor-pointer"
+            title="Limit Repo Map symbols to a specific domain or subsystem"
+          >
+            <option value="all">all (full repo)</option>
+            {availableScopes.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
+        {tokenStats.total > 15000 && activeScope === "all" && availableScopes.length > 0 && (
+          <button
+            onClick={() => onActiveScopeChange?.(availableScopes[0])}
+            className="text-[9px] text-cyan-400 hover:text-cyan-300 bg-cyan-950/60 border border-cyan-500/30 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+            title="Token count is heavy. Click to scope to primary domain."
+          >
+            ⚡ Scope Domain
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function Header({
@@ -51,6 +123,8 @@ export function Header({
   tokenStats,
   activeTicket,
   onActiveTicketChange,
+  activeScope = "all",
+  onActiveScopeChange,
 }: HeaderProps) {
   const { isUndoing, handleUndo, handleChangeRepo } = useHeaderActions({
     onUndoSuccess,
@@ -93,32 +167,7 @@ export function Header({
     }
   };
 
-  const TARGET_BUDGET = 30000;
-
-  const budgetPercentage = Math.min(
-    100,
-    Math.round(((tokenStats?.total || 0) / TARGET_BUDGET) * 100),
-  );
-
-  let budgetStatus = {
-    label: "Optimal Focus",
-    bg: "bg-emerald-500",
-    text: "text-emerald-400",
-  };
-  if (tokenStats) {
-    if (tokenStats.total > 15000 && tokenStats.total <= 30000)
-      budgetStatus = {
-        label: "Heavy Context",
-        bg: "bg-amber-500",
-        text: "text-amber-400",
-      };
-    else if (tokenStats.total > 30000)
-      budgetStatus = {
-        label: "Context Overload",
-        bg: "bg-rose-500",
-        text: "text-rose-400",
-      };
-  }
+  const availableScopes = extractAvailableScopes(repoFiles);
 
   return (
     <header className="h-12 border-b border-zinc-800 flex items-center justify-between px-4 bg-zinc-950 shrink-0 relative">
@@ -198,42 +247,12 @@ export function Header({
       </div>
 
       {tokenStats && (
-        <div className="absolute left-1/2 -translate-x-1/2 flex flex-col justify-center space-y-1 bg-zinc-900/90 border border-zinc-800 rounded-lg px-3 py-1 w-[360px] shadow-sm">
-          <div className="flex items-center justify-between w-full">
-            <div className="flex items-center space-x-2">
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${budgetStatus.bg} animate-pulse`}
-              />
-              <span className="text-[11px] font-semibold text-zinc-200">
-                Token Budget
-              </span>
-              <span
-                className={`text-[9px] font-medium px-1.5 py-0.5 rounded bg-zinc-800 ${budgetStatus.text}`}
-              >
-                {budgetStatus.label}
-              </span>
-            </div>
-            <span className="font-mono text-[10px] font-bold text-zinc-100">
-              {tokenStats.total.toLocaleString()}{" "}
-              <span className="text-zinc-500 font-normal">/ 30k</span>
-            </span>
-          </div>
-
-          <div className="w-full bg-zinc-800/80 h-1 rounded-full overflow-hidden flex">
-            <div
-              className={`h-full transition-all duration-300 ${budgetStatus.bg}`}
-              style={{ width: `${budgetPercentage}%` }}
-            />
-          </div>
-
-          <div className="flex justify-between text-[9px] text-zinc-500 font-mono">
-            <span>Map: {tokenStats.map.toLocaleString()} tks</span>
-            <span>
-              Files ({tokenStats.selectedCount}):{" "}
-              {tokenStats.files.toLocaleString()} tks
-            </span>
-          </div>
-        </div>
+        <TokenBudgetWidget
+          tokenStats={tokenStats}
+          activeScope={activeScope}
+          availableScopes={availableScopes}
+          onActiveScopeChange={onActiveScopeChange}
+        />
       )}
 
       <div className="flex items-center space-x-3">

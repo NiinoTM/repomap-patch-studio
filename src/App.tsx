@@ -9,6 +9,7 @@ import { Ticket } from "./types/ticket";
 import { useRepoContext } from "./features/prompt-builder/hooks/useRepoContext";
 import { usePasteAndValidate } from "./features/prompt-builder/hooks/usePasteAndValidate";
 import { findUntestedFiles } from "./features/prompt-builder/utils/testDetection";
+import { filterRepoMapByScope } from "./features/prompt-builder/utils/scopeFilter";
 import { filesApi } from "./api/repoApi";
 import {
   formatActiveFilesContext,
@@ -32,6 +33,7 @@ export default function App() {
   const [discoveryMode, setDiscoveryMode] = useState(false);
   const [discoveredFiles, setDiscoveredFiles] = useState<string[]>([]);
   const [untestedFiles, setUntestedFiles] = useState<string[]>([]);
+  const [activeScope, setActiveScope] = useState<string>("all");
 
   const {
     repoPath,
@@ -149,6 +151,8 @@ export default function App() {
     (b) => !ignoredBlockIds?.has?.(b.id),
   );
 
+  const scopedRepoMap = filterRepoMapByScope(repoMap, activeScope);
+
   return (
     <div className="flex flex-col h-screen w-full bg-zinc-950 overflow-hidden font-sans text-zinc-300 selection:bg-cyan-500/30 antialiased">
       <Header
@@ -159,6 +163,8 @@ export default function App() {
         tokenStats={tokenStats}
         activeTicket={activeTicket}
         onActiveTicketChange={setActiveTicket}
+        activeScope={activeScope}
+        onActiveScopeChange={setActiveScope}
       />
 
       <main className="flex-1 flex overflow-hidden">
@@ -167,7 +173,7 @@ export default function App() {
             onCopy={handleCopy}
             onCopyMap={handleCopyMap}
             files={repoFiles}
-            repoMap={repoMap}
+            repoMap={scopedRepoMap}
             fileStats={fileStats}
             dependencyMap={dependencyMap}
             onTokenStatsChange={setTokenStats}
