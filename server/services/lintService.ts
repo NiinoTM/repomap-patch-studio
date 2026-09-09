@@ -17,14 +17,17 @@ function getLinter(repoPath: string): ESLint {
   return instance;
 }
 
+function formatLintMessage(filePath: string, msg: ESLint.LintMessage): string {
+  const prefix = msg.severity === 1 ? "ESLint warning" : "ESLint error";
+  const rule = msg.ruleId ? ` (${msg.ruleId})` : "";
+  const line = msg.line ?? "?";
+  return `${prefix} in ${filePath}:${line} — ${msg.message}${rule}`;
+}
+
 /**
  * Lints in-memory content (not yet written to disk) against the target
- * repo's own eslint.config.js. Only error-severity findings are returned —
- * warn-level rules (e.g. @typescript-eslint/no-explicit-any) are
- * intentionally non-blocking, matching how the project's own config treats
- * them. Lint is a best-effort enhancement: if ESLint itself fails to run
- * (missing plugin, unresolvable config, etc.), this fails open rather than
- * aborting a transaction over tooling trouble unrelated to the edit itself.
+ * repo's own eslint.config.js. Both error and warning findings are returned
+ * so pre-commit hooks enforcing --max-warnings=0 can be caught upfront in diffs.
  */
 export async function validateLint(
   repoPath: string,
@@ -46,11 +49,8 @@ export async function validateLint(
 
     for (const result of results) {
       for (const msg of result.messages) {
-        if (msg.severity === 2) {
-          const rule = msg.ruleId ? ` (${msg.ruleId})` : "";
-          errors.push(
-            `ESLint error in ${filePath}:${msg.line ?? "?"} — ${msg.message}${rule}`,
-          );
+        if (msg.severity >= 1) {
+          errors.push(formatLintMessage(filePath, msg));
         }
       }
     }

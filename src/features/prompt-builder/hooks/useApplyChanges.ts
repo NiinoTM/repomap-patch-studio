@@ -65,7 +65,7 @@ async function performAutoValidation(
 export function useApplyChanges({
   diffBlocks,
   onApplySuccess,
-  autoValidate = false,
+  autoValidate = true,
 }: UseApplyChangesParams) {
   const [isApplying, setIsApplying] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
@@ -101,7 +101,7 @@ export function useApplyChanges({
 
     const timer = setTimeout(() => {
       performAutoValidation(rawBlocks, setIsValidating, setValidationErrors);
-    }, 500);
+    }, 300);
 
     return () => clearTimeout(timer);
   }, [blocksJson, autoValidate]);

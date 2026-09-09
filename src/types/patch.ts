@@ -20,6 +20,7 @@ export interface DiffBlock {
   moveTo?: string;
   matchedFile?: string;
   isCodeMatched?: boolean;
+  errors?: string[];
 }
 
 export interface HistoryLog {

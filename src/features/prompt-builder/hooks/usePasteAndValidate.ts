@@ -3,17 +3,56 @@ import { DiffBlock } from "../../../types/patch";
 import { parseDiffBlocks, parseFileList } from "../utils/diffParser";
 import { validateBlocks } from "../utils/blockMatcher";
 import { filesApi } from "../../../api/repoApi";
+import { patchApi } from "../../../api/patchApi";
 
 interface UsePasteAndValidateParams {
   pastedContent: string;
   setPastedContent: (value: string) => void;
-  setDiffBlocks: (blocks: DiffBlock[]) => void;
+  setDiffBlocks: (blocks: DiffBlock[] | ((prev: DiffBlock[]) => DiffBlock[])) => void;
   setIgnoredBlockIds: (ids: Set<string>) => void;
   setToastMessage: (message: string | null) => void;
   discoveryMode: boolean;
   setDiscoveryMode: (value: boolean) => void;
   setDiscoveredFiles: (files: string[]) => void;
   repoFiles?: string[];
+}
+
+/**
+ * Reads the clipboard, parses it into diff blocks, fetches the referenced
+ * files, and validates each block against current file contents. All
+ * network I/O and orchestration lives here — components stay
+ * presentation-only.
+ */
+function triggerBackgroundValidation(
+  blocks: DiffBlock[],
+  setDiffBlocks: (blocks: DiffBlock[] | ((prev: DiffBlock[]) => DiffBlock[])) => void,
+) {
+  if (blocks.length === 0) return;
+  const normalized = blocks.map((b) => ({
+    ...b,
+    file: b.matchedFile || b.file,
+  }));
+
+  patchApi
+    .applyStream({ blocks: normalized, dryRun: true }, () => {})
+    .then((res) => {
+      if (!res.success && res.details && res.details.length > 0) {
+        setDiffBlocks((prev) =>
+          prev.map((b) => {
+            const targetPath = b.matchedFile || b.file;
+            const blockErrors = res.details?.filter((err) =>
+              err.includes(targetPath),
+            );
+            return blockErrors && blockErrors.length > 0
+              ? { ...b, errors: blockErrors }
+              : b;
+          }),
+        );
+      }
+    })
+    .catch(() => {
+      // Ignore background validation network failures
+    });
 }
 
 /**
@@ -86,9 +125,11 @@ export function usePasteAndValidate({
           data.success = true;
         }
 
-        setDiffBlocks(
-          data.success ? validateBlocks(parsed, data.contents) : parsed,
-        );
+        const validated = data.success
+          ? validateBlocks(parsed, data.contents)
+          : parsed;
+        setDiffBlocks(validated);
+        triggerBackgroundValidation(validated, setDiffBlocks);
       } catch (err) {
         console.error("Failed to parse pasted text: ", err);
         setToastMessage("Error parsing clipboard text.");
