@@ -21,6 +21,7 @@ const DEFAULT_SCAFFOLD_OPTIONS: GovernanceScaffoldOptions = {
   autoInstallDependencies: true,
   zodRuntimeContracts: true,
   vitestUnitTesting: true,
+  playwrightCriticalFlows: true,
   softTechnicalDebtMode: true,
 };
 

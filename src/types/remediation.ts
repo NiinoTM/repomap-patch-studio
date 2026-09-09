@@ -12,6 +12,7 @@ export interface GovernanceScaffoldOptions {
   autoInstallDependencies: boolean;
   zodRuntimeContracts: boolean;
   vitestUnitTesting: boolean;
+  playwrightCriticalFlows: boolean;
   softTechnicalDebtMode: boolean; // Sets boundary rules to 'warn' instead of 'error'
 }
 

@@ -8,6 +8,8 @@ import {
   buildTelemetryAdapter,
   buildZodContractsStarter,
   buildVitestSampleTest,
+  buildPlaywrightConfig,
+  buildPlaywrightSmokeTest,
   buildPackageJson,
 } from "./scaffoldTemplates";
 
@@ -53,6 +55,10 @@ export function generateGovernanceDiffBlocks(opts: GovernanceScaffoldOptions): D
   }
   if (opts.vitestUnitTesting) {
     blocks.push(makeCreateBlock("src/utils/sample.test.ts", buildVitestSampleTest()));
+  }
+  if (opts.playwrightCriticalFlows) {
+    blocks.push(makeCreateBlock("playwright.config.ts", buildPlaywrightConfig()));
+    blocks.push(makeCreateBlock("e2e/smoke.spec.ts", buildPlaywrightSmokeTest()));
   }
   if (opts.featureDirectorySkeleton) {
     for (const dir of SKELETON_DIRS) {

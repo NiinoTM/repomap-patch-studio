@@ -174,6 +174,19 @@ const SCAFFOLD_OPTIONS_LIST: ScaffoldOptionItemConfig[] = [
       </span>
     ),
   },
+  {
+    key: "playwrightCriticalFlows",
+    title: (
+      <span>
+        13. Playwright Critical Path Smoke Gate (<code className="text-cyan-400">playwright</code>)
+      </span>
+    ),
+    description: (
+      <span>
+        Scaffolds a lightweight headless browser runner and a starter <code className="text-cyan-400">e2e/smoke.spec.ts</code> test to guarantee that critical user flows never crash.
+      </span>
+    ),
+  },
 ];
 
 export function GovernanceScaffoldTab({
@@ -260,9 +273,10 @@ export function GovernanceScaffoldTab({
         <div>✓ knip.json (Dead code & unused export analyzer)</div>
         <div>✓ server/adapters/telemetryAdapter.ts (SQLite APM logger with auto-clean)</div>
         <div>✓ src/utils/sample.test.ts (Starter Vitest suite for business logic algorithms)</div>
+        <div>✓ playwright.config.ts & e2e/smoke.spec.ts (E2E browser smoke tests for critical flows)</div>
         <div>✓ Feature directories: src/api, src/features, src/types, server/*</div>
         <div>
-        ✓ package.json (dependencies: zod, devDependencies: vitest, dpdm, knip, husky + sideEffects: ["**/*.css"])
+        ✓ package.json (dependencies: zod, devDependencies: vitest, playwright, dpdm, knip, husky + sideEffects: ["**/*.css"])
         </div>
       </div>
 
