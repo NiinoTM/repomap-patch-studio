@@ -7,6 +7,7 @@ import {
   buildKnipConfig,
   buildTelemetryAdapter,
   buildZodContractsStarter,
+  buildVitestSampleTest,
   buildPackageJson,
 } from "./scaffoldTemplates";
 
@@ -33,7 +34,7 @@ const SKELETON_DIRS = [
 
 export function generateGovernanceDiffBlocks(opts: GovernanceScaffoldOptions): DiffBlock[] {
   const blocks: DiffBlock[] = [
-    makeCreateBlock("tsconfig.json", buildTsConfig()),
+    makeCreateBlock("tsconfig.json", buildTsConfig(opts)),
     makeCreateBlock("eslint.config.js", buildEslintConfig(opts)),
     makeCreateBlock("package.json", buildPackageJson(opts)),
   ];
@@ -49,6 +50,9 @@ export function generateGovernanceDiffBlocks(opts: GovernanceScaffoldOptions): D
   }
   if (opts.zodRuntimeContracts) {
     blocks.push(makeCreateBlock("src/types/contracts.ts", buildZodContractsStarter()));
+  }
+  if (opts.vitestUnitTesting) {
+    blocks.push(makeCreateBlock("src/utils/sample.test.ts", buildVitestSampleTest()));
   }
   if (opts.featureDirectorySkeleton) {
     for (const dir of SKELETON_DIRS) {

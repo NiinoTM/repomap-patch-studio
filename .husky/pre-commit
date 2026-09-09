@@ -18,4 +18,5 @@ if [ -n "$LEAKED_FILES" ]; then
   exit 1
 fi
 
+npm test
 npx lint-staged --quiet

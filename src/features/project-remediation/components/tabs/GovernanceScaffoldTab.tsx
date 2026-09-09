@@ -161,6 +161,19 @@ const SCAFFOLD_OPTIONS_LIST: ScaffoldOptionItemConfig[] = [
       </span>
     ),
   },
+  {
+    key: "vitestUnitTesting",
+    title: (
+      <span>
+        12. Vitest Algorithm & Unit Testing Suite (<code className="text-cyan-400">vitest</code>)
+      </span>
+    ),
+    description: (
+      <span>
+        Configures in-memory unit testing for services and utilities, adds <code className="text-cyan-400">npm test</code> pre-commit enforcement, and scaffolds starter test suites.
+      </span>
+    ),
+  },
 ];
 
 export function GovernanceScaffoldTab({
@@ -246,9 +259,10 @@ export function GovernanceScaffoldTab({
         <div>✓ .husky/pre-commit (Marker leak detector & circular import gate)</div>
         <div>✓ knip.json (Dead code & unused export analyzer)</div>
         <div>✓ server/adapters/telemetryAdapter.ts (SQLite APM logger with auto-clean)</div>
+        <div>✓ src/utils/sample.test.ts (Starter Vitest suite for business logic algorithms)</div>
         <div>✓ Feature directories: src/api, src/features, src/types, server/*</div>
         <div>
-        ✓ package.json (dependencies: zod, devDependencies: dpdm, knip, husky + sideEffects: ["**/*.css"])
+        ✓ package.json (dependencies: zod, devDependencies: vitest, dpdm, knip, husky + sideEffects: ["**/*.css"])
         </div>
       </div>
 

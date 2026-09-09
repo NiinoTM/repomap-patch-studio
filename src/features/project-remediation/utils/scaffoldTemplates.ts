@@ -1,6 +1,6 @@
 import { GovernanceScaffoldOptions } from "../../../types/remediation";
 
-export function buildTsConfig(): string {
+export function buildTsConfig(opts?: GovernanceScaffoldOptions): string {
   return JSON.stringify(
     {
       compilerOptions: {
@@ -10,6 +10,7 @@ export function buildTsConfig(): string {
         esModuleInterop: true,
         strict: true,
         skipLibCheck: true,
+        ...(opts?.vitestUnitTesting ? { types: ["vitest/globals"] } : {}),
       },
       include: ["src/**/*", "server/**/*"],
     },
@@ -91,6 +92,9 @@ export function buildHuskyPreCommit(opts: GovernanceScaffoldOptions): string {
   }
   if (opts.dpdmCircularCheck) {
     lines.push("npx dpdm --warning=false --tree=false --exit-code circular:1 src/", "");
+  }
+  if (opts.vitestUnitTesting) {
+    lines.push("npm test", "");
   }
   lines.push("npx lint-staged", "");
   return lines.join("\n");
@@ -190,6 +194,17 @@ export type ApiResponse = z.infer<typeof ApiResponseSchema>;
 `;
 }
 
+export function buildVitestSampleTest(): string {
+  return `import { describe, it, expect } from "vitest";
+
+describe("core business logic smoke test", () => {
+  it("verifies unit testing infrastructure is functional", () => {
+    expect(1 + 1).toBe(2);
+  });
+});
+`;
+}
+
 export function buildPackageJson(opts: GovernanceScaffoldOptions): string {
   const deps: Record<string, string> = {};
   if (opts.zodRuntimeContracts) {
@@ -215,6 +230,9 @@ export function buildPackageJson(opts: GovernanceScaffoldOptions): string {
   if (opts.dpdmCircularCheck) {
     devDeps["dpdm"] = "^3.14.0";
   }
+  if (opts.vitestUnitTesting) {
+    devDeps["vitest"] = "^2.0.0";
+  }
 
   const pkg = {
     name: "governance-scaffolded-app",
@@ -224,6 +242,7 @@ export function buildPackageJson(opts: GovernanceScaffoldOptions): string {
     scripts: {
       lint: "eslint .",
       typecheck: "tsc --noEmit",
+      ...(opts.vitestUnitTesting ? { test: "vitest run", "test:watch": "vitest" } : {}),
       ...(opts.knipDeadCodeDetection ? { knip: "knip" } : {}),
       ...(opts.dpdmCircularCheck ? { "check:circular": "dpdm --warning=false --tree=false --exit-code circular:1 src/" } : {}),
     },
