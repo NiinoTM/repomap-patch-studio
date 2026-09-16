@@ -1,18 +1,21 @@
 import { useState } from "react";
-import { Shield, Sparkles, X } from "lucide-react";
-import { useProjectInitializer } from "../hooks/useProjectInitializer";
+import { Shield, X, FolderTree } from "lucide-react";
 import { useArchitectureRefactor } from "../hooks/useArchitectureRefactor";
-import { GovernanceScaffoldTab } from "./tabs/GovernanceScaffoldTab";
+import { useGovernancePatcher } from "../hooks/useGovernancePatcher";
+import { GuardrailsPatcherTab } from "./tabs/GuardrailsPatcherTab";
 import { ArchitectureRefactorTab } from "./tabs/ArchitectureRefactorTab";
 
-interface RemediationModalProps {
+interface GovernanceDashboardModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-export function RemediationModal({ isOpen, onClose }: RemediationModalProps) {
-  const [activeTab, setActiveTab] = useState<"scaffold" | "refactor">("scaffold");
-  const initializer = useProjectInitializer();
+export function GovernanceDashboardModal({
+  isOpen,
+  onClose,
+}: GovernanceDashboardModalProps) {
+  const [activeTab, setActiveTab] = useState<"guardrails" | "refactor">("guardrails");
+  const patcher = useGovernancePatcher();
   const refactor = useArchitectureRefactor();
 
   if (!isOpen) return null;
@@ -23,16 +26,15 @@ export function RemediationModal({ isOpen, onClose }: RemediationModalProps) {
         {/* Header */}
         <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900">
           <div className="flex items-center space-x-2.5">
-            <div className="p-1.5 bg-cyan-500/10 rounded-lg border border-cyan-500/20">
-              <Shield className="w-4 h-4 text-cyan-400" />
+            <div className="p-1.5 bg-purple-500/10 rounded-lg border border-purple-500/20">
+              <Shield className="w-4 h-4 text-purple-400" />
             </div>
             <div>
               <h2 className="text-sm font-bold text-zinc-100">
-                Project Remediation & Governance Studio
+                Architecture Governance & Remediation Studio
               </h2>
               <p className="text-[10px] text-zinc-500 font-mono">
-                Inject modular guardrails and refactor messy codebases into
-                Feature-Driven domains
+                Audit existing repository health, inject guardrails, and refactor messy directories
               </p>
             </div>
           </div>
@@ -45,18 +47,18 @@ export function RemediationModal({ isOpen, onClose }: RemediationModalProps) {
           </button>
         </div>
 
-        {/* Tabs navigation */}
+        {/* Tabs */}
         <div className="flex border-b border-zinc-800 bg-zinc-900/50 p-1 space-x-1">
           <button
-            onClick={() => setActiveTab("scaffold")}
+            onClick={() => setActiveTab("guardrails")}
             className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center space-x-2 transition-colors cursor-pointer ${
-              activeTab === "scaffold"
+              activeTab === "guardrails"
                 ? "bg-zinc-800 text-cyan-300 shadow-sm border border-zinc-700/60"
                 : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
             }`}
           >
             <Shield className="w-3.5 h-3.5" />
-            <span>1. Governance & Rules Scaffolder</span>
+            <span>1. Progressive Guardrails</span>
           </button>
 
           <button
@@ -67,22 +69,22 @@ export function RemediationModal({ isOpen, onClose }: RemediationModalProps) {
                 : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
             }`}
           >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>2. Feature-Driven Refactoring</span>
+            <FolderTree className="w-3.5 h-3.5" />
+            <span>2. Feature Domain Refactor</span>
           </button>
         </div>
 
         {/* Tab Body */}
         <div className="p-5 overflow-y-auto custom-scrollbar flex-1">
-          {activeTab === "scaffold" ? (
-            <GovernanceScaffoldTab
-              options={initializer.scaffoldOptions}
-              onToggleOption={initializer.toggleOption}
-              isScaffolding={initializer.isScaffolding}
-              isBootstrapping={initializer.isBootstrapping}
-              scaffoldDone={initializer.scaffoldDone}
-              bootstrapOutput={initializer.bootstrapOutput}
-              onApplyScaffold={initializer.handleApplyScaffold}
+          {activeTab === "guardrails" ? (
+            <GuardrailsPatcherTab
+              options={patcher.options}
+              onToggleOption={patcher.toggleOption}
+              isPatching={patcher.isPatching}
+              isBootstrapping={patcher.isBootstrapping}
+              patchDone={patcher.patchDone}
+              bootstrapOutput={patcher.bootstrapOutput}
+              onApplyGuardrails={patcher.handleApplyGuardrails}
             />
           ) : (
             <ArchitectureRefactorTab
@@ -98,8 +100,8 @@ export function RemediationModal({ isOpen, onClose }: RemediationModalProps) {
 
         {/* Footer */}
         <div className="p-3 bg-zinc-950 border-t border-zinc-800 text-[11px] text-zinc-500 flex justify-between items-center font-mono">
-          <span>Target Path: Active Workspace</span>
-          <span>Press Esc to exit</span>
+          <span>Target Workspace: Active Repository</span>
+          <span>Press Esc to close</span>
         </div>
       </div>
     </div>

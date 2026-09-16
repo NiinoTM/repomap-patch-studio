@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { useHeaderActions } from "../hooks/useHeaderActions";
 import { useBranchManager } from "../../git-branch/hooks/useBranchManager";
-import { RemediationModal } from "../../project-remediation/components/RemediationModal";
+import { ProjectInitializerModal } from "../../project-initializer/components/ProjectInitializerModal";
+import { GovernanceDashboardModal } from "../../architecture-governance/components/GovernanceDashboardModal";
 import { BranchSelectorPill } from "../../git-branch/components/BranchSelectorPill";
 import { BranchManagerModal } from "../../git-branch/components/BranchManagerModal";
 import { CreateBranchDialog } from "../../git-branch/components/CreateBranchDialog";
@@ -49,17 +50,9 @@ function TokenBudgetWidget({
   availableScopes,
   onActiveScopeChange,
 }: TokenBudgetWidgetProps) {
-  let statusBg = "bg-emerald-500";
-  if (tokenStats.total > 30000) {
-    statusBg = "bg-rose-500";
-  } else if (tokenStats.total > 15000) {
-    statusBg = "bg-amber-500";
-  }
-
+  const statusBg = tokenStats.total > 30000 ? "bg-rose-500" : tokenStats.total > 15000 ? "bg-amber-500" : "bg-emerald-500";
   const formattedTotal =
-    tokenStats.total >= 1000
-      ? `${(tokenStats.total / 1000).toFixed(1)}k`
-      : String(tokenStats.total);
+    tokenStats.total >= 1000 ? `${(tokenStats.total / 1000).toFixed(1)}k` : String(tokenStats.total);
 
   return (
     <div className="absolute left-1/2 -translate-x-1/2 flex items-center space-x-2.5 bg-zinc-900/95 border border-zinc-800 rounded-full px-3 py-1 shadow-sm shrink-0 z-10">
@@ -67,11 +60,7 @@ function TokenBudgetWidget({
         className="flex items-center space-x-1.5 shrink-0"
         title={`Total Tokens: ${tokenStats.total.toLocaleString()} / 30,000 (Map: ${tokenStats.map.toLocaleString()} tks)`}
       >
-        <span
-          className={`w-1.5 h-1.5 rounded-full ${statusBg} ${
-            tokenStats.total > 15000 ? "animate-pulse" : ""
-          }`}
-        />
+        <span className={`w-1.5 h-1.5 rounded-full ${statusBg} ${tokenStats.total > 15000 ? "animate-pulse" : ""}`} />
         <span className="font-mono text-[10px] font-bold text-zinc-200">
           {formattedTotal}
           <span className="text-zinc-500 font-normal">/30k</span>
@@ -90,9 +79,7 @@ function TokenBudgetWidget({
         >
           <option value="all">all (full repo)</option>
           {availableScopes.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
+            <option key={s} value={s}>{s}</option>
           ))}
         </select>
       </div>
@@ -138,38 +125,21 @@ export function Header({
 
   const branchManager = useBranchManager({ onBranchChange: onUndoSuccess });
   const ticketManager = useTickets(onUndoSuccess);
-  const [isRemediationOpen, setIsRemediationOpen] = useState(false);
-
-  // Manual path entry — an alternative to the native OS folder dialog.
-  // Useful under RDP/headless setups where ShowDialog() can hang or fail
-  // to render, but kept available generally as a faster option too.
+  const [isInitializerOpen, setIsInitializerOpen] = useState(false);
+  const [isGovernanceOpen, setIsGovernanceOpen] = useState(false);
   const [isEditingPath, setIsEditingPath] = useState(false);
   const [manualPath, setManualPath] = useState(repoPath);
 
-  const startManualEdit = () => {
-    setManualPath(repoPath);
-    setIsEditingPath(true);
-  };
-
+  const startManualEdit = () => { setManualPath(repoPath); setIsEditingPath(true); };
+  const cancelManualEdit = () => { setManualPath(repoPath); setIsEditingPath(false); };
   const submitManualPath = () => {
     const trimmed = manualPath.trim();
-    if (trimmed && trimmed !== repoPath) {
-      onChangeRepo(trimmed);
-    }
+    if (trimmed && trimmed !== repoPath) onChangeRepo(trimmed);
     setIsEditingPath(false);
   };
-
-  const cancelManualEdit = () => {
-    setManualPath(repoPath);
-    setIsEditingPath(false);
-  };
-
   const handlePathKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      submitManualPath();
-    } else if (e.key === "Escape") {
-      cancelManualEdit();
-    }
+    if (e.key === "Enter") submitManualPath();
+    else if (e.key === "Escape") cancelManualEdit();
   };
 
   const availableScopes = extractAvailableScopes(repoFiles);
@@ -242,12 +212,21 @@ export function Header({
         </div>
 
         <button
-          onClick={() => setIsRemediationOpen(true)}
-          className="flex items-center space-x-1.5 bg-gradient-to-r from-purple-950/50 to-cyan-950/50 border border-purple-500/30 hover:border-purple-500/60 text-purple-300 px-2.5 py-1 rounded text-xs font-medium transition-all shadow-sm cursor-pointer shrink-0"
-          title="Open Project Remediation & Governance Studio"
+          onClick={() => setIsInitializerOpen(true)}
+          className="flex items-center space-x-1.5 bg-emerald-950/50 border border-emerald-500/30 hover:border-emerald-500/60 text-emerald-300 px-2.5 py-1 rounded text-xs font-medium transition-all shadow-sm cursor-pointer shrink-0"
+          title="Initialize a new project from scratch with bootable modular structure"
         >
-          <span className="text-xs">✨</span>
-          <span>Remediate Architecture</span>
+          <span className="text-xs">🌱</span>
+          <span>Init Project</span>
+        </button>
+
+        <button
+          onClick={() => setIsGovernanceOpen(true)}
+          className="flex items-center space-x-1.5 bg-purple-950/50 border border-purple-500/30 hover:border-purple-500/60 text-purple-300 px-2.5 py-1 rounded text-xs font-medium transition-all shadow-sm cursor-pointer shrink-0"
+          title="Audit existing codebase health and refactor domain architecture"
+        >
+          <span className="text-xs">🛡️</span>
+          <span>Architecture Governance</span>
         </button>
       </div>
 
@@ -329,9 +308,14 @@ export function Header({
         </button>
       </div>
 
-      <RemediationModal
-        isOpen={isRemediationOpen}
-        onClose={() => setIsRemediationOpen(false)}
+      <ProjectInitializerModal
+        isOpen={isInitializerOpen}
+        onClose={() => setIsInitializerOpen(false)}
+      />
+
+      <GovernanceDashboardModal
+        isOpen={isGovernanceOpen}
+        onClose={() => setIsGovernanceOpen(false)}
       />
 
       <TicketManagerModal

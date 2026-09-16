@@ -1,4 +1,4 @@
-import { Code2, AlertTriangle } from "lucide-react";
+import { Code2, AlertTriangle, GitMerge } from "lucide-react";
 
 interface StatusBadgeProps {
   status: string;
@@ -30,6 +30,22 @@ export function StatusBadge({
       ) : status === "match" ? (
         <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold uppercase shrink-0">
           {matchLabel}
+        </span>
+      ) : status === "chained" ? (
+        <span
+          className="bg-indigo-500/20 text-indigo-400 text-[10px] px-1.5 py-0.5 rounded border border-indigo-500/30 font-bold uppercase shrink-0 flex items-center"
+          title="Matched against code introduced by an earlier diff block in this changeset"
+        >
+          <GitMerge className="w-3 h-3 mr-1" />
+          <span>Found in Previous Diff</span>
+        </span>
+      ) : status === "collision" ? (
+        <span
+          className="bg-amber-500/20 text-amber-400 text-[10px] px-1.5 py-0.5 rounded border border-amber-500/30 font-bold uppercase shrink-0 flex items-center"
+          title="Matches original file on disk, but collides with an earlier block targeting this file"
+        >
+          <AlertTriangle className="w-3 h-3 mr-1" />
+          <span>Collision</span>
         </span>
       ) : status === "warning" ? (
         <span className="bg-amber-500/20 text-amber-400 text-[10px] px-1.5 py-0.5 rounded border border-amber-500/30 font-bold uppercase shrink-0">
