@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { patchApi } from "../../../api/patchApi";
-import { repoApi } from "../../../api/repoApi";
-import { generateGovernanceDiffBlocks } from "../../project-remediation/utils/scaffoldGenerator";
+import { repoApi, filesApi } from "../../../api/repoApi";
+import { generateGovernancePatchBlocks } from "../patchers/governancePatchGenerator";
 import { GovernanceScaffoldOptions } from "../../../types/remediation";
 
 export const DEFAULT_BROWNFIELD_OPTIONS: GovernanceScaffoldOptions = {
@@ -55,11 +55,20 @@ export function useGovernancePatcher(): UseGovernancePatcherReturn {
     setIsPatching(true);
     setBootstrapOutput(null);
     try {
-      const blocks = generateGovernanceDiffBlocks(options);
+      const filesToFetch = [
+        "package.json",
+        "tsconfig.json",
+        "eslint.config.js",
+        ".husky/pre-commit",
+        "knip.json",
+      ];
+      const fetched = await filesApi.fetchFiles(filesToFetch);
+      const blocks = generateGovernancePatchBlocks(options, fetched.contents || {});
+
       const res = await patchApi.applyStream(
         {
           blocks,
-          commitMessage: "chore: apply architecture governance guardrails with progressive debt mode",
+          commitMessage: "chore: apply non-destructive architecture governance guardrails",
           skipCommit: true,
           commit: false,
         },
