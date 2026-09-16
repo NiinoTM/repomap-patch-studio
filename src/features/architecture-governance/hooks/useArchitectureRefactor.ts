@@ -1,89 +1,40 @@
-import { useState } from "react";
-import {
-  FeatureBlueprintDomain,
-  RefactorStep,
-} from "../../../types/remediation";
-
-const INITIAL_BLUEPRINT: FeatureBlueprintDomain[] = [
-  {
-    name: "Authentication & Users",
-    description: "Encapsulate auth forms, session hooks, and token utils",
-    proposedPath: "src/features/auth",
-    filesToMove: [
-      {
-        id: "m1",
-        sourcePath: "src/components/LoginModal.tsx",
-        targetPath: "src/features/auth/components/LoginModal.tsx",
-        targetFeature: "auth",
-        reason: "UI component specific to user login flows",
-        dependentFilesCount: 3,
-        status: "pending",
-      },
-      {
-        id: "m2",
-        sourcePath: "src/hooks/useAuth.ts",
-        targetPath: "src/features/auth/hooks/useAuth.ts",
-        targetFeature: "auth",
-        reason: "Authentication state management and token storage",
-        dependentFilesCount: 8,
-        status: "pending",
-      },
-      {
-        id: "m3",
-        sourcePath: "src/utils/jwtParser.ts",
-        targetPath: "src/features/auth/utils/jwtParser.ts",
-        targetFeature: "auth",
-        reason: "Pure helper functions for decoding auth tokens",
-        dependentFilesCount: 2,
-        status: "pending",
-      },
-    ],
-  },
-  {
-    name: "Billing & Subscriptions",
-    description: "Isolate payment gateways, pricing cards, and Stripe clients",
-    proposedPath: "src/features/billing",
-    filesToMove: [
-      {
-        id: "m4",
-        sourcePath: "src/components/PricingTable.tsx",
-        targetPath: "src/features/billing/components/PricingTable.tsx",
-        targetFeature: "billing",
-        reason: "Presentation component for plans and tiers",
-        dependentFilesCount: 1,
-        status: "pending",
-      },
-      {
-        id: "m5",
-        sourcePath: "src/services/stripeClient.ts",
-        targetPath: "src/features/billing/api/stripeClient.ts",
-        targetFeature: "billing",
-        reason: "Direct API integration client for payment processor",
-        dependentFilesCount: 4,
-        status: "pending",
-      },
-    ],
-  },
-];
-
-const INITIAL_SELECTED_MOVE_IDS = ["m1", "m2", "m3", "m4", "m5"];
+import { useState, useCallback } from "react";
+import { repoApi } from "../../../api/repoApi";
+import { patchApi } from "../../../api/patchApi";
+import { DiffBlock } from "../../../types/patch";
+import { FeatureBlueprintDomain, RefactorStep, ProposedFileMove } from "../../../types/remediation";
+import { clusterDomains } from "../analyzer/domainClusterEngine";
+import { scanBoundaryViolations, BoundaryViolation } from "../analyzer/boundaryViolationScanner";
 
 export interface UseArchitectureRefactorReturn {
   refactorStep: RefactorStep;
   blueprint: FeatureBlueprintDomain[];
   selectedMoveIds: Set<string>;
+  violations: BoundaryViolation[];
   toggleMoveSelection: (id: string) => void;
   handleAnalyzeProject: () => Promise<void>;
   handleExecuteSelectedMoves: () => Promise<void>;
   resetRefactorState: () => void;
 }
 
+function buildMoveBlocks(approvedMoves: ProposedFileMove[]): DiffBlock[] {
+  return approvedMoves.map((m) => ({
+    id: `move-${m.id}`,
+    file: m.sourcePath,
+    moveTo: m.targetPath,
+    type: "move",
+    changeType: "MOVE",
+    search: "",
+    replace: "",
+    status: "match",
+  }));
+}
+
 export function useArchitectureRefactor(): UseArchitectureRefactorReturn {
   const [refactorStep, setRefactorStep] = useState<RefactorStep>("idle");
-  const [blueprint] = useState<FeatureBlueprintDomain[]>(INITIAL_BLUEPRINT);
-  const [selectedMoveIds, setSelectedMoveIds] = useState<Set<string>>(
-    () => new Set(INITIAL_SELECTED_MOVE_IDS),
-  );
+  const [blueprint, setBlueprint] = useState<FeatureBlueprintDomain[]>([]);
+  const [violations, setViolations] = useState<BoundaryViolation[]>([]);
+  const [selectedMoveIds, setSelectedMoveIds] = useState<Set<string>>(new Set());
 
   const toggleMoveSelection = (id: string) => {
     setSelectedMoveIds((prev) => {
@@ -94,27 +45,87 @@ export function useArchitectureRefactor(): UseArchitectureRefactorReturn {
     });
   };
 
-  const handleAnalyzeProject = async () => {
+  const handleAnalyzeProject = useCallback(async () => {
     setRefactorStep("analyzing");
-    await new Promise((res) => setTimeout(res, 1800));
-    setRefactorStep("blueprint-ready");
-  };
+    try {
+      const repoData = await repoApi.fetchRepo();
+      if (!repoData.success) {
+        alert(`❌ Failed to scan workspace: ${repoData.error || "Unknown error"}`);
+        setRefactorStep("idle");
+        return;
+      }
 
-  const handleExecuteSelectedMoves = async () => {
+      const foundViolations = scanBoundaryViolations({
+        files: repoData.files,
+        dependencyMap: repoData.dependencyMap || { outbound: {}, inbound: {} },
+        fileStats: repoData.fileStats,
+      });
+      setViolations(foundViolations);
+
+      const clustered = clusterDomains(repoData.files, repoData.dependencyMap || { outbound: {}, inbound: {} });
+      setBlueprint(clustered);
+
+      const allIds = new Set<string>();
+      clustered.forEach((d) => d.filesToMove.forEach((m) => allIds.add(m.id)));
+      setSelectedMoveIds(allIds);
+
+      setRefactorStep("blueprint-ready");
+    } catch (err) {
+      console.error("Error analyzing architecture:", err);
+      setRefactorStep("idle");
+    }
+  }, []);
+
+  const handleExecuteSelectedMoves = useCallback(async () => {
     setRefactorStep("executing");
-    await new Promise((res) => setTimeout(res, 2000));
-    setRefactorStep("done");
-  };
+    try {
+      const approvedMoves = blueprint
+        .flatMap((d) => d.filesToMove)
+        .filter((m) => selectedMoveIds.has(m.id));
+
+      if (approvedMoves.length === 0) {
+        alert("No moves selected for execution.");
+        setRefactorStep("blueprint-ready");
+        return;
+      }
+
+      const blocks = buildMoveBlocks(approvedMoves);
+      const res = await patchApi.applyStream(
+        {
+          blocks,
+          commitMessage: `refactor(arch): migrate ${approvedMoves.length} files to feature domains`,
+          skipCommit: true,
+          commit: false,
+        },
+        () => {},
+      );
+
+      if (!res.success) {
+        alert(`❌ Failed to execute moves: ${res.error || "Unknown error"}`);
+        setRefactorStep("blueprint-ready");
+        return;
+      }
+
+      setRefactorStep("done");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(`❌ Error executing architecture refactor: ${msg}`);
+      setRefactorStep("blueprint-ready");
+    }
+  }, [blueprint, selectedMoveIds]);
 
   const resetRefactorState = () => {
     setRefactorStep("idle");
-    setSelectedMoveIds(new Set(INITIAL_SELECTED_MOVE_IDS));
+    setBlueprint([]);
+    setViolations([]);
+    setSelectedMoveIds(new Set());
   };
 
   return {
     refactorStep,
     blueprint,
     selectedMoveIds,
+    violations,
     toggleMoveSelection,
     handleAnalyzeProject,
     handleExecuteSelectedMoves,

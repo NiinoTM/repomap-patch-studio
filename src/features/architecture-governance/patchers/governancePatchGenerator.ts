@@ -11,7 +11,7 @@ import {
   buildVitestSampleTest,
   buildPlaywrightConfig,
   buildPlaywrightSmokeTest,
-} from "../../project-remediation/utils/scaffoldTemplates";
+} from "./governanceAuxTemplates";
 
 function makeBlock(
   file: string,
