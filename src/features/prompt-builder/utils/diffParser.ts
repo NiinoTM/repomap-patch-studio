@@ -8,9 +8,10 @@ interface IdleParseResult {
 
 function parseIdleLine(trimmed: string, currentFile: string): IdleParseResult {
   const fileMatch = trimmed.match(
-    /^(?:FILE|OVERWRITE FILE|File|Path|###|\*\*)\s*:?\s*[`"']?([^`"']+\.[a-zA-Z0-9]+)[`"']?/i,
+    /^(?:FILE|OVERWRITE FILE|File|Path|###|\*\*)\s*:?\s*(?:[`"']([^`"'\n]+)[`"']|([^\s`"':*]+))(?:\s*(?:—|--|-|:)\s*.*)?$/i,
   );
-  const nextFile = fileMatch ? fileMatch[1] : currentFile;
+  const rawFile = fileMatch ? (fileMatch[1] || fileMatch[2] || "").trim().replace(/\*\*$/, "") : "";
+  const nextFile = rawFile || currentFile;
 
   const moveMatch = trimmed.match(
     /^(MOVE|RENAME|Move|Rename)\s*:?\s*[`"']?([^`"'\n]+?)[`"']?\s*(?:->|→|to)\s*[`"']?([^`"'\n]+?)[`"']?$/i,
@@ -45,12 +46,12 @@ function parseCreateOverwrites(
   startIndex: number,
 ): void {
   const createRegex =
-    /(?:Create|Overwriting|File:)[ \t]*['"]?([^'":\n]+?\.[a-zA-Z0-9]+)['"]?:?[ \t]*\n```[a-zA-Z]*\n([\s\S]*?)\n```/gi;
+    /(?:Create|Overwriting|File:)[ \t]*[`'"]?([^`'":\n\s]+|[`'"][^`'":\n]+[`'"])[`'"]?:?[ \t]*\n```[a-zA-Z]*\n([\s\S]*?)\n```/gi;
   let match;
   let index = startIndex;
 
   while ((match = createRegex.exec(rawText)) !== null) {
-    const filePath = match[1].trim();
+    const filePath = match[1].replace(/[`'"]/g, "").trim();
     const replaceContent = match[2];
     const isDuplicate = blocks.some(
       (b) => b.file === filePath && b.replace === replaceContent,
@@ -176,8 +177,9 @@ export function parseFileList(
   };
 
   const lineRegex =
-    /^(?:-\s*|\*\s*|\d+\.\s*)?[`"']?([a-zA-Z0-9_./\\-]+\.[a-zA-Z0-9]+)[`"']?(?:\s*(?:—|-|:)\s*.*)?$/;
-  const pathInLineRegex = /[`"']?([a-zA-Z0-9_./\\-]+\.[a-zA-Z0-9]+)[`"']?/g;
+    /^(?:-\s*|\*\s*|\d+\.\s*)?[`"']?([a-zA-Z0-9_./\\-]+)[`"']?(?:\s*(?:—|--|-|:)\s*.*)?$/;
+  const pathInLineRegex =
+    /[`"']?([a-zA-Z0-9_./\\-]+\.[a-zA-Z0-9]+|(?:\.[a-zA-Z0-9_/-]+|[a-zA-Z0-9_./\\-]*\/[a-zA-Z0-9_.-]+))[`"']?/g;
 
   for (const rawLine of lines) {
     const line = rawLine.trim();

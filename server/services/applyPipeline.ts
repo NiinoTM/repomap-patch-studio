@@ -1,6 +1,7 @@
 import { getDirtyFiles } from "../adapters/gitAdapter";
 import { StageRunner } from "../utils/streamProgress";
 import { DiffBlockInput } from "./patchEngine";
+import { clearLinterCache } from "./lintService";
 import {
   resolveEditWrites,
   validateMoveBlocks,
@@ -138,6 +139,9 @@ export async function runApplyPipeline(
   const { emit, runStage } = runner;
   const moveBlocks = blocks.filter((b) => b.type === "move");
   const editBlocks = blocks.filter((b) => b.type !== "move");
+
+  // Invalidate any cached ESLint instance so modified configs (e.g. eslint.config.js, tsconfig.json) take effect
+  clearLinterCache();
 
   try {
     const { pendingWrites, validationErrors } = await validatePipeline(

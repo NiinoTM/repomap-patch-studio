@@ -8,6 +8,10 @@ const LINTABLE_EXTENSIONS = [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"];
 // transaction can call this several times in one request.
 let cachedLinter: { repoPath: string; instance: ESLint } | null = null;
 
+export function clearLinterCache(): void {
+  cachedLinter = null;
+}
+
 function getLinter(repoPath: string): ESLint {
   if (cachedLinter && cachedLinter.repoPath === repoPath) {
     return cachedLinter.instance;
@@ -49,6 +53,14 @@ export async function validateLint(
 
     for (const result of results) {
       for (const msg of result.messages) {
+        // In-memory pre-flight linting cannot be resolved by typescript-eslint Project Service
+        // if the file does not yet exist on disk in the tsconfig tree. Skip this false-positive artifact.
+        if (
+          msg.message.includes("was not found by the project service") ||
+          msg.message.includes("cannot be found by the project service")
+        ) {
+          continue;
+        }
         if (msg.severity >= 1) {
           errors.push(formatLintMessage(filePath, msg));
         }

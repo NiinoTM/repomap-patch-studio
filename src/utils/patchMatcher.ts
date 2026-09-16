@@ -191,6 +191,32 @@ function applyCondensedMatch(
   );
 }
 
+function restoreLineEndings(applied: string, isCrlf: boolean): string {
+  return isCrlf ? applied.replace(/\n/g, "\r\n") : applied;
+}
+
+function tryMatchStrategies(
+  normContent: string,
+  normSearch: string,
+  normReplace: string,
+): { content: string; strategy: ApplyBlockResult["matchStrategy"] } | null {
+  if (normContent.includes(normSearch)) {
+    return {
+      content: normContent.replace(normSearch, () => normReplace),
+      strategy: "exact",
+    };
+  }
+  const fuzzy = applyFuzzyIndentationMatch(normContent, normSearch, normReplace);
+  if (fuzzy !== null) {
+    return { content: fuzzy, strategy: "fuzzy-indent" };
+  }
+  const condensed = applyCondensedMatch(normContent, normSearch, normReplace);
+  if (condensed !== null) {
+    return { content: condensed, strategy: "condensed" };
+  }
+  return null;
+}
+
 /**
  * Pure In-Memory Block Application Engine (Exact, Fuzzy Indentation & Condensed Token Stream).
  */
@@ -206,41 +232,18 @@ export function applyBlockToContent(
     };
   }
 
-  const normContent = normalizeText(content);
-  const normSearch = normalizeText(block.search);
-  const normReplace = normalizeText(block.replace);
-
-  if (normContent.includes(normSearch)) {
-    return {
-      success: true,
-      newContent: normContent.replace(normSearch, normReplace),
-      matchStrategy: "exact",
-    };
-  }
-
-  const fuzzyMatch = applyFuzzyIndentationMatch(
-    normContent,
-    normSearch,
-    normReplace,
+  const isCrlf = content.includes("\r\n");
+  const matched = tryMatchStrategies(
+    normalizeText(content),
+    normalizeText(block.search),
+    normalizeText(block.replace),
   );
-  if (fuzzyMatch !== null) {
-    return {
-      success: true,
-      newContent: fuzzyMatch,
-      matchStrategy: "fuzzy-indent",
-    };
-  }
 
-  const condensedMatch = applyCondensedMatch(
-    normContent,
-    normSearch,
-    normReplace,
-  );
-  if (condensedMatch !== null) {
+  if (matched) {
     return {
       success: true,
-      newContent: condensedMatch,
-      matchStrategy: "condensed",
+      newContent: restoreLineEndings(matched.content, isCrlf),
+      matchStrategy: matched.strategy,
     };
   }
 
