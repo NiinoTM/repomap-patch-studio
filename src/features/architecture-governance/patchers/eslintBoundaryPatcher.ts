@@ -1,10 +1,34 @@
 import { GovernanceScaffoldOptions } from "../../../types/remediation";
 
+function buildRestrictedImportsConfig(severity: string): string {
+  return `,\n  {
+    files: ["src/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "${severity}",
+        {
+          patterns: [
+            {
+              group: ["@/src/features/*/**", "@/features/*/**", "src/features/*/**"],
+              message: "Direct internal feature imports via root alias are forbidden. Import from '@features/<domain>'.",
+            },
+            {
+              group: ["../*/features/**", "../../features/**", "../features/**"],
+              message: "Cross-feature relative imports are forbidden. Import from '@features/<domain>'.",
+            },
+          ],
+        },
+      ],
+    },
+  }`;
+}
+
 function buildBoundaryObject(opts: GovernanceScaffoldOptions): string {
   const severity = opts.softTechnicalDebtMode ? "warn" : "error";
   const entryPointRule = opts.featurePublicApiBarrier
     ? `\n      "boundaries/entry-point": ["${severity}", { default: "disallow", rules: [{ target: ["src/features/*/**/*"], allow: "src/features/*/index.ts" }] }],`
     : "";
+  const restrictedConfig = opts.featurePublicApiBarrier ? buildRestrictedImportsConfig(severity) : "";
 
   return `  {
     files: ["src/**/*.{ts,tsx}", "server/**/*.ts"],
@@ -32,7 +56,7 @@ function buildBoundaryObject(opts: GovernanceScaffoldOptions): string {
         ],
       }],${entryPointRule}
     },
-  }`;
+  }${restrictedConfig}`;
 }
 
 function injectBoundaryConfig(content: string, chunk: string): string {

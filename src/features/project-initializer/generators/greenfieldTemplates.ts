@@ -46,14 +46,29 @@ export function buildGreenfieldPackageJson(opts: GovernanceScaffoldOptions): str
     express: "^4.19.2",
     ...(opts.zodRuntimeContracts ? { zod: "^3.23.8" } : {}),
   };
-  const pkg = {
+  const pkg: Record<string, unknown> = {
     name: "modular-governed-app",
     private: true,
     version: "0.1.0",
     type: "module",
+    ...(opts.featurePublicApiBarrier || opts.strictSubpathExports
+      ? {
+          exports: {
+            ".": "./src/main.tsx",
+            "./features/*": "./src/features/*/index.ts",
+          },
+        }
+      : {}),
     scripts: getGreenfieldScripts(opts),
     dependencies: deps,
     devDependencies: getGreenfieldDevDeps(opts),
+    ...(opts.huskyPreCommitHook
+      ? {
+          "lint-staged": {
+            "*.{ts,tsx,js,jsx}": ["eslint --max-warnings=0"],
+          },
+        }
+      : {}),
     sideEffects: ["**/*.css", "**/*.scss"],
   };
   return JSON.stringify(pkg, null, 2);
@@ -72,6 +87,15 @@ export function buildGreenfieldTsConfig(opts?: GovernanceScaffoldOptions): strin
         skipLibCheck: true,
         esModuleInterop: true,
         isolatedModules: true,
+        ...(opts?.featurePublicApiBarrier
+          ? {
+              baseUrl: ".",
+              paths: {
+                "@features/*": ["src/features/*/index.ts"],
+                "@/*": ["./src/*"],
+              },
+            }
+          : {}),
         ...(opts?.vitestUnitTesting ? { types: ["vitest/globals"] } : {}),
       },
       include: ["src/**/*", "server/**/*", "vite.config.ts"],
@@ -81,11 +105,37 @@ export function buildGreenfieldTsConfig(opts?: GovernanceScaffoldOptions): strin
   );
 }
 
+function buildRestrictedImportsConfig(severity: string): string {
+  return `,
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "${severity}",
+        {
+          patterns: [
+            {
+              group: ["@/src/features/*/**", "@/features/*/**", "src/features/*/**"],
+              message: "Direct internal feature imports via root alias are forbidden. Import from '@features/<domain>'.",
+            },
+            {
+              group: ["../*/features/**", "../../features/**", "../features/**"],
+              message: "Cross-feature relative imports are forbidden. Import from '@features/<domain>'.",
+            },
+          ],
+        },
+      ],
+    },
+  }`;
+}
+
 function buildBoundariesConfig(opts: GovernanceScaffoldOptions, severity: string): string {
   if (!opts.eslintLayerBoundaries && !opts.featurePublicApiBarrier) return "";
   const entryPointRule = opts.featurePublicApiBarrier
     ? `"boundaries/entry-point": ["${severity}", { default: "disallow", rules: [{ target: ["src/features/*/**/*"], allow: "src/features/*/index.ts" }] }],`
     : "";
+  const restrictedImportsConfig = opts.featurePublicApiBarrier ? buildRestrictedImportsConfig(severity) : "";
+
   return `,
   {
     files: ["src/**/*.{ts,tsx}", "server/**/*.ts"],
@@ -114,7 +164,7 @@ function buildBoundariesConfig(opts: GovernanceScaffoldOptions, severity: string
       }],
       ${entryPointRule}
     },
-  }`;
+  }${restrictedImportsConfig}`;
 }
 
 export function buildGreenfieldEslintConfig(opts: GovernanceScaffoldOptions): string {

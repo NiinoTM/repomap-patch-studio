@@ -7,6 +7,8 @@ interface PackageJsonShape {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   sideEffects?: string[] | boolean;
+  exports?: Record<string, unknown> | string;
+  "lint-staged"?: Record<string, string[]>;
   [key: string]: unknown;
 }
 
@@ -76,29 +78,62 @@ function mergeSideEffects(existing?: string[] | boolean): string[] {
   return base;
 }
 
+function parseExistingPackageJson(content?: string | null): PackageJsonShape {
+  if (!content) return {};
+  try {
+    return JSON.parse(content);
+  } catch {
+    return {};
+  }
+}
+
+function mergeSubpathExports(existingExports?: unknown): Record<string, unknown> {
+  const current =
+    typeof existingExports === "object" && existingExports !== null
+      ? { ...(existingExports as Record<string, unknown>) }
+      : {};
+  current["./features/*"] = current["./features/*"] || "./src/features/*/index.ts";
+  current["."] = current["."] || "./src/main.tsx";
+  return current;
+}
+
+function mergeLintStaged(existingLintStaged?: unknown): Record<string, string[]> {
+  const current =
+    typeof existingLintStaged === "object" && existingLintStaged !== null
+      ? { ...(existingLintStaged as Record<string, string[]>) }
+      : {};
+  current["*.{ts,tsx,js,jsx}"] = current["*.{ts,tsx,js,jsx}"] || ["eslint --max-warnings=0"];
+  return current;
+}
+
+function shouldAddZod(deps?: Record<string, string>, devDeps?: Record<string, string>): boolean {
+  return !deps?.zod && !devDeps?.zod;
+}
+
 export function patchPackageJson(
   existingContent: string | null | undefined,
   opts: GovernanceScaffoldOptions,
 ): { content: string; isModified: boolean } {
-  let parsed: PackageJsonShape = {};
-  if (existingContent) {
-    try {
-      parsed = JSON.parse(existingContent);
-    } catch {
-      parsed = {};
-    }
-  }
+  const parsed = parseExistingPackageJson(existingContent);
 
   parsed.scripts = { ...parsed.scripts, ...getMissingScripts(parsed.scripts, opts) };
-  if (opts.zodRuntimeContracts && !parsed.dependencies?.zod && !parsed.devDependencies?.zod) {
+
+  if (opts.zodRuntimeContracts && shouldAddZod(parsed.dependencies, parsed.devDependencies)) {
     parsed.dependencies = { ...parsed.dependencies, zod: "^3.23.8" };
   }
+
   parsed.devDependencies = {
     ...parsed.devDependencies,
     ...getRequiredDevDeps(parsed.devDependencies, opts),
   };
+
   if (opts.featurePublicApiBarrier) {
     parsed.sideEffects = mergeSideEffects(parsed.sideEffects);
+    parsed.exports = mergeSubpathExports(parsed.exports);
+  }
+
+  if (opts.huskyPreCommitHook) {
+    parsed["lint-staged"] = mergeLintStaged(parsed["lint-staged"]);
   }
 
   return {
