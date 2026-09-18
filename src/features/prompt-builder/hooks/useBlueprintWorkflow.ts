@@ -22,6 +22,10 @@ export interface UseBlueprintWorkflowReturn {
   setActiveTargetIndex: (index: number | null) => void;
 }
 
+export function validateBlueprintPayload(rawInput: string) {
+  return parseStructuredBlueprint(rawInput);
+}
+
 export function useBlueprintWorkflow(): UseBlueprintWorkflowReturn {
   const [phase, setPhase] = useState<BlueprintPhaseState>("idle");
   const [blueprint, setBlueprint] = useState<StructuredBlueprint | null>(null);
