@@ -9,21 +9,28 @@ import {
 } from "./prompt/RepoMapPreviewModal";
 import { PromptActionButtons } from "./prompt/PromptActionButtons";
 import { BlueprintReviewModal } from "./prompt/BlueprintReviewModal";
+import { SocraticConfrontationModal } from "./prompt/SocraticConfrontationModal";
+import { ActiveTicketBanner } from "./prompt/ActiveTicketBanner";
 import { useMentionPopup } from "../hooks/useMentionPopup";
 import { useSuggestedContext } from "../hooks/useSuggestedContext";
 import { useFileSelection } from "../hooks/useFileSelection";
 import { useTokenEstimate } from "../hooks/useTokenEstimate";
 import { useCopyPrompt } from "../hooks/useCopyPrompt";
 import { useBlueprintWorkflow } from "../hooks/useBlueprintWorkflow";
-import {
-  findMissingDependencies,
-  MissingDependency,
-} from "../utils/completenessCheck";
+import { useSocraticGate } from "../hooks/useSocraticGate";
+import { useCompletenessGuard } from "../hooks/useCompletenessGuard";
 import { CompletenessWarningModal } from "./prompt/CompletenessWarningModal";
-import { buildArchitecturalBlueprintPrompt } from "../utils/promptTemplates";
+import {
+  buildArchitecturalBlueprintPrompt,
+  formatActiveFilesContext,
+} from "../utils/promptTemplates";
+import {
+  buildSocraticConfrontationPrompt,
+  sanitizeSocraticAnswers,
+} from "../utils/socraticPrompt";
+import { ticketApi } from "../../../api/ticketApi";
 import { parseFileList } from "../utils/diffParser";
 import { Ticket } from "../../../types/ticket";
-import { CheckSquare } from "lucide-react";
 
 interface PromptPanelProps {
   onCopy: (promptText: string) => void;
@@ -50,19 +57,6 @@ interface PromptPanelProps {
   activeTicket?: Ticket | null;
 }
 
-function formatTicketPromptText(ticket: Ticket): string {
-  let text = `[${ticket.id}] ${ticket.title}`;
-  if (ticket.description) {
-    text += `\n\nContext & Description:\n${ticket.description}`;
-  }
-  if (ticket.requirements && ticket.requirements.length > 0) {
-    text += `\n\nAcceptance Criteria / Requirements Checklist:\n${ticket.requirements
-      .map((r) => `- [ ] ${r}`)
-      .join("\n")}`;
-  }
-  return text;
-}
-
 export function PromptPanel({
   onCopy,
   onCopyMap,
@@ -80,13 +74,6 @@ export function PromptPanel({
   const [request, setRequest] = useState("");
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [missingDependencies, setMissingDependencies] = useState<
-    MissingDependency[]
-  >([]);
-  const [pendingCopyAction, setPendingCopyAction] = useState<
-    "full" | "files" | "tests" | null
-  >(null);
-  const [autoConfirmCopy, setAutoConfirmCopy] = useState(false);
 
   const {
     seedFiles,
@@ -142,71 +129,73 @@ export function PromptPanel({
   } = useCopyPrompt({ selectedFiles, repoMap, request, discoveryMode, onCopy });
 
   const blueprintWorkflow = useBlueprintWorkflow();
+  const socraticGate = useSocraticGate();
+
+  const {
+    missingDependencies,
+    pendingCopyAction,
+    handleCopyClick,
+    handleAddMissingAndCopy,
+    handleCopyAnyway,
+    handleCancelCompletenessWarning,
+  } = useCompletenessGuard({
+    selectedFiles,
+    dependencyMap,
+    discoveryMode,
+    copyFullContext,
+    copyFilesAndPrompt,
+    copyUnitTestPrompt,
+    acceptAllSuggestions,
+  });
+
+  const handleConfrontLogic = () => {
+    const prompt = buildSocraticConfrontationPrompt({
+      repoMap,
+      activeFilesText: formatActiveFilesContext(selectedFiles, {}),
+      userRequest: request || "Interrogate requirements for missing failure modes and routing.",
+      activeTicket,
+    });
+    onCopy(prompt);
+    socraticGate.openModal();
+  };
+
+  const handleApplyFortifiedCriteria = async () => {
+    await socraticGate.applyFortifiedCriteria(async (fortified) => {
+      setRequest((prev) => prev + fortified);
+
+      if (activeTicket) {
+        const check = sanitizeSocraticAnswers(socraticGate.answersText);
+        const currentReqs = activeTicket.requirements || [];
+        const newReq = `[Socratic] ${check.sanitized.slice(0, 120)}`;
+        if (!currentReqs.includes(newReq)) {
+          const updatedReqs = [...currentReqs, newReq];
+          try {
+            await ticketApi.updateTicket(activeTicket.id, {
+              requirements: updatedReqs,
+            });
+            activeTicket.requirements = updatedReqs;
+          } catch (err) {
+            console.error("Failed to persist requirements to ticket on disk:", err);
+          }
+        }
+      }
+    });
+  };
 
   const handleGenerateBlueprintPrompt = () => {
     const prompt = buildArchitecturalBlueprintPrompt({
       repoMap,
-      activeFilesText: "No specific files selected. Architecting from repo map.",
+      activeFilesText: formatActiveFilesContext(selectedFiles, {}),
       userRequest: request || "Generate modular architecture following SRP.",
     });
     onCopy(prompt);
   };
 
-  const executeCopyAction = (action: "full" | "files" | "tests") => {
-    if (action === "full") copyFullContext();
-    else if (action === "files") copyFilesAndPrompt();
-    else if (action === "tests") copyUnitTestPrompt();
-  };
-
-  // Runs after selectedFiles updates (post acceptAllSuggestions) so the
-  // copy actions below read the freshly-added files, not a stale closure.
-  useEffect(() => {
-    if (!pendingCopyAction || !autoConfirmCopy) return;
-    executeCopyAction(pendingCopyAction);
-    setPendingCopyAction(null);
-    setAutoConfirmCopy(false);
-    setMissingDependencies([]);
-  }, [selectedFiles]);
-
-  // Discovery mode round-trip: when the parent hands back a file list
-  // parsed from the AI's "what do you need" response, fold it into the
-  // normal selection set (same mechanism as accepting a suggestion) and
-  // tell the parent it's been consumed so it doesn't get re-applied.
   useEffect(() => {
     if (!discoveredFiles || discoveredFiles.length === 0) return;
     acceptAllSuggestions(discoveredFiles);
     onDiscoveredFilesConsumed();
   }, [discoveredFiles]);
-
-  const handleCopyClick = (action: "full" | "files" | "tests") => {
-    if (discoveryMode) {
-      copyFullContext();
-      return;
-    }
-    const missing = findMissingDependencies(selectedFiles, dependencyMap);
-    if (missing.length > 0) {
-      setMissingDependencies(missing);
-      setPendingCopyAction(action);
-      return;
-    }
-    executeCopyAction(action);
-  };
-
-  const handleAddMissingAndCopy = () => {
-    acceptAllSuggestions(missingDependencies.map((dep) => dep.filePath));
-    setAutoConfirmCopy(true);
-  };
-
-  const handleCopyAnyway = () => {
-    if (pendingCopyAction) executeCopyAction(pendingCopyAction);
-    setPendingCopyAction(null);
-    setMissingDependencies([]);
-  };
-
-  const handleCancelCompletenessWarning = () => {
-    setPendingCopyAction(null);
-    setMissingDependencies([]);
-  };
 
   const handlePasteSelection = async () => {
     try {
@@ -251,26 +240,12 @@ export function PromptPanel({
         />
 
         {activeTicket && (
-          <div className="bg-indigo-950/30 border border-indigo-500/30 rounded-lg p-2 flex items-center justify-between text-xs">
-            <div className="flex items-center space-x-2 min-w-0">
-              <CheckSquare className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-              <span className="font-bold text-indigo-200 font-mono shrink-0">
-                {activeTicket.id}:
-              </span>
-              <span className="text-zinc-300 truncate font-sans">
-                {activeTicket.title}
-              </span>
-            </div>
-            <button
-              onClick={() => {
-                const text = formatTicketPromptText(activeTicket);
-                setRequest((prev) => text + (prev ? `\n\n${prev}` : ""));
-              }}
-              className="text-[10px] text-indigo-400 hover:text-indigo-300 font-mono shrink-0 ml-2 hover:underline cursor-pointer"
-            >
-              + Inject to prompt
-            </button>
-          </div>
+          <ActiveTicketBanner
+            activeTicket={activeTicket}
+            onInjectToPrompt={(text) =>
+              setRequest((prev) => text + (prev ? `\n\n${prev}` : ""))
+            }
+          />
         )}
 
         <textarea
@@ -337,6 +312,20 @@ export function PromptPanel({
         onCopyTests={() => handleCopyClick("tests")}
         onGenerateBlueprint={handleGenerateBlueprintPrompt}
         onOpenBlueprintReview={blueprintWorkflow.openReviewModal}
+        onConfrontLogic={handleConfrontLogic}
+        hasConfrontation={socraticGate.hasConfrontation}
+      />
+
+      <SocraticConfrontationModal
+        isOpen={socraticGate.isOpen}
+        onClose={socraticGate.closeModal}
+        critiqueText={socraticGate.critiqueText}
+        onCritiqueChange={socraticGate.setCritiqueText}
+        answersText={socraticGate.answersText}
+        onAnswersChange={socraticGate.setAnswersText}
+        onApplyFortified={handleApplyFortifiedCriteria}
+        hasConfrontation={socraticGate.hasConfrontation}
+        isPersisting={socraticGate.isPersisting}
       />
 
       <BlueprintReviewModal

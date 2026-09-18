@@ -1,5 +1,7 @@
 import { Shield, Layers, Copy, FileText, FlaskConical } from "lucide-react";
 
+import { Flame } from "lucide-react";
+
 interface PromptActionButtonsProps {
   discoveryMode: boolean;
   selectedFilesCount: number;
@@ -12,6 +14,8 @@ interface PromptActionButtonsProps {
   onCopyTests: () => void;
   onGenerateBlueprint: () => void;
   onOpenBlueprintReview: () => void;
+  onConfrontLogic?: () => void;
+  hasConfrontation?: boolean;
 }
 
 export function PromptActionButtons({
@@ -26,12 +30,32 @@ export function PromptActionButtons({
   onCopyTests,
   onGenerateBlueprint,
   onOpenBlueprintReview,
+  onConfrontLogic,
+  hasConfrontation,
 }: PromptActionButtonsProps) {
   const isAnyCopying = isCopying || isCopyingFiles || isCopyingTests;
+  const isDirectPromptUnlocked =
+    isBlueprintApproved || discoveryMode || Boolean(hasConfrontation);
 
   return (
     <div className="space-y-2 shrink-0">
       <div className="flex space-x-2">
+        <button
+          onClick={onConfrontLogic}
+          disabled={isAnyCopying}
+          className={`flex-1 font-semibold py-2 rounded-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all text-[11px] shadow-lg cursor-pointer border ${
+            hasConfrontation
+              ? "bg-amber-950/40 border-amber-500/40 text-amber-300"
+              : "bg-gradient-to-r from-amber-700 to-orange-700 hover:from-amber-600 hover:to-orange-600 text-white border-amber-600/30 shadow-amber-900/20"
+          }`}
+          title="Socratic Gate: Challenge assumptions, failure modes, and routing before blueprinting"
+        >
+          <Flame className="w-3.5 h-3.5 shrink-0 text-amber-200" />
+          <span className="truncate">
+            {hasConfrontation ? "Logic Fortified" : "Confront Logic"}
+          </span>
+        </button>
+
         <button
           onClick={onGenerateBlueprint}
           disabled={isAnyCopying}
@@ -39,7 +63,7 @@ export function PromptActionButtons({
           title="Phase 1: Request an architectural blueprint before writing code"
         >
           <Shield className="w-3.5 h-3.5 shrink-0 text-cyan-200" />
-          <span className="truncate">Phase 1: Blueprint Prompt</span>
+          <span className="truncate">Phase 1: Blueprint</span>
         </button>
 
         <button
@@ -52,22 +76,22 @@ export function PromptActionButtons({
           title="Review and validate the AI's architectural blueprint"
         >
           <Layers className="w-3.5 h-3.5 shrink-0" />
-          <span>{isBlueprintApproved ? "Blueprint Approved" : "Review"}</span>
+          <span>{isBlueprintApproved ? "Approved" : "Review"}</span>
         </button>
       </div>
 
       <div className="flex space-x-2">
         <button
           onClick={onCopyFull}
-          disabled={isAnyCopying || (!isBlueprintApproved && !discoveryMode)}
+          disabled={isAnyCopying || !isDirectPromptUnlocked}
           className={`flex-1 font-semibold py-2 rounded-lg shadow-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed text-[11px] ${
             discoveryMode
               ? "bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-indigo-500/10"
               : "bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700"
           }`}
           title={
-            !isBlueprintApproved && !discoveryMode
-              ? "Approve Phase 1 Blueprint first to unlock implementation prompts"
+            !isDirectPromptUnlocked
+              ? "Confront logic or approve blueprint to unlock implementation prompts"
               : ""
           }
         >
@@ -87,12 +111,12 @@ export function PromptActionButtons({
             isAnyCopying ||
             selectedFilesCount === 0 ||
             discoveryMode ||
-            !isBlueprintApproved
+            !isDirectPromptUnlocked
           }
           className="flex-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-semibold py-2 rounded-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed border border-zinc-800 text-[11px]"
           title={
-            !isBlueprintApproved
-              ? "Approve Phase 1 Blueprint first to unlock implementation prompts"
+            !isDirectPromptUnlocked
+              ? "Confront logic or approve blueprint to unlock implementation prompts"
               : ""
           }
         >

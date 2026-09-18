@@ -6,9 +6,11 @@ export { Footer } from "./components/Footer";
 export { Toast } from "./components/Toast";
 export { BlueprintReviewModal } from "./components/prompt/BlueprintReviewModal";
 export { PromptActionButtons } from "./components/prompt/PromptActionButtons";
+export { SocraticConfrontationModal } from "./components/prompt/SocraticConfrontationModal";
 
 // Custom Hooks
 export { useBlueprintWorkflow } from "./hooks/useBlueprintWorkflow";
+export { useSocraticGate } from "./hooks/useSocraticGate";
 export { useRepoContext } from "./hooks/useRepoContext";
 export { usePasteAndValidate } from "./hooks/usePasteAndValidate";
 export { useApplyChanges } from "./hooks/useApplyChanges";
@@ -36,6 +38,7 @@ export {
   buildArchitecturalBlueprintPrompt,
   buildAutoHealPrompt,
 } from "./utils/promptTemplates";
+export { buildSocraticConfrontationPrompt } from "./utils/socraticPrompt";
 export { parseDiffBlocks, parseFileList } from "./utils/diffParser";
 export { generateCommitMessage } from "./utils/commitMessageGenerator";
 export { buildFileTree, type TreeNode } from "./utils/treeBuilder";
