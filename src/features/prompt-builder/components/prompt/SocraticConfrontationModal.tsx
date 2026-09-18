@@ -1,5 +1,7 @@
-import { Flame, ShieldAlert, CheckCircle2, X } from "lucide-react";
+import { useMemo } from "react";
+import { Flame, ShieldAlert, CheckCircle2, X, FileSearch, Plus } from "lucide-react";
 import { sanitizeSocraticAnswers } from "../../utils/socraticPrompt";
+import { parseFileList } from "../../utils/diffParser";
 
 interface SocraticConfrontationModalProps {
   isOpen: boolean;
@@ -11,6 +13,9 @@ interface SocraticConfrontationModalProps {
   onApplyFortified: () => void;
   hasConfrontation: boolean;
   isPersisting?: boolean;
+  files?: string[];
+  selectedFiles?: Set<string>;
+  onAddDiscoveredFiles?: (files: string[]) => void;
 }
 
 export function SocraticConfrontationModal({
@@ -23,11 +28,22 @@ export function SocraticConfrontationModal({
   onApplyFortified,
   hasConfrontation,
   isPersisting = false,
+  files = [],
+  selectedFiles,
+  onAddDiscoveredFiles,
 }: SocraticConfrontationModalProps) {
   if (!isOpen) return null;
 
   const validation = sanitizeSocraticAnswers(answersText);
   const showWarning = answersText.length > 0 && !validation.isValid;
+
+  const discoveredFiles = useMemo(() => {
+    if (!files.length) return [];
+    const combined = `${critiqueText}\n${answersText}`;
+    const parsed = parseFileList(combined, files);
+    if (!selectedFiles) return parsed;
+    return parsed.filter((f) => !selectedFiles.has(f));
+  }, [critiqueText, answersText, files, selectedFiles]);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
@@ -70,6 +86,30 @@ export function SocraticConfrontationModal({
               className="w-full h-32 bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-zinc-300 font-mono text-[11px] resize-none focus:outline-none focus:border-amber-500/50"
             />
           </div>
+
+          {discoveredFiles.length > 0 && onAddDiscoveredFiles && (
+            <div className="bg-cyan-950/40 border border-cyan-500/30 rounded-lg p-2.5 flex items-center justify-between">
+              <div className="flex items-center space-x-2 overflow-hidden mr-2">
+                <FileSearch className="w-4 h-4 text-cyan-400 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold text-cyan-300">
+                    Prerequisite Files Identified ({discoveredFiles.length})
+                  </p>
+                  <p className="text-[10px] text-zinc-400 truncate">
+                    {discoveredFiles.join(", ")}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onAddDiscoveredFiles(discoveredFiles)}
+                className="px-2.5 py-1 text-[10px] font-semibold bg-cyan-600 hover:bg-cyan-500 text-white rounded-md flex items-center space-x-1 shrink-0 transition-colors cursor-pointer shadow-sm shadow-cyan-900/30"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Add to Context</span>
+              </button>
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">

@@ -21,6 +21,7 @@ import {
 } from "../adapters/gitBranchAdapter";
 import { generateRepoMap } from "../services/repoMapService";
 import { getDependencyMap } from "../services/dependencyService";
+import { extractExportContracts } from "../services/contractExtractorService";
 import { openNativeFolderDialog } from "../adapters/osAdapter";
 import {
   bootstrapRepository,
@@ -29,27 +30,24 @@ import {
 
 export const repoRouter = Router();
 
+function buildRepoPayload(targetRepoPath: string) {
+  const files = getAllFiles(targetRepoPath);
+  return {
+    success: true,
+    path: targetRepoPath,
+    files,
+    repoMap: generateRepoMap(targetRepoPath, files),
+    fileStats: getFileStats(targetRepoPath, files),
+    dependencyMap: getDependencyMap(targetRepoPath, files),
+    branch: getGitBranch(targetRepoPath),
+    branches: getGitBranches(targetRepoPath),
+    isClean: getGitStatusClean(targetRepoPath),
+  };
+}
+
 repoRouter.get("/repo", (_req: Request, res: Response) => {
   try {
-    const targetRepoPath = repoState.getRepoPath();
-    const files = getAllFiles(targetRepoPath);
-    const repoMap = generateRepoMap(targetRepoPath, files);
-    const fileStats = getFileStats(targetRepoPath, files);
-    const dependencyMap = getDependencyMap(targetRepoPath, files);
-    const branch = getGitBranch(targetRepoPath);
-    const branches = getGitBranches(targetRepoPath);
-    const isClean = getGitStatusClean(targetRepoPath);
-    res.json({
-      success: true,
-      path: targetRepoPath,
-      files,
-      repoMap,
-      fileStats,
-      dependencyMap,
-      branch,
-      branches,
-      isClean,
-    });
+    res.json(buildRepoPayload(repoState.getRepoPath()));
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ success: false, error: message });
@@ -58,35 +56,11 @@ repoRouter.get("/repo", (_req: Request, res: Response) => {
 
 repoRouter.post("/repo", (req: Request, res: Response) => {
   const { newPath } = req.body;
-  if (
-    typeof newPath === "string" &&
-    fileExists(newPath) &&
-    isDirectory(newPath)
-  ) {
+  if (typeof newPath === "string" && fileExists(newPath) && isDirectory(newPath)) {
     repoState.setRepoPath(newPath);
-    const targetRepoPath = repoState.getRepoPath();
-    const files = getAllFiles(targetRepoPath);
-    const repoMap = generateRepoMap(targetRepoPath, files);
-    const fileStats = getFileStats(targetRepoPath, files);
-    const dependencyMap = getDependencyMap(targetRepoPath, files);
-    const branch = getGitBranch(targetRepoPath);
-    const branches = getGitBranches(targetRepoPath);
-    const isClean = getGitStatusClean(targetRepoPath);
-    res.json({
-      success: true,
-      path: targetRepoPath,
-      files,
-      repoMap,
-      fileStats,
-      dependencyMap,
-      branch,
-      branches,
-      isClean,
-    });
+    res.json(buildRepoPayload(repoState.getRepoPath()));
   } else {
-    res
-      .status(400)
-      .json({ success: false, error: "Invalid or missing directory path." });
+    res.status(400).json({ success: false, error: "Invalid or missing directory path." });
   }
 });
 
@@ -178,15 +152,8 @@ repoRouter.post("/branches/create", (req: Request, res: Response) => {
 
 repoRouter.put("/branches/rename", (req: Request, res: Response) => {
   const { oldName, newName } = req.body;
-  if (
-    !oldName ||
-    !newName ||
-    typeof oldName !== "string" ||
-    typeof newName !== "string"
-  ) {
-    res
-      .status(400)
-      .json({ success: false, error: "Invalid branch names for rename" });
+  if (!oldName || !newName || typeof oldName !== "string" || typeof newName !== "string") {
+    res.status(400).json({ success: false, error: "Invalid branch names for rename" });
     return;
   }
   try {
@@ -259,6 +226,38 @@ repoRouter.post(
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       res.json({ success: false, path: "", error: message });
+    }
+  },
+);
+
+repoRouter.post(
+  ["/extract-contracts", "/repo/extract-contracts"],
+  async (req: Request, res: Response) => {
+    try {
+      const targetRepoPath = repoState.getRepoPath();
+      const repoPath = (req.body.repoPath as string) || targetRepoPath || process.cwd();
+      const paths = Array.isArray(req.body.paths) ? (req.body.paths as string[]) : [];
+      const contracts = paths.length > 0 ? await extractExportContracts(repoPath, paths) : {};
+      res.json({ success: true, contracts });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ success: false, contracts: {}, error: message });
+    }
+  },
+);
+
+repoRouter.post(
+  ["/extract-contracts", "/repo/extract-contracts"],
+  async (req: Request, res: Response) => {
+    try {
+      const targetRepoPath = repoState.getRepoPath();
+      const repoPath = (req.body.repoPath as string) || targetRepoPath || process.cwd();
+      const paths = Array.isArray(req.body.paths) ? (req.body.paths as string[]) : [];
+      const contracts = paths.length > 0 ? await extractExportContracts(repoPath, paths) : {};
+      res.json({ success: true, contracts });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ success: false, contracts: {}, error: message });
     }
   },
 );

@@ -1,62 +1,79 @@
 import { describe, it, expect } from "vitest";
-import { validateBlueprintPayload } from "./useBlueprintWorkflow";
+import {
+  validateBlueprintPayload,
+  evaluateContextSufficiency,
+} from "./useBlueprintWorkflow";
 
-describe("useBlueprintWorkflow payload validation happy path", () => {
-  it("validates a well-formed blueprint JSON payload", () => {
-    const validJson = JSON.stringify({
-      title: "Telemetry Architecture",
-      summary: "Add telemetry adapter to monitor db query performance.",
-      domains: [
-        {
-          name: "telemetry",
-          layer: "server-adapter",
-          description: "SQLite telemetry logger",
-          publicExports: ["TelemetryAdapter"],
-          privateModules: [],
-          allowedDependencies: [],
-        },
-      ],
-      targetFiles: [
-        {
-          path: "server/adapters/telemetryAdapter.ts",
-          domain: "telemetry",
-          responsibility: "Record endpoint duration in SQLite WAL mode",
-        },
-      ],
-    });
-
-    const result = validateBlueprintPayload(validJson);
-    expect(result.success).toBe(true);
-    expect(result.data?.title).toBe("Telemetry Architecture");
-    expect(result.data?.domains[0].name).toBe("telemetry");
-  });
+const validBlueprintJson = JSON.stringify({
+  title: "Auth Modularization",
+  summary: "Decouple auth",
+  domains: [
+    {
+      name: "auth",
+      layer: "feature",
+      description: "Auth domain",
+      publicExports: [],
+      privateModules: [],
+      allowedDependencies: [],
+    },
+  ],
+  phases: [
+    {
+      id: "phase-1",
+      name: "Phase 1: Types",
+      intent: "Define tokens",
+      files: [{ path: "src/auth/types.ts", domain: "auth", responsibility: "Types" }],
+      verificationCriteria: ["No syntax errors"],
+    },
+  ],
 });
 
-describe("useBlueprintWorkflow payload rejection", () => {
-  it("rejects invalid JSON with a clear error string", () => {
-    const result = validateBlueprintPayload("not a json string");
+describe("validateBlueprintPayload - parsing & validation", () => {
+  it("validates and parses valid blueprint JSON payload", () => {
+    const result = validateBlueprintPayload(validBlueprintJson);
+    expect(result.success).toBe(true);
+    expect(result.data?.title).toBe("Auth Modularization");
+    expect(result.data?.phases).toHaveLength(1);
+  });
+
+  it("handles markdown code fences in blueprint payload", () => {
+    const fenced = "```json\n" + validBlueprintJson + "\n```";
+    const result = validateBlueprintPayload(fenced);
+    expect(result.success).toBe(true);
+    expect(result.data?.title).toBe("Auth Modularization");
+  });
+
+  it("rejects invalid JSON syntax gracefully", () => {
+    const result = validateBlueprintPayload("{ invalid json ");
     expect(result.success).toBe(false);
     expect(result.error).toContain("Failed to parse blueprint JSON");
   });
 
-  it("rejects blueprint payloads missing required targetFiles array", () => {
-    const missingTargetFiles = JSON.stringify({
-      title: "Broken Blueprint",
-      summary: "Missing targets",
-      domains: [
-        {
-          name: "auth",
-          layer: "feature",
-          description: "Auth domain",
-          publicExports: [],
-          privateModules: [],
-          allowedDependencies: [],
-        },
-      ],
-    });
+  it("rejects payload missing required schema fields", () => {
+    const result = validateBlueprintPayload(JSON.stringify({ title: "Incomplete" }));
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+  });
+});
 
-    const result = validateBlueprintPayload(missingTargetFiles);
-    expect(result.success).toBe(true);
-    expect(result.data?.targetFiles).toEqual([]);
+describe("evaluateContextSufficiency - pre-flight thresholds", () => {
+  it("requires discovery when zero files are selected", () => {
+    const check = evaluateContextSufficiency(0);
+    expect(check.isSufficient).toBe(false);
+    expect(check.recommendation).toBe("discovery_required");
+    expect(check.message).toContain("No active context files selected");
+  });
+
+  it("recommends discovery when exactly one file is selected", () => {
+    const check = evaluateContextSufficiency(1);
+    expect(check.isSufficient).toBe(false);
+    expect(check.recommendation).toBe("discovery_recommended");
+    expect(check.message).toContain("Only 1 file selected");
+  });
+
+  it("approves direct progression when two or more files are selected", () => {
+    const check = evaluateContextSufficiency(2);
+    expect(check.isSufficient).toBe(true);
+    expect(check.recommendation).toBe("proceed");
   });
 });

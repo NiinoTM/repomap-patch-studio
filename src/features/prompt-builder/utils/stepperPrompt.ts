@@ -1,4 +1,8 @@
-import type { BlueprintTargetFile } from "../../../types/remediation";
+import type {
+  BlueprintTargetFile,
+  BlueprintPhase,
+  StructuredBlueprint,
+} from "../../../types/remediation";
 
 export function getLayerRank(filePath: string): number {
   const lower = filePath.toLowerCase();
@@ -31,6 +35,7 @@ export interface StepScopedPromptParams {
   totalSteps: number;
   targetFile: BlueprintTargetFile;
   completedSteps: string[];
+  upstreamContracts?: string;
   activeFilesText: string;
   repoMap: string;
   userRequest: string;
@@ -41,6 +46,7 @@ export function buildStepScopedPrompt({
   totalSteps,
   targetFile,
   completedSteps,
+  upstreamContracts,
   activeFilesText,
   repoMap,
   userRequest,
@@ -50,6 +56,9 @@ export function buildStepScopedPrompt({
     completedSteps.length > 0
       ? `UPSTREAM COMPLETED STEPS (Already Implemented):\n${completedSteps.map((s) => `• ${s}`).join("\n")}\n\n`
       : "";
+  const contractsSection = upstreamContracts?.trim()
+    ? `UPSTREAM PHASE CONTRACTS (Already Implemented on Disk):\n${upstreamContracts}\n\n`
+    : "";
 
   return `ROLE: Senior Software Architect & Modular Implementation Engineer
 You write clean, production-grade, type-safe code following Single Responsibility Principle (SRP).
@@ -62,7 +71,7 @@ CURRENT TARGET SCOPE:
 - Target Domain: ${targetFile.domain}
 - Step Responsibility: ${targetFile.responsibility}
 
-${completedSummary}STRICT IMPLEMENTATION CONSTRAINTS:
+${completedSummary}${contractsSection}STRICT IMPLEMENTATION CONSTRAINTS:
 1. Implement ONLY the changes for "${targetFile.path}". Do not write code for other steps or files.
 2. Rely strictly on existing types and upstream completed steps.
 3. Wrap all modifications in exact SEARCH/REPLACE blocks.
@@ -78,6 +87,41 @@ ${repoMap || "No map generated."}
 ${divider}
 OVERALL FEATURE REQUEST:
 ${userRequest}`;
+}
+
+export interface PhaseBatchStepPromptParams {
+  phaseNumber: number;
+  totalPhases: number;
+  phase: BlueprintPhase;
+  completedSteps: string[];
+  upstreamContracts?: string;
+  activeFilesText: string;
+  repoMap: string;
+  userRequest: string;
+}
+
+export function buildPhaseBatchStepPrompt({
+  phaseNumber,
+  totalPhases,
+  phase,
+  completedSteps,
+  upstreamContracts,
+  activeFilesText,
+  repoMap,
+  userRequest,
+}: PhaseBatchStepPromptParams): string {
+  return buildBatchStepPrompt({
+    stepNumber: phaseNumber,
+    totalSteps: totalPhases,
+    domainName: phase.name,
+    targetFiles: phase.files,
+    completedSteps,
+    upstreamContracts,
+    activeFilesText,
+    repoMap,
+    userRequest,
+    phaseIntent: phase.intent,
+  });
 }
 
 export interface DomainBatchGroup {
@@ -104,15 +148,34 @@ export function groupTargetFilesByDomain(
   }));
 }
 
+export function groupTargetFilesByPhase(
+  blueprint?: StructuredBlueprint | null,
+): BlueprintPhase[] {
+  if (blueprint?.phases && blueprint.phases.length > 0) {
+    return blueprint.phases;
+  }
+  const files = blueprint?.targetFiles || [];
+  const domainGroups = groupTargetFilesByDomain(files);
+  return domainGroups.map((group, idx) => ({
+    id: `phase-${idx + 1}`,
+    name: `Phase ${idx + 1}: ${group.domain}`,
+    intent: `Implement cohesive components for ${group.domain} domain`,
+    files: group.files,
+    verificationCriteria: ["Zero syntax diagnostics"],
+  }));
+}
+
 export interface BatchStepPromptParams {
   stepNumber: number;
   totalSteps: number;
   domainName: string;
   targetFiles: BlueprintTargetFile[];
   completedSteps: string[];
+  upstreamContracts?: string;
   activeFilesText: string;
   repoMap: string;
   userRequest: string;
+  phaseIntent?: string;
 }
 
 export function buildBatchStepPrompt({
@@ -121,33 +184,39 @@ export function buildBatchStepPrompt({
   domainName,
   targetFiles,
   completedSteps,
+  upstreamContracts,
   activeFilesText,
   repoMap,
   userRequest,
+  phaseIntent,
 }: BatchStepPromptParams): string {
   const divider = "-".repeat(50);
   const completedSummary =
     completedSteps.length > 0
       ? `UPSTREAM COMPLETED STEPS (Already Implemented):\n${completedSteps.map((s) => `• ${s}`).join("\n")}\n\n`
       : "";
+  const contractsSection = upstreamContracts?.trim()
+    ? `UPSTREAM PHASE CONTRACTS (Already Implemented on Disk):\n${upstreamContracts}\n\n`
+    : "";
 
   const filesSummary = targetFiles
     .map((f, i) => `  ${i + 1}. [${f.domain}] ${f.path} — ${f.responsibility}`)
     .join("\n");
 
   const filesList = targetFiles.map((f) => f.path).join(", ");
+  const intentSummary = phaseIntent ? `PHASE INTENT: ${phaseIntent}\n` : "";
 
   return `ROLE: Senior Software Architect & Modular Implementation Engineer
 You write clean, production-grade, type-safe code following Single Responsibility Principle (SRP).
 
 TASK:
-Implement COHESIVE BATCH STEP ${stepNumber} of ${totalSteps} (${domainName} domain).
+Implement COHESIVE BATCH STEP ${stepNumber} of ${totalSteps} (${domainName}).
 
-TARGET DOMAIN: ${domainName}
-TARGET FILES IN THIS BATCH:
+TARGET DOMAIN/PHASE: ${domainName}
+${intentSummary}TARGET FILES IN THIS BATCH:
 ${filesSummary}
 
-${completedSummary}STRICT IMPLEMENTATION CONSTRAINTS:
+${completedSummary}${contractsSection}STRICT IMPLEMENTATION CONSTRAINTS:
 1. Implement ALL changes for this cohesive batch (${filesList}) in a unified, cohesive pass.
 2. Ensure imports, type contracts, and function calls between these batch files are 100% aligned.
 3. Wrap all modifications in exact SEARCH/REPLACE blocks specifying the exact file path for each file.

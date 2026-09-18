@@ -7,15 +7,17 @@ import {
   buildUnitTestPrompt,
   formatActiveFilesContext,
 } from "../utils/promptTemplates";
+import { buildArchitecturalDiscoveryPrompt } from "../utils/blueprintDiscoveryPrompt";
 import {
   buildSocraticConfrontationPrompt,
   sanitizeSocraticAnswers,
 } from "../utils/socraticPrompt";
 import {
   buildStepScopedPrompt,
-  buildBatchStepPrompt,
+  buildPhaseBatchStepPrompt,
 } from "../utils/stepperPrompt";
 import type { UseAtomicStepperReturn } from "./useAtomicStepper";
+import type { UseBlueprintWorkflowReturn } from "./useBlueprintWorkflow";
 import type { UseSocraticGateReturn } from "./useSocraticGate";
 
 export async function fetchActiveFilesContent(
@@ -62,6 +64,41 @@ interface UsePromptActionsParams {
   onCopy: (promptText: string) => void;
   socraticGate: UseSocraticGateReturn;
   atomicStepper: UseAtomicStepperReturn;
+  blueprintWorkflow?: UseBlueprintWorkflowReturn;
+  hasErrorsOrUnapplied?: boolean;
+}
+
+async function fetchUpstreamContracts(completedPaths: string[]): Promise<string> {
+  if (completedPaths.length === 0) return "";
+  try {
+    const res = await fetch("/api/repo/extract-contracts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paths: completedPaths }),
+    });
+    if (!res.ok) {
+      const fallback = await fetch("/api/extract-contracts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths: completedPaths }),
+      });
+      if (!fallback.ok) return "";
+      const fbData = await fallback.json();
+      return formatExtractedContracts(fbData.contracts);
+    }
+    const data = await res.json();
+    return formatExtractedContracts(data.contracts);
+  } catch {
+    return "";
+  }
+}
+
+export function formatExtractedContracts(contracts: unknown): string {
+  if (!contracts || typeof contracts !== "object") return "";
+  return Object.entries(contracts as Record<string, string>)
+    .filter(([filePath, content]) => Boolean(filePath && content && content.trim()))
+    .map(([filePath, content]) => `// --- ${filePath} ---\n${content.trim()}`)
+    .join("\n\n");
 }
 
 export function usePromptActions({
@@ -73,6 +110,8 @@ export function usePromptActions({
   onCopy,
   socraticGate,
   atomicStepper,
+  blueprintWorkflow,
+  hasErrorsOrUnapplied,
 }: UsePromptActionsParams) {
   const handleConfrontLogic = async () => {
     const activeFilesText = await fetchActiveFilesContent(selectedFiles);
@@ -93,7 +132,24 @@ export function usePromptActions({
     });
   };
 
-  const handleGenerateBlueprintPrompt = async () => {
+  const handleGenerateDiscoveryPrompt = async () => {
+    const activeFilesText = await fetchActiveFilesContent(selectedFiles);
+    const prompt = buildArchitecturalDiscoveryPrompt({
+      repoMap,
+      activeFilesText,
+      userRequest: request || "Discover relevant architectural files from repo map.",
+    });
+    onCopy(prompt);
+    blueprintWorkflow?.setPhase("blueprint_discovery");
+    blueprintWorkflow?.openDiscoveryModal();
+  };
+
+  const handleGenerateBlueprintPrompt = async (bypassDiscovery = false) => {
+    if (!bypassDiscovery && selectedFiles.size === 0) {
+      await handleGenerateDiscoveryPrompt();
+      return;
+    }
+
     const activeFilesText = await fetchActiveFilesContent(selectedFiles);
     const prompt = buildArchitecturalBlueprintPrompt({
       repoMap,
@@ -101,21 +157,27 @@ export function usePromptActions({
       userRequest: request || "Generate modular architecture following SRP.",
     });
     onCopy(prompt);
+    blueprintWorkflow?.setPhase("blueprint_prompt");
   };
 
   const handleCopyStepPrompt = async () => {
+    if (hasErrorsOrUnapplied && atomicStepper.isBatchMode && atomicStepper.currentPhaseIndex > 0) {
+      console.warn("[execution-gate] Active phase has unapplied diffs or validation warnings.");
+    }
     const activeFilesText = await fetchActiveFilesContent(selectedFiles);
+    const completedList = Array.from(atomicStepper.completedPaths);
+    const upstreamContracts = await fetchUpstreamContracts(completedList);
 
-    if (atomicStepper.isBatchMode && atomicStepper.currentBatch) {
-      const prompt = buildBatchStepPrompt({
-        stepNumber: atomicStepper.currentBatchIndex + 1,
-        totalSteps: atomicStepper.totalBatches,
-        domainName: atomicStepper.currentBatch.domain,
-        targetFiles: atomicStepper.currentBatch.files,
-        completedSteps: Array.from(atomicStepper.completedPaths),
+    if (atomicStepper.isBatchMode && atomicStepper.currentPhase) {
+      const prompt = buildPhaseBatchStepPrompt({
+        phaseNumber: atomicStepper.currentPhaseIndex + 1,
+        totalPhases: atomicStepper.totalPhases,
+        phase: atomicStepper.currentPhase,
+        completedSteps: completedList,
+        upstreamContracts,
         activeFilesText,
         repoMap,
-        userRequest: request || "Implement cohesive domain step following SRP boundaries.",
+        userRequest: request || "Implement cohesive architectural phase following SRP boundaries.",
       });
       onCopy(prompt);
       return;
@@ -126,7 +188,8 @@ export function usePromptActions({
       stepNumber: atomicStepper.currentStepIndex + 1,
       totalSteps: atomicStepper.totalSteps,
       targetFile: atomicStepper.currentStep,
-      completedSteps: Array.from(atomicStepper.completedPaths),
+      completedSteps: completedList,
+      upstreamContracts,
       activeFilesText,
       repoMap,
       userRequest: request || "Implement step following SRP boundaries.",
@@ -134,7 +197,26 @@ export function usePromptActions({
     onCopy(prompt);
   };
 
-  const handleFinishAndGenerateTests = async () => {
+  const handleExitStepExecution = (discard = false) => {
+    atomicStepper.resetStepper();
+    if (blueprintWorkflow) {
+      if (discard) {
+        blueprintWorkflow.resetWorkflow();
+      } else {
+        blueprintWorkflow.completeWorkflow();
+      }
+    }
+  };
+
+  const handleDismissStepExecution = () => {
+    atomicStepper.dismissStepper();
+  };
+
+  const handleResumeStepExecution = () => {
+    atomicStepper.resumeStepper();
+  };
+
+  const handleFinishAndGenerateTests = async (autoExit?: boolean) => {
     const testFiles = atomicStepper.steps
       .map((s) => s.path)
       .filter((p) => !p.endsWith(".d.ts") && !p.includes(".test."));
@@ -144,13 +226,20 @@ export function usePromptActions({
       userRequest: "Generate comprehensive Vitest unit tests for all implemented steps.",
     });
     onCopy(prompt);
+    if (autoExit === true) {
+      handleExitStepExecution(false);
+    }
   };
 
   return {
     handleConfrontLogic,
     handleApplyFortifiedCriteria,
+    handleGenerateDiscoveryPrompt,
     handleGenerateBlueprintPrompt,
     handleCopyStepPrompt,
     handleFinishAndGenerateTests,
+    handleExitStepExecution,
+    handleDismissStepExecution,
+    handleResumeStepExecution,
   };
 }

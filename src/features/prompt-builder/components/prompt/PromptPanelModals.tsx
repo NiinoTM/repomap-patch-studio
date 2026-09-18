@@ -1,5 +1,6 @@
 import { SocraticConfrontationModal } from "./SocraticConfrontationModal";
 import { BlueprintReviewModal } from "./BlueprintReviewModal";
+import { BlueprintDiscoveryModal } from "./BlueprintDiscoveryModal";
 import { RepoMapPreviewModal } from "./RepoMapPreviewModal";
 import { CompletenessWarningModal } from "./CompletenessWarningModal";
 import type { UseSocraticGateReturn } from "../../hooks/useSocraticGate";
@@ -20,6 +21,9 @@ interface PromptPanelModalsProps {
   onAddMissingAndCopy: () => void;
   onCopyAnyway: () => void;
   onCancelCompletenessWarning: () => void;
+  files?: string[];
+  selectedFiles?: Set<string>;
+  onAddDiscoveredFiles?: (files: string[]) => void;
 }
 
 export function PromptPanelModals({
@@ -36,6 +40,9 @@ export function PromptPanelModals({
   onAddMissingAndCopy,
   onCopyAnyway,
   onCancelCompletenessWarning,
+  files,
+  selectedFiles,
+  onAddDiscoveredFiles,
 }: PromptPanelModalsProps) {
   return (
     <>
@@ -49,6 +56,24 @@ export function PromptPanelModals({
         onApplyFortified={onApplyFortifiedCriteria}
         hasConfrontation={socraticGate.hasConfrontation}
         isPersisting={socraticGate.isPersisting}
+        files={files}
+        selectedFiles={selectedFiles}
+        onAddDiscoveredFiles={onAddDiscoveredFiles}
+      />
+
+      <BlueprintDiscoveryModal
+        isOpen={blueprintWorkflow.isDiscoveryModalOpen}
+        onClose={blueprintWorkflow.closeDiscoveryModal}
+        discoveryPayload={blueprintWorkflow.discoveryPayload}
+        onAcceptCandidates={(paths) => {
+          if (onAddDiscoveredFiles) {
+            onAddDiscoveredFiles(paths);
+          }
+          blueprintWorkflow.closeDiscoveryModal();
+        }}
+        onBypassDiscovery={() => {
+          blueprintWorkflow.closeDiscoveryModal();
+        }}
       />
 
       <BlueprintReviewModal

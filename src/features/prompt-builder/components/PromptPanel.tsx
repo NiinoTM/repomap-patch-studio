@@ -7,6 +7,7 @@ import { RepoMapHeader } from "./prompt/RepoMapPreviewModal";
 import { PromptActionButtons } from "./prompt/PromptActionButtons";
 import { PromptOptions } from "./prompt/PromptOptions";
 import { AtomicStepTracker } from "./prompt/AtomicStepTracker";
+import { BlueprintSuspendedBanner } from "./prompt/BlueprintSuspendedBanner";
 import { ActiveTicketBanner } from "./prompt/ActiveTicketBanner";
 import { PromptPanelModals } from "./prompt/PromptPanelModals";
 import { useMentionPopup } from "../hooks/useMentionPopup";
@@ -148,6 +149,9 @@ export function PromptPanel({
     handleGenerateBlueprintPrompt,
     handleCopyStepPrompt,
     handleFinishAndGenerateTests,
+    handleExitStepExecution,
+    handleDismissStepExecution,
+    handleResumeStepExecution,
   } = usePromptActions({
     request,
     setRequest,
@@ -157,6 +161,8 @@ export function PromptPanel({
     onCopy,
     socraticGate,
     atomicStepper,
+    blueprintWorkflow,
+    hasErrorsOrUnapplied: missingDependencies.length > 0,
   });
 
   useEffect(() => {
@@ -183,32 +189,50 @@ export function PromptPanel({
 
       {atomicStepper.steps.length > 0 && (
         <div className="space-y-1.5">
-          <div className="flex items-center justify-between px-1">
-            <span className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
-              Mode: {atomicStepper.isBatchMode ? "Domain Batch" : "Single File"}
-            </span>
-            <button
-              onClick={atomicStepper.toggleBatchMode}
-              className="text-[10px] text-cyan-400 hover:text-cyan-300 font-medium cursor-pointer underline underline-offset-2"
-              title="Toggle between single-file atomic steps and cohesive domain batch steps"
-            >
-              Switch to {atomicStepper.isBatchMode ? "Single File" : "Domain Batch"}
-            </button>
-          </div>
-          <AtomicStepTracker
-            currentStep={atomicStepper.currentStep}
-            currentStepIndex={atomicStepper.isBatchMode ? atomicStepper.currentBatchIndex : atomicStepper.currentStepIndex}
-            totalSteps={atomicStepper.isBatchMode ? atomicStepper.totalBatches : atomicStepper.totalSteps}
-            progressPercent={atomicStepper.progressPercent}
-            isLastStep={atomicStepper.isLastStep}
-            isFinished={atomicStepper.isFinished}
-            hasErrorsOrUnapplied={missingDependencies.length > 0}
-            onCopyStepPrompt={handleCopyStepPrompt}
-            onNextStep={() => atomicStepper.nextStep()}
-            onPrevStep={atomicStepper.prevStep}
-            onAddAdHocStep={atomicStepper.addAdHocStep}
-            onFinishAndGenerateTests={handleFinishAndGenerateTests}
-          />
+          {!atomicStepper.isDismissed && (
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
+                Mode: {atomicStepper.isBatchMode ? "Phase Batch" : "Single File"}
+              </span>
+              <button
+                onClick={atomicStepper.toggleBatchMode}
+                className="text-[10px] text-cyan-400 hover:text-cyan-300 font-medium cursor-pointer underline underline-offset-2"
+                title="Toggle between single-file atomic steps and cohesive phase batch steps"
+              >
+                Switch to {atomicStepper.isBatchMode ? "Single File" : "Phase Batch"}
+              </button>
+            </div>
+          )}
+          {atomicStepper.isDismissed ? (
+            <BlueprintSuspendedBanner
+              currentStepIndex={atomicStepper.isBatchMode ? atomicStepper.currentBatchIndex : atomicStepper.currentStepIndex}
+              totalSteps={atomicStepper.isBatchMode ? atomicStepper.totalBatches : atomicStepper.totalSteps}
+              progressPercent={atomicStepper.progressPercent}
+              isBatchMode={atomicStepper.isBatchMode}
+              onResume={handleResumeStepExecution}
+              onDiscard={() => handleExitStepExecution(true)}
+            />
+          ) : (
+            <AtomicStepTracker
+              currentStep={atomicStepper.currentStep}
+              currentStepIndex={atomicStepper.isBatchMode ? atomicStepper.currentBatchIndex : atomicStepper.currentStepIndex}
+              totalSteps={atomicStepper.isBatchMode ? atomicStepper.totalBatches : atomicStepper.totalSteps}
+              progressPercent={atomicStepper.progressPercent}
+              isLastStep={atomicStepper.isLastStep}
+              isFinished={atomicStepper.isFinished}
+              hasErrorsOrUnapplied={missingDependencies.length > 0}
+              currentPhase={atomicStepper.currentPhase}
+              currentPhaseIndex={atomicStepper.currentPhaseIndex}
+              totalPhases={atomicStepper.totalPhases}
+              onCopyStepPrompt={handleCopyStepPrompt}
+              onNextStep={() => atomicStepper.nextStep()}
+              onPrevStep={atomicStepper.prevStep}
+              onAddAdHocStep={atomicStepper.addAdHocStep}
+              onFinishAndGenerateTests={() => handleFinishAndGenerateTests(true)}
+              onDismiss={handleDismissStepExecution}
+              onExitExecution={handleExitStepExecution}
+            />
+          )}
         </div>
       )}
 
@@ -307,6 +331,9 @@ export function PromptPanel({
         onAddMissingAndCopy={handleAddMissingAndCopy}
         onCopyAnyway={handleCopyAnyway}
         onCancelCompletenessWarning={handleCancelCompletenessWarning}
+        files={files}
+        selectedFiles={selectedFiles}
+        onAddDiscoveredFiles={acceptAllSuggestions}
       />
     </div>
   );

@@ -1,11 +1,11 @@
 import { useState, useMemo, useEffect } from "react";
 import type {
   BlueprintTargetFile,
+  BlueprintPhase,
   StructuredBlueprint,
 } from "../../../types/remediation";
 import {
-  sortTargetFilesTopologically,
-  groupTargetFilesByDomain,
+  groupTargetFilesByPhase,
   type DomainBatchGroup,
 } from "../utils/stepperPrompt";
 
@@ -15,6 +15,11 @@ export interface UseAtomicStepperParams {
 }
 
 export interface UseAtomicStepperReturn {
+  phases: BlueprintPhase[];
+  currentPhaseIndex: number;
+  currentPhase: BlueprintPhase | null;
+  currentPhaseStepIndex: number;
+  totalPhases: number;
   steps: BlueprintTargetFile[];
   currentStepIndex: number;
   currentStep: BlueprintTargetFile | null;
@@ -31,164 +36,212 @@ export interface UseAtomicStepperReturn {
   progressPercent: number;
   isLastStep: boolean;
   isFinished: boolean;
+  isDismissed: boolean;
   initSteps: (files: BlueprintTargetFile[]) => void;
+  initPhases: (blueprint: StructuredBlueprint) => void;
   nextStep: (allowBypass?: boolean) => boolean;
   prevStep: () => void;
   goToStep: (index: number) => void;
+  goToPhase: (phaseIndex: number) => void;
   addAdHocStep: (file: BlueprintTargetFile) => void;
   markCompleted: (path: string) => void;
   resetStepper: () => void;
+  dismissStepper: () => void;
+  resumeStepper: () => void;
 }
 
 function computeProgress(current: number, total: number): number {
   return total > 0 ? Math.round(((current + 1) / total) * 100) : 0;
 }
 
-function appendCompletedBatch(
-  prev: Set<string>,
-  batch: DomainBatchGroup | null,
-): Set<string> {
-  if (!batch) return prev;
-  const next = new Set(prev);
-  batch.files.forEach((f) => next.add(f.path));
-  return next;
+function calculateGlobalStepIndex(phases: BlueprintPhase[], phaseIdx: number, stepIdx: number): number {
+  let count = 0;
+  for (let i = 0; i < phaseIdx; i++) {
+    count += phases[i]?.files?.length || 0;
+  }
+  return count + stepIdx;
 }
 
-export function useAtomicStepper(
-  params: UseAtomicStepperParams = {},
-): UseAtomicStepperReturn {
+function locateStepCoordinates(phases: BlueprintPhase[], globalIndex: number): { phaseIdx: number; stepIdx: number } {
+  let acc = 0;
+  for (let p = 0; p < phases.length; p++) {
+    const len = phases[p]?.files?.length || 0;
+    if (globalIndex < acc + len) {
+      return { phaseIdx: p, stepIdx: globalIndex - acc };
+    }
+    acc += len;
+  }
+  return { phaseIdx: 0, stepIdx: 0 };
+}
+
+function insertAdHocFile(prev: BlueprintPhase[], phaseIdx: number, stepIdx: number, file: BlueprintTargetFile): BlueprintPhase[] {
+  if (prev.length === 0) {
+    return [{ id: "phase-adhoc", name: "Ad-hoc Phase", intent: "Supplementary step", files: [file], verificationCriteria: [] }];
+  }
+  return prev.map((phase, pIdx) => {
+    if (pIdx !== phaseIdx) return phase;
+    const updatedFiles = [...phase.files];
+    updatedFiles.splice(stepIdx + 1, 0, file);
+    return { ...phase, files: updatedFiles };
+  });
+}
+
+function getNextStepState(
+  currentPhase: BlueprintPhase | null,
+  phaseIdx: number,
+  stepIdx: number,
+  totalPhases: number,
+): { nextPhaseIdx: number; nextStepIdx: number; finished: boolean } {
+  if (currentPhase && stepIdx < currentPhase.files.length - 1) {
+    return { nextPhaseIdx: phaseIdx, nextStepIdx: stepIdx + 1, finished: false };
+  }
+  if (phaseIdx < totalPhases - 1) {
+    return { nextPhaseIdx: phaseIdx + 1, nextStepIdx: 0, finished: false };
+  }
+  return { nextPhaseIdx: phaseIdx, nextStepIdx: stepIdx, finished: true };
+}
+
+function getPrevStepState(
+  phases: BlueprintPhase[],
+  phaseIdx: number,
+  stepIdx: number,
+): { prevPhaseIdx: number; prevStepIdx: number } {
+  if (stepIdx > 0) {
+    return { prevPhaseIdx: phaseIdx, prevStepIdx: stepIdx - 1 };
+  }
+  if (phaseIdx > 0) {
+    const prevPhaseLen = phases[phaseIdx - 1]?.files?.length || 1;
+    return { prevPhaseIdx: phaseIdx - 1, prevStepIdx: prevPhaseLen - 1 };
+  }
+  return { prevPhaseIdx: 0, prevStepIdx: 0 };
+}
+
+export function useAtomicStepper(params: UseAtomicStepperParams = {}): UseAtomicStepperReturn {
   const { blueprint, isApproved } = params;
-  const [steps, setSteps] = useState<BlueprintTargetFile[]>([]);
-  const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [currentBatchIndex, setCurrentBatchIndex] = useState(0);
+  const [phases, setPhases] = useState<BlueprintPhase[]>([]);
+  const [currentPhaseIndex, setCurrentPhaseIndex] = useState(0);
+  const [currentPhaseStepIndex, setCurrentPhaseStepIndex] = useState(0);
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [completedPaths, setCompletedPaths] = useState<Set<string>>(new Set());
   const [isFinished, setIsFinished] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(false);
 
-  const domainBatches = useMemo(() => groupTargetFilesByDomain(steps), [steps]);
-  const currentBatch = useMemo(
-    () => domainBatches[currentBatchIndex] || null,
-    [domainBatches, currentBatchIndex],
-  );
-  const currentStep = useMemo(
-    () => steps[currentStepIndex] || null,
-    [steps, currentStepIndex],
-  );
+  const currentPhase = useMemo(() => phases[currentPhaseIndex] || null, [phases, currentPhaseIndex]);
+  const steps = useMemo(() => phases.flatMap((p) => p.files), [phases]);
+  const currentStep = useMemo(() => currentPhase?.files[currentPhaseStepIndex] || null, [currentPhase, currentPhaseStepIndex]);
+  const currentStepIndex = useMemo(() => calculateGlobalStepIndex(phases, currentPhaseIndex, currentPhaseStepIndex), [phases, currentPhaseIndex, currentPhaseStepIndex]);
 
+  const totalPhases = phases.length;
   const totalSteps = steps.length;
-  const totalBatches = domainBatches.length;
+  const domainBatches = useMemo<DomainBatchGroup[]>(() => phases.map((p) => ({ domain: p.name, files: p.files })), [phases]);
+  const currentBatch = useMemo<DomainBatchGroup | null>(() => (currentPhase ? { domain: currentPhase.name, files: currentPhase.files } : null), [currentPhase]);
 
-  const initSteps = (files: BlueprintTargetFile[]) => {
-    setSteps(sortTargetFilesTopologically(files));
-    setCurrentStepIndex(0);
-    setCurrentBatchIndex(0);
+  const initPhases = (bp: StructuredBlueprint) => {
+    setPhases(groupTargetFilesByPhase(bp));
+    setCurrentPhaseIndex(0);
+    setCurrentPhaseStepIndex(0);
     setCompletedPaths(new Set());
     setIsFinished(false);
+    setIsDismissed(false);
+  };
+
+  const initSteps = (files: BlueprintTargetFile[]) => {
+    initPhases({ title: "Blueprint", summary: "", domains: [], targetFiles: files });
   };
 
   useEffect(() => {
-    if (isApproved && blueprint?.targetFiles?.length && steps.length === 0) {
-      initSteps(blueprint.targetFiles);
+    if (isApproved && blueprint && phases.length === 0) {
+      initPhases(blueprint);
     }
   }, [isApproved, blueprint]);
 
   const isLastStep = isBatchMode
-    ? totalBatches > 0 && currentBatchIndex === totalBatches - 1
+    ? totalPhases > 0 && currentPhaseIndex === totalPhases - 1
     : totalSteps > 0 && currentStepIndex === totalSteps - 1;
 
   const progressPercent = isBatchMode
-    ? computeProgress(currentBatchIndex, totalBatches)
+    ? computeProgress(currentPhaseIndex, totalPhases)
     : computeProgress(currentStepIndex, totalSteps);
 
-  const markCompleted = (path: string) => {
-    setCompletedPaths((prev) => new Set([...prev, path]));
-  };
-
   const nextBatch = (): boolean => {
-    setCompletedPaths((prev) => appendCompletedBatch(prev, currentBatch));
-    if (currentBatchIndex >= totalBatches - 1) {
+    if (currentBatch) {
+      setCompletedPaths((prev) => new Set([...prev, ...currentBatch.files.map((f) => f.path)]));
+    }
+    if (currentPhaseIndex >= totalPhases - 1) {
       setIsFinished(true);
       return true;
     }
-    setCurrentBatchIndex((prev) => prev + 1);
+    setCurrentPhaseIndex((prev) => prev + 1);
+    setCurrentPhaseStepIndex(0);
     return true;
-  };
-
-  const prevBatch = () => {
-    if (currentBatchIndex > 0) {
-      setCurrentBatchIndex((prev) => prev - 1);
-      setIsFinished(false);
-    }
   };
 
   const nextStep = (allowBypass = false): boolean => {
     if (isBatchMode) return nextBatch();
-    if (currentStep) markCompleted(currentStep.path);
-    if (isLastStep) {
+    if (currentStep) setCompletedPaths((prev) => new Set([...prev, currentStep.path]));
+    const { nextPhaseIdx, nextStepIdx, finished } = getNextStepState(
+      currentPhase,
+      currentPhaseIndex,
+      currentPhaseStepIndex,
+      totalPhases,
+    );
+    if (finished) {
       setIsFinished(true);
-      return true;
+      return allowBypass || isLastStep;
     }
-    if (currentStepIndex < totalSteps - 1) {
-      setCurrentStepIndex((prev) => prev + 1);
-      return true;
-    }
-    return allowBypass;
+    setCurrentPhaseIndex(nextPhaseIdx);
+    setCurrentPhaseStepIndex(nextStepIdx);
+    return true;
   };
 
   const prevStep = () => {
-    if (isBatchMode) return prevBatch();
-    if (currentStepIndex > 0) {
-      setCurrentStepIndex((prev) => prev - 1);
-      setIsFinished(false);
+    if (isBatchMode) {
+      if (currentPhaseIndex > 0) {
+        setCurrentPhaseIndex((p) => p - 1);
+        setCurrentPhaseStepIndex(0);
+      }
+    } else {
+      const { prevPhaseIdx, prevStepIdx } = getPrevStepState(phases, currentPhaseIndex, currentPhaseStepIndex);
+      setCurrentPhaseIndex(prevPhaseIdx);
+      setCurrentPhaseStepIndex(prevStepIdx);
     }
-  };
-
-  const goToStep = (index: number) => {
-    if (index >= 0 && index < totalSteps) {
-      setCurrentStepIndex(index);
-      setIsFinished(false);
-    }
-  };
-
-  const addAdHocStep = (file: BlueprintTargetFile) => {
-    setSteps((prev) => {
-      const next = [...prev];
-      next.splice(currentStepIndex + 1, 0, file);
-      return next;
-    });
-  };
-
-  const resetStepper = () => {
-    setSteps([]);
-    setCurrentStepIndex(0);
-    setCurrentBatchIndex(0);
-    setCompletedPaths(new Set());
     setIsFinished(false);
   };
 
   return {
-    steps,
-    currentStepIndex,
-    currentStep,
-    domainBatches,
-    currentBatchIndex,
-    currentBatch,
-    totalBatches,
-    isBatchMode,
-    toggleBatchMode: () => setIsBatchMode((prev) => !prev),
-    nextBatch,
-    prevBatch,
-    completedPaths,
-    totalSteps,
-    progressPercent,
-    isLastStep,
-    isFinished,
-    initSteps,
-    nextStep,
-    prevStep,
-    goToStep,
-    addAdHocStep,
-    markCompleted,
-    resetStepper,
+    phases, currentPhaseIndex, currentPhase, currentPhaseStepIndex, totalPhases,
+    steps, currentStepIndex, currentStep, domainBatches, currentBatch,
+    currentBatchIndex: currentPhaseIndex, totalBatches: totalPhases,
+    isBatchMode, toggleBatchMode: () => setIsBatchMode((prev) => !prev),
+    nextBatch, prevBatch: () => prevStep(),
+    completedPaths, totalSteps, progressPercent,
+    isLastStep, isFinished, isDismissed,
+    initSteps, initPhases, nextStep, prevStep,
+    goToStep: (index: number) => {
+      const coords = locateStepCoordinates(phases, index);
+      setCurrentPhaseIndex(coords.phaseIdx);
+      setCurrentPhaseStepIndex(coords.stepIdx);
+      setIsFinished(false);
+    },
+    goToPhase: (pIdx: number) => {
+      if (pIdx >= 0 && pIdx < totalPhases) {
+        setCurrentPhaseIndex(pIdx);
+        setCurrentPhaseStepIndex(0);
+        setIsFinished(false);
+      }
+    },
+    addAdHocStep: (file: BlueprintTargetFile) =>
+      setPhases((prev) => insertAdHocFile(prev, currentPhaseIndex, currentPhaseStepIndex, file)),
+    markCompleted: (p: string) => setCompletedPaths((prev) => new Set([...prev, p])),
+    resetStepper: () => {
+      setPhases([]);
+      setCurrentPhaseIndex(0);
+      setCurrentPhaseStepIndex(0);
+      setCompletedPaths(new Set());
+      setIsFinished(false);
+      setIsDismissed(false);
+    },
+    dismissStepper: () => setIsDismissed(true),
+    resumeStepper: () => setIsDismissed(false),
   };
 }

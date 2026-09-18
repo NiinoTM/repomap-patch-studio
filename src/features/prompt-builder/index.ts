@@ -8,10 +8,35 @@ export { BlueprintReviewModal } from "./components/prompt/BlueprintReviewModal";
 export { PromptActionButtons } from "./components/prompt/PromptActionButtons";
 export { SocraticConfrontationModal } from "./components/prompt/SocraticConfrontationModal";
 export { AtomicStepTracker } from "./components/prompt/AtomicStepTracker";
+export {
+  BlueprintDiscoveryModal,
+  type BlueprintDiscoveryModalProps,
+} from "./components/prompt/BlueprintDiscoveryModal";
+export {
+  buildArchitecturalDiscoveryPrompt,
+  type BlueprintDiscoveryPromptParams,
+} from "./utils/blueprintDiscoveryPrompt";
+export {
+  BlueprintSuspendedBanner,
+  type BlueprintSuspendedBannerProps,
+} from "./components/prompt/BlueprintSuspendedBanner";
+export {
+  buildPhaseBatchStepPrompt,
+  groupTargetFilesByPhase,
+  type PhaseBatchStepPromptParams,
+} from "./utils/stepperPrompt";
+export type {
+  UseAtomicStepperReturn,
+} from "./hooks/useAtomicStepper";
 
 // Custom Hooks
 export { useBlueprintWorkflow } from "./hooks/useBlueprintWorkflow";
+export type { UseBlueprintWorkflowReturn } from "./hooks/useBlueprintWorkflow";
 export { useAtomicStepper } from "./hooks/useAtomicStepper";
+export type {
+  UseAtomicStepperParams,
+  UseAtomicStepperReturn,
+} from "./hooks/useAtomicStepper";
 export { useSocraticGate } from "./hooks/useSocraticGate";
 export { useRepoContext } from "./hooks/useRepoContext";
 export { usePasteAndValidate } from "./hooks/usePasteAndValidate";

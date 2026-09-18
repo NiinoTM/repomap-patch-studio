@@ -95,19 +95,52 @@ export interface BlueprintTargetFile {
   responsibility: string;
 }
 
+export interface BlueprintPhase {
+  id: string;
+  name: string;
+  intent: string;
+  files: BlueprintTargetFile[];
+  verificationCriteria: string[];
+}
+
 export interface StructuredBlueprint {
   title: string;
   summary: string;
   domains: DomainContractDefinition[];
+  phases?: BlueprintPhase[];
   targetFiles: BlueprintTargetFile[];
 }
 
 export type BlueprintPhaseState =
   | "idle"
+  | "blueprint_discovery"
   | "blueprint_prompt"
   | "blueprint_review"
   | "code_generation"
   | "verified";
+
+export interface BlueprintDiscoveryCandidate {
+  path: string;
+  domain: string;
+  reason: string;
+  layer?: DomainLayerType;
+  confidence?: number;
+}
+
+export interface BlueprintPreflightResult {
+  isSufficient: boolean;
+  fileCount: number;
+  tokenCount?: number;
+  missingScopes?: string[];
+  recommendation: "proceed" | "discovery_recommended" | "discovery_required";
+  message?: string;
+}
+
+export interface BlueprintDiscoveryPayload {
+  summary: string;
+  candidates: BlueprintDiscoveryCandidate[];
+  suggestedPhases?: string[];
+}
 
 export interface CohesionResult {
   file: string;

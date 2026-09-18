@@ -32,6 +32,23 @@ BLUEPRINT JSON SCHEMA:
       "allowedDependencies": ["Approved domains/layers this domain may import"]
     }
   ],
+  "phases": [
+    {
+      "id": "phase-1",
+      "name": "Phase 1: Contracts & Types",
+      "intent": "Scaffold public type contracts and boundary models",
+      "files": [
+        {
+          "path": "Exact path to file",
+          "domain": "Matching domain name",
+          "responsibility": "One-line single responsibility of this file"
+        }
+      ],
+      "verificationCriteria": [
+        "One-line test or verification rule"
+      ]
+    }
+  ],
   "targetFiles": [
     {
       "path": "Exact path to file",
@@ -45,7 +62,8 @@ ARCHITECTURAL RULES:
 1. Every feature domain MUST expose an explicit public barrel contract (index.ts).
 2. Deep cross-feature imports are prohibited; modules only import public barrels.
 3. Keep single-purpose modules (<250 lines for .ts, <350 lines for .tsx).
-4. Output ONLY the raw JSON blueprint wrapped in a json markdown block:
+4. Partition execution into 2-5 sequential, non-cyclical logical phases ordered by dependency flow (Contracts -> Services -> UI).
+5. Output ONLY the raw JSON blueprint wrapped in a json markdown block:
 \`\`\`json
 { ... }
 \`\`\`
