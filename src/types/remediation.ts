@@ -5,6 +5,7 @@ export interface GovernanceScaffoldOptions {
   huskyLeakedMarkerCheck: boolean;
   telemetryDbMonitoring: boolean;
   featurePublicApiBarrier: boolean;
+  strictSubpathExports?: boolean;
   knipDeadCodeDetection: boolean;
   dpdmCircularCheck: boolean;
   strictAsyncSafety: boolean;
@@ -59,3 +60,51 @@ export interface RemediationState {
   blueprint: FeatureBlueprintDomain[];
   selectedMoveIds: Set<string>;
 }
+
+export interface SubpathExportConfig {
+  rootEntry: string;
+  featureBarrels: Record<string, string>;
+  styleEntries: string[];
+}
+
+export interface TsPathFenceConfig {
+  baseUrl: string;
+  strictAliases: Record<string, string[]>;
+  disallowedPatterns: string[];
+}
+
+export type DomainLayerType =
+  | "feature"
+  | "server-service"
+  | "server-adapter"
+  | "api"
+  | "utils";
+
+export interface DomainContractDefinition {
+  name: string;
+  layer: DomainLayerType;
+  description: string;
+  publicExports: string[];
+  privateModules: string[];
+  allowedDependencies: string[];
+}
+
+export interface BlueprintTargetFile {
+  path: string;
+  domain: string;
+  responsibility: string;
+}
+
+export interface StructuredBlueprint {
+  title: string;
+  summary: string;
+  domains: DomainContractDefinition[];
+  targetFiles: BlueprintTargetFile[];
+}
+
+export type BlueprintPhaseState =
+  | "idle"
+  | "blueprint_prompt"
+  | "blueprint_review"
+  | "code_generation"
+  | "verified";
