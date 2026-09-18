@@ -21,6 +21,7 @@ interface ApplyResult {
   error?: string;
   details?: string[];
   warnings?: string[];
+  autoHealPrompt?: string;
 }
 
 function formatErrorDetails(
@@ -74,6 +75,7 @@ async function performAutoValidation(
   rawBlocks: DiffBlock[],
   setIsValidating: (v: boolean) => void,
   setValidationErrors: (errs: string[]) => void,
+  setAutoHealPrompt: (prompt: string | null) => void,
 ) {
   setIsValidating(true);
   try {
@@ -82,13 +84,17 @@ async function performAutoValidation(
     if (data.success) {
       const warnings = data.warnings || data.details || [];
       setValidationErrors(warnings);
+      setAutoHealPrompt(null);
     } else if (data.details) {
       setValidationErrors(data.details);
+      setAutoHealPrompt(data.autoHealPrompt || null);
     } else {
       setValidationErrors([data.error || "Unknown validation error"]);
+      setAutoHealPrompt(data.autoHealPrompt || null);
     }
   } catch {
     setValidationErrors(["Failed to connect to local server for validation."]);
+    setAutoHealPrompt(null);
   } finally {
     setIsValidating(false);
   }
@@ -102,6 +108,7 @@ export function useApplyChanges({
   const [isApplying, setIsApplying] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [autoHealPrompt, setAutoHealPrompt] = useState<string | null>(null);
   const [stages, setStages] = useState<ApplyStageState[]>([]);
 
   const handleProgress = (event: ApplyProgressEvent) => {
@@ -120,7 +127,12 @@ export function useApplyChanges({
     }
 
     const timer = setTimeout(() => {
-      performAutoValidation(rawBlocks, setIsValidating, setValidationErrors);
+      performAutoValidation(
+        rawBlocks,
+        setIsValidating,
+        setValidationErrors,
+        setAutoHealPrompt,
+      );
     }, 300);
 
     return () => clearTimeout(timer);
@@ -188,6 +200,7 @@ export function useApplyChanges({
 
       const errors = data.details || [data.error || "Unknown error"];
       setValidationErrors(errors);
+      setAutoHealPrompt(data.autoHealPrompt || null);
       alert(formatErrorDetails(data, "❌ Validation failed (0 files modified on disk):", "❌ Error validating edits:"));
       return false;
     } catch (err: unknown) {
@@ -202,6 +215,7 @@ export function useApplyChanges({
     isApplying,
     isValidating,
     validationErrors,
+    autoHealPrompt,
     stages,
     applyChanges,
     validateDryRun,

@@ -7,6 +7,8 @@ export interface BoundaryViolation {
   severity: "error" | "warn";
 }
 
+import { analyzeModuleCohesion } from "./cohesionAnalyzer";
+
 interface ScanContext {
   files: string[];
   dependencyMap: {
@@ -16,6 +18,7 @@ interface ScanContext {
     apiInbound?: Record<string, string[]>;
   };
   fileStats?: Record<string, { size: number; tokens: number }>;
+  fileContents?: Record<string, string>;
 }
 
 function checkSizeViolations(
@@ -124,11 +127,40 @@ function checkPublicApiBarrier(source: string, targets: string[]): BoundaryViola
   return violations;
 }
 
+function checkCohesionViolations(
+  files: string[],
+  fileContents: Record<string, string> = {},
+): BoundaryViolation[] {
+  const violations: BoundaryViolation[] = [];
+  for (const file of files) {
+    const content = fileContents[file];
+    if (!content || file.endsWith(".d.ts") || file.includes(".test.") || file.includes(".spec.")) {
+      continue;
+    }
+
+    const cohesion = analyzeModuleCohesion(file, content);
+    if (cohesion.isViolating) {
+      const clusterSummary = cohesion.clusters
+        .map((c) => `[${c.join(", ")}]`)
+        .join(" & ");
+      violations.push({
+        id: `cohesion-${file}`,
+        file,
+        rule: "srp-cohesion-lcom4",
+        message: `LCOM4 Cohesion Score is ${cohesion.lcom4} (>= 2). File contains ${cohesion.clusters.length} disjoint responsibilities: ${clusterSummary}. Candidate for decomposition.`,
+        severity: "warn",
+      });
+    }
+  }
+  return violations;
+}
+
 export function scanBoundaryViolations(context: ScanContext): BoundaryViolation[] {
   const violations: BoundaryViolation[] = [];
-  const { files, dependencyMap, fileStats = {} } = context;
+  const { files, dependencyMap, fileStats = {}, fileContents = {} } = context;
 
   violations.push(...checkSizeViolations(files, fileStats));
+  violations.push(...checkCohesionViolations(files, fileContents));
 
   for (const file of files) {
     const targets = dependencyMap.outbound[file] || [];

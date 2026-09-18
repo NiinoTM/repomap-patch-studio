@@ -1,4 +1,8 @@
-import { FeatureBlueprintDomain, ProposedFileMove } from "../../../types/remediation";
+import {
+  FeatureBlueprintDomain,
+  ProposedFileMove,
+  CohesionResult,
+} from "../../../types/remediation";
 
 interface DependencyGraph {
   outbound: Record<string, string[]>;
@@ -46,6 +50,31 @@ function buildProposedMove(file: string, domain: string, inboundCount: number, i
     dependentFilesCount: inboundCount,
     status: "pending",
   };
+}
+
+export function proposeCohesionSplits(
+  file: string,
+  cohesion: CohesionResult,
+): ProposedFileMove[] {
+  if (!cohesion.isViolating) return [];
+  const ext = file.split(".").pop() || "ts";
+  const lastSlash = file.lastIndexOf("/");
+  const dir = lastSlash !== -1 ? file.slice(0, lastSlash) : "src";
+  const baseName = file.split("/").pop()?.replace(/\.[^.]+$/, "") || "module";
+
+  return cohesion.clusters.map((cluster, idx) => {
+    const primarySymbol = cluster[0] || `part${idx + 1}`;
+    const targetPath = `${dir}/${baseName}.${primarySymbol}.${ext}`;
+    return {
+      id: `cohesion-split-${baseName}-${idx}`,
+      sourcePath: file,
+      targetPath,
+      targetFeature: baseName,
+      reason: `Decompose disjoint cluster [${cluster.join(", ")}] into isolated single-responsibility module`,
+      dependentFilesCount: 0,
+      status: "pending",
+    };
+  });
 }
 
 export function clusterDomains(files: string[], dependencyMap: DependencyGraph): FeatureBlueprintDomain[] {

@@ -13,7 +13,13 @@ export {
   scanBoundaryViolations,
   type BoundaryViolation,
 } from "./analyzer/boundaryViolationScanner";
-export { clusterDomains } from "./analyzer/domainClusterEngine";
+export {
+  analyzeModuleCohesion,
+} from "./analyzer/cohesionAnalyzer";
+export {
+  clusterDomains,
+  proposeCohesionSplits,
+} from "./analyzer/domainClusterEngine";
 export { generateGovernancePatchBlocks } from "./patchers/governancePatchGenerator";
 export { patchPackageJson } from "./patchers/packageJsonPatcher";
 export { patchTsConfig } from "./patchers/tsConfigPatcher";

@@ -113,6 +113,25 @@ function checkHardErrors(errors: string[]): boolean {
   );
 }
 
+function buildPipelineAutoHealPrompt(
+  errors: string[],
+  blocks: DiffBlockInput[],
+): string {
+  const searchMarker = "<".repeat(7) + " SEARCH";
+  const equalsMarker = "=".repeat(7);
+  const replaceMarker = ">".repeat(7) + " REPLACE";
+
+  const formattedErrors = errors.map((e, i) => `${i + 1}. ${e}`).join("\n");
+  const formattedBlocks = blocks
+    .map(
+      (b) =>
+        `FILE: ${b.file}\n${searchMarker}\n${b.search}\n${equalsMarker}\n${b.replace}\n${replaceMarker}`,
+    )
+    .join("\n\n");
+
+  return `ROLE: Senior Software Architect & Healing Engineer\nPlease fix the following patch validation failures:\n\nERRORS:\n${formattedErrors}\n\nFAILED PATCH BLOCKS:\n${formattedBlocks}\n\nEmit updated, corrected SEARCH/REPLACE blocks.`;
+}
+
 function emitApplySuccess(
   emit: StageRunner["emit"],
   appliedFiles: string[],
@@ -155,10 +174,12 @@ export async function runApplyPipeline(
     );
 
     if (checkHardErrors(validationErrors)) {
+      const autoHealPrompt = buildPipelineAutoHealPrompt(validationErrors, blocks);
       emit({
         type: "result",
         success: false,
         ...buildValidationErrorResponse(validationErrors),
+        autoHealPrompt,
       });
       return;
     }

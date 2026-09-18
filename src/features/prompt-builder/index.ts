@@ -34,6 +34,7 @@ export {
   buildDiscoveryPrompt,
   buildFilesAndPromptOnly,
   buildArchitecturalBlueprintPrompt,
+  buildAutoHealPrompt,
 } from "./utils/promptTemplates";
 export { parseDiffBlocks, parseFileList } from "./utils/diffParser";
 export { generateCommitMessage } from "./utils/commitMessageGenerator";

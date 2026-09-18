@@ -60,6 +60,7 @@ export interface ApplyResponse {
   validatedFiles?: string[];
   validatedMoves?: string[];
   appliedFiles?: string[];
+  autoHealPrompt?: string;
 }
 
 export interface ApplyProgressEvent {

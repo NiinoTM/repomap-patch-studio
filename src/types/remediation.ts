@@ -108,3 +108,10 @@ export type BlueprintPhaseState =
   | "blueprint_review"
   | "code_generation"
   | "verified";
+
+export interface CohesionResult {
+  file: string;
+  lcom4: number;
+  clusters: string[][];
+  isViolating: boolean;
+}

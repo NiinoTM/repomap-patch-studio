@@ -7,6 +7,7 @@ import { UntestedFilesBanner } from "./diff/UntestedFilesBanner";
 import { EmptyDiffState } from "./diff/EmptyDiffState";
 import { DiffBlockList } from "./diff/DiffBlockList";
 import { useApplyChanges } from "../hooks/useApplyChanges";
+import { buildAutoHealPrompt } from "../utils/promptTemplates";
 
 interface DiffPanelProps {
   parsedBlocks: DiffBlock[];
@@ -51,6 +52,7 @@ export function DiffPanel({
   const [editReplace, setEditReplace] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedAllErrors, setCopiedAllErrors] = useState(false);
+  const [copiedAutoHeal, setCopiedAutoHeal] = useState(false);
   const [copiedErrorBlockId, setCopiedErrorBlockId] = useState<string | null>(
     null,
   );
@@ -162,10 +164,32 @@ export function DiffPanel({
     (b) => !effectiveIgnoredBlocks?.has?.(b.id),
   );
 
-  const { validationErrors = [], isValidating } = useApplyChanges({
+  const {
+    validationErrors = [],
+    isValidating,
+    autoHealPrompt,
+  } = useApplyChanges({
     diffBlocks: activeBlocks,
     autoValidate: true,
   });
+
+  const handleAutoHeal = () => {
+    if (validationErrors.length === 0) return;
+    const promptText =
+      autoHealPrompt ||
+      buildAutoHealPrompt({
+        validationErrors,
+        failedBlocks: activeBlocks.map((b) => ({
+          file: b.matchedFile || b.file,
+          search: b.search,
+          replace: b.replace,
+        })),
+      });
+
+    navigator.clipboard.writeText(promptText);
+    setCopiedAutoHeal(true);
+    setTimeout(() => setCopiedAutoHeal(false), 2000);
+  };
 
   const getBlockErrors = (block: DiffBlock) =>
     validationErrors.filter(
@@ -229,6 +253,8 @@ export function DiffPanel({
         validationErrors={validationErrors}
         copiedAllErrors={copiedAllErrors}
         onCopyAllErrors={handleCopyAllErrors}
+        onAutoHeal={handleAutoHeal}
+        copiedAutoHeal={copiedAutoHeal}
       />
 
       {untestedFiles.length > 0 && onDismissUntested && onGenerateTestsForUntested && (

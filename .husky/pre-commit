@@ -1,6 +1,6 @@
 # Files whose real job is to implement/render/parse the SEARCH/REPLACE
 # patch format itself — legitimate matches, not leaked markers.
-PATCH_MARKER_ALLOWLIST='^(src/features/prompt-builder/utils/diffParser\.ts|src/features/prompt-builder/utils/promptTemplates\.ts|src/features/prompt-builder/components/DiffPanel\.tsx|src/features/prompt-builder/components/diff/ClipboardDebugger\.tsx|src/features/prompt-builder/components/diff/DiffBlockCard\.tsx|src/features/prompt-builder/components/diff/DiffBlockBody\.tsx|server/services/applyPatchService\.ts|\.husky/.*)$'
+PATCH_MARKER_ALLOWLIST='^(src/features/prompt-builder/utils/diffParser\.ts|src/features/prompt-builder/utils/promptTemplates\.ts|src/features/prompt-builder/utils/blueprintPrompt\.ts|src/features/prompt-builder/utils/autoHealPrompt\.ts|src/features/prompt-builder/components/DiffPanel\.tsx|src/features/prompt-builder/components/diff/ClipboardDebugger\.tsx|src/features/prompt-builder/components/diff/DiffBlockCard\.tsx|src/features/prompt-builder/components/diff/DiffBlockBody\.tsx|server/services/applyPatchService\.ts|server/services/applyPipeline\.ts|\.husky/.*)$'
 
 # tr -d '\r' strips Windows carriage returns so the allowlist matches reliably
 LEAKED_FILES=$(git diff --cached --name-only --diff-filter=ACM | tr -d '\r' | grep -vE "$PATCH_MARKER_ALLOWLIST" | \
