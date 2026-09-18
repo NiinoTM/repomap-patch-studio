@@ -28,6 +28,11 @@ export default defineConfig(() => {
     ],
     resolve: {
       alias: {
+        "@features/architecture-governance": path.resolve(__dirname, "src/features/architecture-governance/index.ts"),
+        "@features/git-branch": path.resolve(__dirname, "src/features/git-branch/index.ts"),
+        "@features/project-initializer": path.resolve(__dirname, "src/features/project-initializer/index.ts"),
+        "@features/prompt-builder": path.resolve(__dirname, "src/features/prompt-builder/index.ts"),
+        "@features/tickets": path.resolve(__dirname, "src/features/tickets/index.ts"),
         "@": path.resolve(__dirname, "."),
       },
     },

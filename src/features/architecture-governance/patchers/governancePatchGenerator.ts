@@ -17,7 +17,7 @@ function makeBlock(
   file: string,
   replace: string,
   search = "",
-  changeType: "CREATE" | "MODIFY" = "CREATE",
+  changeType: "CREATE" | "EDIT" = "CREATE",
 ): DiffBlock {
   return {
     id: `patch-${file.replace(/[^a-zA-Z0-9]/g, "-")}-${Math.random().toString(36).slice(2, 7)}`,
@@ -69,18 +69,18 @@ export function generateGovernancePatchBlocks(
 
   const pkgPatch = patchPackageJson(existingFiles["package.json"], opts);
   blocks.push(
-    makeBlock("package.json", pkgPatch.content, pkgPatch.isModified ? existingFiles["package.json"] : "", pkgPatch.isModified ? "MODIFY" : "CREATE"),
+    makeBlock("package.json", pkgPatch.content, pkgPatch.isModified ? existingFiles["package.json"] : "", pkgPatch.isModified ? "EDIT" : "CREATE"),
   );
 
   const tsPatch = patchTsConfig(existingFiles["tsconfig.json"], opts);
   blocks.push(
-    makeBlock("tsconfig.json", tsPatch.content, tsPatch.isModified ? existingFiles["tsconfig.json"] : "", tsPatch.isModified ? "MODIFY" : "CREATE"),
+    makeBlock("tsconfig.json", tsPatch.content, tsPatch.isModified ? existingFiles["tsconfig.json"] : "", tsPatch.isModified ? "EDIT" : "CREATE"),
   );
 
   const eslintPatch = patchEslintConfig(existingFiles["eslint.config.js"], opts);
   if (eslintPatch.content) {
     blocks.push(
-      makeBlock("eslint.config.js", eslintPatch.content, eslintPatch.isModified ? existingFiles["eslint.config.js"] : "", eslintPatch.isModified ? "MODIFY" : "CREATE"),
+      makeBlock("eslint.config.js", eslintPatch.content, eslintPatch.isModified ? existingFiles["eslint.config.js"] : "", eslintPatch.isModified ? "EDIT" : "CREATE"),
     );
   }
 

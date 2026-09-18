@@ -1,20 +1,20 @@
 import { useState } from "react";
-import { Header } from "./features/prompt-builder/components/Header";
-import { PromptPanel } from "./features/prompt-builder/components/PromptPanel";
-import { DiffPanel } from "./features/prompt-builder/components/DiffPanel";
-import { Footer } from "./features/prompt-builder/components/Footer";
-import { Toast } from "./features/prompt-builder/components/Toast";
-import { DiffBlock } from "./types/patch";
-import { Ticket } from "./types/ticket";
-import { useRepoContext } from "./features/prompt-builder/hooks/useRepoContext";
-import { usePasteAndValidate } from "./features/prompt-builder/hooks/usePasteAndValidate";
-import { findUntestedFiles } from "./features/prompt-builder/utils/testDetection";
-import { filterRepoMapByScope } from "./features/prompt-builder/utils/scopeFilter";
-import { filesApi } from "./api/repoApi";
 import {
+  Header,
+  PromptPanel,
+  DiffPanel,
+  Footer,
+  Toast,
+  useRepoContext,
+  usePasteAndValidate,
+  findUntestedFiles,
+  filterRepoMapByScope,
   formatActiveFilesContext,
   buildUnitTestPrompt,
-} from "./features/prompt-builder/utils/promptTemplates";
+} from "@features/prompt-builder";
+import { DiffBlock } from "./types/patch";
+import { Ticket } from "./types/ticket";
+import { filesApi } from "./api/repoApi";
 
 export default function App() {
   const [activeTicket, setActiveTicket] = useState<Ticket | null>(null);

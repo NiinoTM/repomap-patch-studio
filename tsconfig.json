@@ -11,7 +11,14 @@
     "moduleDetection": "force",
     "allowJs": true,
     "jsx": "react-jsx",
+    "baseUrl": ".",
     "paths": {
+      "@features/architecture-governance": ["src/features/architecture-governance/index.ts"],
+      "@features/git-branch": ["src/features/git-branch/index.ts"],
+      "@features/project-initializer": ["src/features/project-initializer/index.ts"],
+      "@features/prompt-builder": ["src/features/prompt-builder/index.ts"],
+      "@features/tickets": ["src/features/tickets/index.ts"],
+      "@features/*": ["src/features/*/index.ts"],
       "@/*": ["./*"]
     },
     "types": ["vitest/globals"],

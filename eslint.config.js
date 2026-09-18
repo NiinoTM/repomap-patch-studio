@@ -177,6 +177,7 @@ export default tseslint.config(
   },
 
   // --- 4b: FS/Node built-in barrier for routes & services ---
+    // --- 4b: FS/Node built-in barrier for routes & services ---
   {
     files: ["server/routes/**/*.ts", "server/services/**/*.ts"],
     rules: {
@@ -190,6 +191,44 @@ export default tseslint.config(
     },
   },
 
+  // --- 4e: Feature domain public API fence (anti-deep-import) ---
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: [
+                "@/src/features/*/**",
+                "@/features/*/**",
+                "src/features/*/**",
+                "./features/*/**",
+                "../features/*/**",
+                "../../features/*/**",
+                "**/features/*/*/**",
+                "../*-governance/**",
+                "../../*-governance/**",
+                "../*-branch/**",
+                "../../*-branch/**",
+                "../*-initializer/**",
+                "../../*-initializer/**",
+                "../*-builder/**",
+                "../../*-builder/**",
+                "../tickets/**",
+                "../../tickets/**",
+              ],
+              message:
+                "Direct internal feature imports are forbidden. Import from the domain's public API ('@features/<domain>') instead.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  // --- 4b: known debt — "warn" only. routes → adapters ---
   // --- 4b: known debt — "warn" only. routes → adapters ---
   // All three route files currently import adapters directly; no service
   // layer sits between them yet. Promote to "error" once
