@@ -4,8 +4,11 @@ export { PromptPanel } from "./components/PromptPanel";
 export { DiffPanel } from "./components/DiffPanel";
 export { Footer } from "./components/Footer";
 export { Toast } from "./components/Toast";
+export { BlueprintReviewModal } from "./components/prompt/BlueprintReviewModal";
+export { PromptActionButtons } from "./components/prompt/PromptActionButtons";
 
 // Custom Hooks
+export { useBlueprintWorkflow } from "./hooks/useBlueprintWorkflow";
 export { useRepoContext } from "./hooks/useRepoContext";
 export { usePasteAndValidate } from "./hooks/usePasteAndValidate";
 export { useApplyChanges } from "./hooks/useApplyChanges";
@@ -30,6 +33,7 @@ export {
   buildFullContextPrompt,
   buildDiscoveryPrompt,
   buildFilesAndPromptOnly,
+  buildArchitecturalBlueprintPrompt,
 } from "./utils/promptTemplates";
 export { parseDiffBlocks, parseFileList } from "./utils/diffParser";
 export { generateCommitMessage } from "./utils/commitMessageGenerator";

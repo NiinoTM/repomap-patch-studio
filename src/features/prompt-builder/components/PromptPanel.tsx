@@ -8,16 +8,19 @@ import {
   RepoMapPreviewModal,
 } from "./prompt/RepoMapPreviewModal";
 import { PromptActionButtons } from "./prompt/PromptActionButtons";
+import { BlueprintReviewModal } from "./prompt/BlueprintReviewModal";
 import { useMentionPopup } from "../hooks/useMentionPopup";
 import { useSuggestedContext } from "../hooks/useSuggestedContext";
 import { useFileSelection } from "../hooks/useFileSelection";
 import { useTokenEstimate } from "../hooks/useTokenEstimate";
 import { useCopyPrompt } from "../hooks/useCopyPrompt";
+import { useBlueprintWorkflow } from "../hooks/useBlueprintWorkflow";
 import {
   findMissingDependencies,
   MissingDependency,
 } from "../utils/completenessCheck";
 import { CompletenessWarningModal } from "./prompt/CompletenessWarningModal";
+import { buildArchitecturalBlueprintPrompt } from "../utils/promptTemplates";
 import { parseFileList } from "../utils/diffParser";
 import { Ticket } from "../../../types/ticket";
 import { CheckSquare } from "lucide-react";
@@ -137,6 +140,17 @@ export function PromptPanel({
     copyFilesAndPrompt,
     copyUnitTestPrompt,
   } = useCopyPrompt({ selectedFiles, repoMap, request, discoveryMode, onCopy });
+
+  const blueprintWorkflow = useBlueprintWorkflow();
+
+  const handleGenerateBlueprintPrompt = () => {
+    const prompt = buildArchitecturalBlueprintPrompt({
+      repoMap,
+      activeFilesText: "No specific files selected. Architecting from repo map.",
+      userRequest: request || "Generate modular architecture following SRP.",
+    });
+    onCopy(prompt);
+  };
 
   const executeCopyAction = (action: "full" | "files" | "tests") => {
     if (action === "full") copyFullContext();
@@ -317,9 +331,24 @@ export function PromptPanel({
         isCopying={isCopying}
         isCopyingFiles={isCopyingFiles}
         isCopyingTests={isCopyingTests}
+        isBlueprintApproved={blueprintWorkflow.isApproved}
         onCopyFull={() => handleCopyClick("full")}
         onCopyFiles={() => handleCopyClick("files")}
         onCopyTests={() => handleCopyClick("tests")}
+        onGenerateBlueprint={handleGenerateBlueprintPrompt}
+        onOpenBlueprintReview={blueprintWorkflow.openReviewModal}
+      />
+
+      <BlueprintReviewModal
+        isOpen={blueprintWorkflow.isReviewModalOpen}
+        onClose={blueprintWorkflow.closeReviewModal}
+        blueprint={blueprintWorkflow.blueprint}
+        rawInput={blueprintWorkflow.rawInput}
+        onRawInputChange={blueprintWorkflow.setRawInput}
+        validationError={blueprintWorkflow.validationError}
+        onValidate={blueprintWorkflow.validateAndApplyBlueprint}
+        onApprove={blueprintWorkflow.approveBlueprint}
+        isApproved={blueprintWorkflow.isApproved}
       />
 
       <RepoMapPreviewModal

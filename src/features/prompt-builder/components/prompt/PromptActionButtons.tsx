@@ -1,4 +1,4 @@
-import { Copy, FileText, FlaskConical } from "lucide-react";
+import { Shield, Layers, Copy, FileText, FlaskConical } from "lucide-react";
 
 interface PromptActionButtonsProps {
   discoveryMode: boolean;
@@ -6,9 +6,12 @@ interface PromptActionButtonsProps {
   isCopying: boolean;
   isCopyingFiles: boolean;
   isCopyingTests: boolean;
+  isBlueprintApproved: boolean;
   onCopyFull: () => void;
   onCopyFiles: () => void;
   onCopyTests: () => void;
+  onGenerateBlueprint: () => void;
+  onOpenBlueprintReview: () => void;
 }
 
 export function PromptActionButtons({
@@ -17,59 +20,100 @@ export function PromptActionButtons({
   isCopying,
   isCopyingFiles,
   isCopyingTests,
+  isBlueprintApproved,
   onCopyFull,
   onCopyFiles,
   onCopyTests,
+  onGenerateBlueprint,
+  onOpenBlueprintReview,
 }: PromptActionButtonsProps) {
   const isAnyCopying = isCopying || isCopyingFiles || isCopyingTests;
 
   return (
-    <div className="flex space-x-2 shrink-0">
-      <button
-        onClick={onCopyFull}
-        disabled={isAnyCopying}
-        className={`flex-1 font-semibold py-2.5 rounded-lg shadow-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer text-[11px] ${
-          discoveryMode
-            ? "bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-indigo-500/10"
-            : "bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-cyan-500/10"
-        }`}
-      >
-        <Copy className="w-3.5 h-3.5 shrink-0" />
-        <span className="truncate">
-          {isCopying
-            ? "Assembling..."
-            : discoveryMode
-              ? "Ask AI What's Needed"
-              : `Full Context (${selectedFilesCount})`}
-        </span>
-      </button>
+    <div className="space-y-2 shrink-0">
+      <div className="flex space-x-2">
+        <button
+          onClick={onGenerateBlueprint}
+          disabled={isAnyCopying}
+          className="flex-1 bg-gradient-to-r from-cyan-700 to-blue-700 hover:from-cyan-600 hover:to-blue-600 text-white font-semibold py-2 rounded-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all text-[11px] shadow-lg shadow-cyan-900/20 cursor-pointer"
+          title="Phase 1: Request an architectural blueprint before writing code"
+        >
+          <Shield className="w-3.5 h-3.5 shrink-0 text-cyan-200" />
+          <span className="truncate">Phase 1: Blueprint Prompt</span>
+        </button>
 
-      <button
-        onClick={onCopyFiles}
-        disabled={isAnyCopying || selectedFilesCount === 0 || discoveryMode}
-        className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold py-2.5 rounded-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer border border-zinc-700 text-[11px]"
-      >
-        <FileText className="w-3.5 h-3.5 shrink-0" />
-        <span className="truncate">
-          {isCopyingFiles
-            ? "Fetching..."
-            : `Files + Prompt (${selectedFilesCount})`}
-        </span>
-      </button>
+        <button
+          onClick={onOpenBlueprintReview}
+          className={`px-3 py-2 rounded-lg font-semibold flex items-center justify-center space-x-1 active:scale-[0.98] transition-all text-[11px] border cursor-pointer ${
+            isBlueprintApproved
+              ? "bg-emerald-950/40 border-emerald-500/40 text-emerald-300"
+              : "bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700"
+          }`}
+          title="Review and validate the AI's architectural blueprint"
+        >
+          <Layers className="w-3.5 h-3.5 shrink-0" />
+          <span>{isBlueprintApproved ? "Blueprint Approved" : "Review"}</span>
+        </button>
+      </div>
 
-      <button
-        onClick={onCopyTests}
-        disabled={isAnyCopying || selectedFilesCount === 0 || discoveryMode}
-        className="flex-1 bg-zinc-900 hover:bg-zinc-800 text-emerald-400 hover:text-emerald-300 font-semibold py-2.5 rounded-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer border border-emerald-500/30 hover:border-emerald-500/50 text-[11px]"
-        title="Generate Vitest unit tests prompt for selected files"
-      >
-        <FlaskConical className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
-        <span className="truncate">
-          {isCopyingTests
-            ? "Generating..."
-            : `Test Prompt (${selectedFilesCount})`}
-        </span>
-      </button>
+      <div className="flex space-x-2">
+        <button
+          onClick={onCopyFull}
+          disabled={isAnyCopying || (!isBlueprintApproved && !discoveryMode)}
+          className={`flex-1 font-semibold py-2 rounded-lg shadow-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed text-[11px] ${
+            discoveryMode
+              ? "bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-indigo-500/10"
+              : "bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700"
+          }`}
+          title={
+            !isBlueprintApproved && !discoveryMode
+              ? "Approve Phase 1 Blueprint first to unlock implementation prompts"
+              : ""
+          }
+        >
+          <Copy className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">
+            {isCopying
+              ? "Assembling..."
+              : discoveryMode
+                ? "Ask AI What's Needed"
+                : `Phase 2: Full Code (${selectedFilesCount})`}
+          </span>
+        </button>
+
+        <button
+          onClick={onCopyFiles}
+          disabled={
+            isAnyCopying ||
+            selectedFilesCount === 0 ||
+            discoveryMode ||
+            !isBlueprintApproved
+          }
+          className="flex-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-semibold py-2 rounded-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed border border-zinc-800 text-[11px]"
+          title={
+            !isBlueprintApproved
+              ? "Approve Phase 1 Blueprint first to unlock implementation prompts"
+              : ""
+          }
+        >
+          <FileText className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">
+            {isCopyingFiles ? "Fetching..." : `Files Only (${selectedFilesCount})`}
+          </span>
+        </button>
+
+        <button
+          onClick={onCopyTests}
+          disabled={isAnyCopying || selectedFilesCount === 0 || discoveryMode}
+          className="flex-1 bg-zinc-900 hover:bg-zinc-800 text-emerald-400 hover:text-emerald-300 font-semibold py-2 rounded-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-50 cursor-pointer border border-emerald-500/30 hover:border-emerald-500/50 text-[11px]"
+          title="Generate Vitest unit tests prompt for selected files"
+        >
+          <FlaskConical className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+          <span className="truncate">
+            {isCopyingTests ? "Generating..." : `Test Prompt (${selectedFilesCount})`}
+          </span>
+        </button>
+      </div>
     </div>
   );
 }

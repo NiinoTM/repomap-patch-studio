@@ -1,18 +1,22 @@
 import React, { useState } from "react";
 import { Shield, Sprout, ChevronDown } from "lucide-react";
 import { useHeaderActions } from "../hooks/useHeaderActions";
-import { useBranchManager } from "../../git-branch/hooks/useBranchManager";
-import { ProjectInitializerModal } from "../../project-initializer/components/ProjectInitializerModal";
-import { GovernanceDashboardModal } from "../../architecture-governance/components/GovernanceDashboardModal";
-import { BranchSelectorPill } from "../../git-branch/components/BranchSelectorPill";
-import { BranchManagerModal } from "../../git-branch/components/BranchManagerModal";
-import { CreateBranchDialog } from "../../git-branch/components/CreateBranchDialog";
-import { RenameBranchDialog } from "../../git-branch/components/RenameBranchDialog";
-import { DirtyStateWarningModal } from "../../git-branch/components/DirtyStateWarningModal";
-import { ActiveTicketPill } from "../../tickets/components/ActiveTicketPill";
-import { TicketManagerModal } from "../../tickets/components/TicketManagerModal";
-import { CreateTicketDialog } from "../../tickets/components/CreateTicketDialog";
-import { useTickets } from "../../tickets/hooks/useTickets";
+import {
+  useBranchManager,
+  BranchSelectorPill,
+  BranchManagerModal,
+  CreateBranchDialog,
+  RenameBranchDialog,
+  DirtyStateWarningModal,
+} from "@features/git-branch";
+import { ProjectInitializerModal } from "@features/project-initializer";
+import { GovernanceDashboardModal } from "@features/architecture-governance";
+import {
+  ActiveTicketPill,
+  TicketManagerModal,
+  CreateTicketDialog,
+  useTickets,
+} from "@features/tickets";
 import { Ticket } from "../../../types/ticket";
 import { extractAvailableScopes } from "../utils/scopeFilter";
 
