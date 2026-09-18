@@ -13,6 +13,7 @@ import {
   buildPlaywrightSmokeTest,
   buildPackageJson,
   buildGitIgnore,
+  buildServerEntry,
 } from "./scaffoldTemplates";
 
 function makeCreateBlock(file: string, replace: string): DiffBlock {
@@ -69,6 +70,7 @@ export function generateGovernanceDiffBlocks(opts: GovernanceScaffoldOptions): D
       blocks.push(makeCreateBlock(`${dir}/.gitkeep`, ""));
     }
     blocks.push(makeCreateBlock("src/index.ts", "export const ready = true;\n"));
+    blocks.push(makeCreateBlock("server/index.ts", buildServerEntry()));
   }
 
   return blocks;

@@ -97,6 +97,24 @@ export function buildGitIgnore(): string {
   return `# Dependencies\nnode_modules/\n.pnp/\n.pnp.js\n\n# Production\ndist/\nbuild/\n*.tsbuildinfo\n\n# Env & Secrets\n.env\n.env.local\n.env.*.local\n\n# Testing & Coverage\ncoverage/\nplaywright-report/\ntest-results/\n\n# Database & Logs\n*.db\n*.sqlite\ntelemetry.db\n*.log\n\n# OS & IDE\n.DS_Store\nThumbs.db\n.idea/\n`;
 }
 
+export function buildServerEntry(): string {
+  return `import express from "express";
+
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+app.use(express.json());
+
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+app.listen(PORT, () => {
+  console.log(\`🚀 Server ready on http://localhost:\${PORT}\`);
+});
+`;
+}
+
 export function buildKnipConfig(): string {
   return JSON.stringify(
     {

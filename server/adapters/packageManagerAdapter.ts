@@ -86,7 +86,7 @@ async function setupHuskyIfPresent(repoPath: string): Promise<string> {
 }
 
 export async function bootstrapRepository(repoPath: string): Promise<BootstrapResult> {
-  const pkgManager = detectPackageManager(repoPath);
+  const packageManager = detectPackageManager(repoPath);
   const pkgJsonPath = path.join(repoPath, "package.json");
 
   if (!fs.existsSync(pkgJsonPath)) {
@@ -101,7 +101,7 @@ export async function bootstrapRepository(repoPath: string): Promise<BootstrapRe
   let fullOutput = "";
   try {
     fullOutput += await ensureGitRepository(repoPath);
-    fullOutput += await installDependencies(pkgManager, repoPath);
+    fullOutput += await installDependencies(packageManager, repoPath);
     fullOutput += await setupHuskyIfPresent(repoPath);
 
     return { success: true, packageManager, output: fullOutput.trim() };
