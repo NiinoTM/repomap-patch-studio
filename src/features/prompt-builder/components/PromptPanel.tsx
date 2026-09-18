@@ -3,31 +3,31 @@ import { AtSign } from "lucide-react";
 import { MentionDropdown } from "./prompt/MentionDropdown";
 import { SuggestedContextBar } from "./prompt/SuggestedContextBar";
 import { FileTree } from "./prompt/FileTree";
-import {
-  RepoMapHeader,
-  RepoMapPreviewModal,
-} from "./prompt/RepoMapPreviewModal";
+import { RepoMapHeader } from "./prompt/RepoMapPreviewModal";
 import { PromptActionButtons } from "./prompt/PromptActionButtons";
-import { BlueprintReviewModal } from "./prompt/BlueprintReviewModal";
-import { SocraticConfrontationModal } from "./prompt/SocraticConfrontationModal";
+import { PromptOptions } from "./prompt/PromptOptions";
+import { AtomicStepTracker } from "./prompt/AtomicStepTracker";
 import { ActiveTicketBanner } from "./prompt/ActiveTicketBanner";
+import { PromptPanelModals } from "./prompt/PromptPanelModals";
 import { useMentionPopup } from "../hooks/useMentionPopup";
 import { useSuggestedContext } from "../hooks/useSuggestedContext";
 import { useFileSelection } from "../hooks/useFileSelection";
 import { useTokenEstimate } from "../hooks/useTokenEstimate";
 import { useCopyPrompt } from "../hooks/useCopyPrompt";
 import { useBlueprintWorkflow } from "../hooks/useBlueprintWorkflow";
+import { useAtomicStepper } from "../hooks/useAtomicStepper";
 import { useSocraticGate } from "../hooks/useSocraticGate";
 import { useCompletenessGuard } from "../hooks/useCompletenessGuard";
-import { CompletenessWarningModal } from "./prompt/CompletenessWarningModal";
 import {
   buildArchitecturalBlueprintPrompt,
+  buildUnitTestPrompt,
   formatActiveFilesContext,
 } from "../utils/promptTemplates";
 import {
   buildSocraticConfrontationPrompt,
   sanitizeSocraticAnswers,
 } from "../utils/socraticPrompt";
+import { buildStepScopedPrompt } from "../utils/stepperPrompt";
 import { ticketApi } from "../../../api/ticketApi";
 import { parseFileList } from "../utils/diffParser";
 import { Ticket } from "../../../types/ticket";
@@ -55,6 +55,25 @@ interface PromptPanelProps {
   discoveredFiles: string[];
   onDiscoveredFilesConsumed: () => void;
   activeTicket?: Ticket | null;
+}
+
+async function persistSocraticRequirement(
+  ticket: Ticket | null | undefined,
+  answersText: string,
+) {
+  if (!ticket) return;
+  const check = sanitizeSocraticAnswers(answersText);
+  const currentReqs = ticket.requirements || [];
+  const newReq = `[Socratic] ${check.sanitized.slice(0, 120)}`;
+  if (!currentReqs.includes(newReq)) {
+    const updatedReqs = [...currentReqs, newReq];
+    try {
+      await ticketApi.updateTicket(ticket.id, { requirements: updatedReqs });
+      ticket.requirements = updatedReqs;
+    } catch (err) {
+      console.error("Failed to persist requirements to ticket on disk:", err);
+    }
+  }
 }
 
 export function PromptPanel({
@@ -130,6 +149,10 @@ export function PromptPanel({
 
   const blueprintWorkflow = useBlueprintWorkflow();
   const socraticGate = useSocraticGate();
+  const atomicStepper = useAtomicStepper({
+    blueprint: blueprintWorkflow.blueprint,
+    isApproved: blueprintWorkflow.isApproved,
+  });
 
   const {
     missingDependencies,
@@ -162,23 +185,7 @@ export function PromptPanel({
   const handleApplyFortifiedCriteria = async () => {
     await socraticGate.applyFortifiedCriteria(async (fortified) => {
       setRequest((prev) => prev + fortified);
-
-      if (activeTicket) {
-        const check = sanitizeSocraticAnswers(socraticGate.answersText);
-        const currentReqs = activeTicket.requirements || [];
-        const newReq = `[Socratic] ${check.sanitized.slice(0, 120)}`;
-        if (!currentReqs.includes(newReq)) {
-          const updatedReqs = [...currentReqs, newReq];
-          try {
-            await ticketApi.updateTicket(activeTicket.id, {
-              requirements: updatedReqs,
-            });
-            activeTicket.requirements = updatedReqs;
-          } catch (err) {
-            console.error("Failed to persist requirements to ticket on disk:", err);
-          }
-        }
-      }
+      await persistSocraticRequirement(activeTicket, socraticGate.answersText);
     });
   };
 
@@ -191,6 +198,31 @@ export function PromptPanel({
     onCopy(prompt);
   };
 
+  const handleCopyStepPrompt = () => {
+    if (!atomicStepper.currentStep) return;
+    const prompt = buildStepScopedPrompt({
+      stepNumber: atomicStepper.currentStepIndex + 1,
+      totalSteps: atomicStepper.totalSteps,
+      targetFile: atomicStepper.currentStep,
+      completedSteps: Array.from(atomicStepper.completedPaths),
+      activeFilesText: formatActiveFilesContext(selectedFiles, {}),
+      repoMap,
+      userRequest: request || "Implement step following SRP boundaries.",
+    });
+    onCopy(prompt);
+  };
+
+  const handleFinishAndGenerateTests = () => {
+    const testFiles = atomicStepper.steps
+      .map((s) => s.path)
+      .filter((p) => !p.endsWith(".d.ts") && !p.includes(".test."));
+    const prompt = buildUnitTestPrompt({
+      activeFilesText: formatActiveFilesContext(testFiles, {}),
+      userRequest: "Generate comprehensive Vitest unit tests for all implemented steps.",
+    });
+    onCopy(prompt);
+  };
+
   useEffect(() => {
     if (!discoveredFiles || discoveredFiles.length === 0) return;
     acceptAllSuggestions(discoveredFiles);
@@ -198,15 +230,10 @@ export function PromptPanel({
   }, [discoveredFiles]);
 
   const handlePasteSelection = async () => {
-    try {
-      const clipboardText = await navigator.clipboard.readText();
-      if (!clipboardText) return;
-      const parsedFiles = parseFileList(clipboardText, files);
-      if (parsedFiles.length > 0) {
-        acceptAllSuggestions(parsedFiles);
-      }
-    } catch (err) {
-      console.error("Failed to read clipboard for context paste:", err);
+    const clipboardText = await navigator.clipboard.readText().catch(() => "");
+    const parsedFiles = parseFileList(clipboardText, files);
+    if (parsedFiles.length > 0) {
+      acceptAllSuggestions(parsedFiles);
     }
   };
 
@@ -217,6 +244,23 @@ export function PromptPanel({
         filesCount={files.length}
         onOpenModal={() => setIsMapModalOpen(true)}
       />
+
+      {atomicStepper.steps.length > 0 && (
+        <AtomicStepTracker
+          currentStep={atomicStepper.currentStep}
+          currentStepIndex={atomicStepper.currentStepIndex}
+          totalSteps={atomicStepper.totalSteps}
+          progressPercent={atomicStepper.progressPercent}
+          isLastStep={atomicStepper.isLastStep}
+          isFinished={atomicStepper.isFinished}
+          hasErrorsOrUnapplied={missingDependencies.length > 0}
+          onCopyStepPrompt={handleCopyStepPrompt}
+          onNextStep={() => atomicStepper.nextStep()}
+          onPrevStep={atomicStepper.prevStep}
+          onAddAdHocStep={atomicStepper.addAdHocStep}
+          onFinishAndGenerateTests={handleFinishAndGenerateTests}
+        />
+      )}
 
       <div className="space-y-2 relative">
         <div className="flex items-center justify-between">
@@ -278,27 +322,10 @@ export function PromptPanel({
         onPasteSelection={handlePasteSelection}
       />
 
-      <div className="space-y-2 text-xs text-zinc-300">
-        <label className="flex items-center space-x-2 cursor-pointer">
-          <input type="checkbox" defaultChecked className="accent-cyan-500" />
-          <span>Enforce SEARCH/REPLACE blocks</span>
-        </label>
-        <label className="flex items-center space-x-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={discoveryMode}
-            onChange={(e) => onDiscoveryModeChange(e.target.checked)}
-            className="accent-indigo-500"
-          />
-          <span>
-            Discovery Mode
-            <span className="text-zinc-500">
-              {" "}
-              — ask the AI which files it needs before sending any code
-            </span>
-          </span>
-        </label>
-      </div>
+      <PromptOptions
+        discoveryMode={discoveryMode}
+        onDiscoveryModeChange={onDiscoveryModeChange}
+      />
 
       <PromptActionButtons
         discoveryMode={discoveryMode}
@@ -316,46 +343,21 @@ export function PromptPanel({
         hasConfrontation={socraticGate.hasConfrontation}
       />
 
-      <SocraticConfrontationModal
-        isOpen={socraticGate.isOpen}
-        onClose={socraticGate.closeModal}
-        critiqueText={socraticGate.critiqueText}
-        onCritiqueChange={socraticGate.setCritiqueText}
-        answersText={socraticGate.answersText}
-        onAnswersChange={socraticGate.setAnswersText}
-        onApplyFortified={handleApplyFortifiedCriteria}
-        hasConfrontation={socraticGate.hasConfrontation}
-        isPersisting={socraticGate.isPersisting}
-      />
-
-      <BlueprintReviewModal
-        isOpen={blueprintWorkflow.isReviewModalOpen}
-        onClose={blueprintWorkflow.closeReviewModal}
-        blueprint={blueprintWorkflow.blueprint}
-        rawInput={blueprintWorkflow.rawInput}
-        onRawInputChange={blueprintWorkflow.setRawInput}
-        validationError={blueprintWorkflow.validationError}
-        onValidate={blueprintWorkflow.validateAndApplyBlueprint}
-        onApprove={blueprintWorkflow.approveBlueprint}
-        isApproved={blueprintWorkflow.isApproved}
-      />
-
-      <RepoMapPreviewModal
-        isOpen={isMapModalOpen}
-        onClose={() => setIsMapModalOpen(false)}
+      <PromptPanelModals
+        socraticGate={socraticGate}
+        onApplyFortifiedCriteria={handleApplyFortifiedCriteria}
+        blueprintWorkflow={blueprintWorkflow}
+        isMapModalOpen={isMapModalOpen}
+        onCloseMapModal={() => setIsMapModalOpen(false)}
         repoMap={repoMap}
         repoMapTokens={repoMapTokens}
         onCopyMap={onCopyMap}
+        missingDependencies={missingDependencies}
+        hasPendingCopyAction={Boolean(pendingCopyAction)}
+        onAddMissingAndCopy={handleAddMissingAndCopy}
+        onCopyAnyway={handleCopyAnyway}
+        onCancelCompletenessWarning={handleCancelCompletenessWarning}
       />
-
-      {missingDependencies.length > 0 && pendingCopyAction && (
-        <CompletenessWarningModal
-          missingDependencies={missingDependencies}
-          onAddMissingAndCopy={handleAddMissingAndCopy}
-          onCopyAnyway={handleCopyAnyway}
-          onCancel={handleCancelCompletenessWarning}
-        />
-      )}
     </div>
   );
 }

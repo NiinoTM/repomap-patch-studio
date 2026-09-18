@@ -7,9 +7,11 @@ export { Toast } from "./components/Toast";
 export { BlueprintReviewModal } from "./components/prompt/BlueprintReviewModal";
 export { PromptActionButtons } from "./components/prompt/PromptActionButtons";
 export { SocraticConfrontationModal } from "./components/prompt/SocraticConfrontationModal";
+export { AtomicStepTracker } from "./components/prompt/AtomicStepTracker";
 
 // Custom Hooks
 export { useBlueprintWorkflow } from "./hooks/useBlueprintWorkflow";
+export { useAtomicStepper } from "./hooks/useAtomicStepper";
 export { useSocraticGate } from "./hooks/useSocraticGate";
 export { useRepoContext } from "./hooks/useRepoContext";
 export { usePasteAndValidate } from "./hooks/usePasteAndValidate";
@@ -39,6 +41,10 @@ export {
   buildAutoHealPrompt,
 } from "./utils/promptTemplates";
 export { buildSocraticConfrontationPrompt } from "./utils/socraticPrompt";
+export {
+  buildStepScopedPrompt,
+  sortTargetFilesTopologically,
+} from "./utils/stepperPrompt";
 export { parseDiffBlocks, parseFileList } from "./utils/diffParser";
 export { generateCommitMessage } from "./utils/commitMessageGenerator";
 export { buildFileTree, type TreeNode } from "./utils/treeBuilder";
