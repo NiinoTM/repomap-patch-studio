@@ -119,6 +119,9 @@ export function useRemediation() {
     setIsScaffolding(true);
     setBootstrapOutput(null);
     try {
+      // Step 0: Ensure Git repository is initialized before diff blocks and file checks run
+      await repoApi.initGitRepo();
+
       const blocks = generateGovernanceDiffBlocks(scaffoldOptions);
       const res = await patchApi.applyStream(
         {

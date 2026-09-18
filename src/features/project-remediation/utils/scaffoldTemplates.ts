@@ -5,11 +5,14 @@ export function buildTsConfig(opts?: GovernanceScaffoldOptions): string {
     {
       compilerOptions: {
         target: "ES2022",
-        module: "NodeNext",
-        moduleResolution: "NodeNext",
+        module: "ESNext",
+        moduleResolution: "Bundler",
+        jsx: "react-jsx",
         esModuleInterop: true,
         strict: true,
         skipLibCheck: true,
+        allowSyntheticDefaultImports: true,
+        isolatedModules: true,
         ...(opts?.vitestUnitTesting ? { types: ["vitest/globals"] } : {}),
       },
       include: ["src/**/*", "server/**/*"],
@@ -66,13 +69,13 @@ export default tseslint.config(
       ],
     },
     rules: {
-      "boundaries/dependencies": ["${debtSeverity}", {
-        default: "allow",
-        policies: [
-          { from: { element: { type: "adapters" } }, disallow: [{ to: { element: { type: "services" } } }] },
-          { from: { element: { type: "services" } }, disallow: [{ to: { element: { type: "routes" } } }] },
-        ],
-      }],
+    "boundaries/dependencies": ["${debtSeverity}", {
+    default: "allow",
+    policies: [
+    { from: { element: { type: "adapters" } }, disallow: [{ to: { element: { type: "services" } } }] },
+    { from: { element: { type: "services" } }, disallow: [{ to: { element: { type: "routes" } } }] },
+    ],
+    }],
     },
   }` : ""}
 );
@@ -88,6 +91,10 @@ export function buildHuskyPreCommit(opts: GovernanceScaffoldOptions): string {
   if (opts.vitestUnitTesting) lines.push("npm test", "");
   lines.push("npx lint-staged", "");
   return lines.join("\n");
+}
+
+export function buildGitIgnore(): string {
+  return `# Dependencies\nnode_modules/\n.pnp/\n.pnp.js\n\n# Production\ndist/\nbuild/\n*.tsbuildinfo\n\n# Env & Secrets\n.env\n.env.local\n.env.*.local\n\n# Testing & Coverage\ncoverage/\nplaywright-report/\ntest-results/\n\n# Database & Logs\n*.db\n*.sqlite\ntelemetry.db\n*.log\n\n# OS & IDE\n.DS_Store\nThumbs.db\n.idea/\n`;
 }
 
 export function buildKnipConfig(): string {
@@ -156,91 +163,55 @@ export type ApiResponse = z.infer<typeof ApiResponseSchema>;
 `;
 }
 
-export function buildVitestSampleTest(): string {
-  return `import { describe, it, expect } from "vitest";
+export function buildVitestConfig(): string {
+  return `import { defineConfig } from "vitest/config";\nexport default defineConfig({ test: { globals: true, environment: "node", include: ["src/**/*.{test,spec}.{ts,tsx}", "server/**/*.{test,spec}.ts"], passWithNoTests: false } });\n`;
+}
 
-describe("core business logic smoke test", () => {
-  it("verifies unit testing infrastructure is functional", () => { expect(1 + 1).toBe(2); });
-});
-`;
+export function buildVitestSampleTest(): string {
+  return `import { describe, it, expect } from "vitest";\ndescribe("core business logic smoke test", () => {\n  it("verifies unit testing infrastructure is functional", () => { expect(1 + 1).toBe(2); });\n});\n`;
 }
 
 export function buildPlaywrightConfig(): string {
-  return `import { defineConfig, devices } from "@playwright/test";
-
-export default defineConfig({
-  testDir: "./e2e",
-  fullyParallel: true,
-  forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
-  reporter: "html",
-  use: { baseURL: "http://localhost:3000", trace: "on-first-retry" },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  webServer: { command: "npm run dev", url: "http://localhost:3000", reuseExistingServer: !process.env.CI, timeout: 120000 },
-});
-`;
+  return `import { defineConfig, devices } from "@playwright/test";\nexport default defineConfig({ testDir: "./e2e", fullyParallel: true, forbidOnly: !!process.env.CI, retries: process.env.CI ? 2 : 0, reporter: "html", use: { baseURL: "http://localhost:3000", trace: "on-first-retry" }, projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }], webServer: { command: "npm run dev", url: "http://localhost:3000", reuseExistingServer: !process.env.CI, timeout: 120000 } });\n`;
 }
 
 export function buildPlaywrightSmokeTest(): string {
-  return `import { test, expect } from "@playwright/test";
-
-test.describe("Critical User Journey Smoke Test", () => {
-  test("loads homepage and verifies root element mounts without crashes", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.locator("body")).toBeVisible();
-  });
-});
-`;
+  return `import { test, expect } from "@playwright/test";\ntest.describe("Critical User Journey Smoke Test", () => {\n  test("loads homepage and verifies root element mounts without crashes", async ({ page }) => {\n    await page.goto("/");\n    await expect(page.locator("body")).toBeVisible();\n  });\n});\n`;
 }
 
 export function buildPackageJson(opts: GovernanceScaffoldOptions): string {
-  const deps: Record<string, string> = {};
-  if (opts.zodRuntimeContracts) {
-    deps["zod"] = "^3.23.8";
-  }
+  const deps: Record<string, string> = {
+    react: "^18.3.1", "react-dom": "^18.3.1", express: "^4.21.2",
+    ...(opts.zodRuntimeContracts ? { zod: "^3.23.8" } : {}),
+  };
 
   const devDeps: Record<string, string> = {
-    "@eslint/js": "^9.0.0",
-    eslint: "^9.0.0",
-    typescript: "^5.0.0",
-    "typescript-eslint": "^8.0.0",
+    concurrently: "^9.1.2", tsx: "^4.21.0", vite: "^6.2.3", "@vitejs/plugin-react": "^5.0.4",
+    typescript: "~5.8.2", "@types/react": "^18.3.18", "@types/react-dom": "^18.3.5",
+    "@types/node": "^22.14.0", "@types/express": "^4.17.21",
+    "@eslint/js": "^9.0.0", eslint: "^9.0.0", "typescript-eslint": "^8.0.0",
+    ...(opts.eslintLayerBoundaries || opts.featurePublicApiBarrier ? { "eslint-plugin-boundaries": "^7.0.0" } : {}),
+    ...(opts.huskyPreCommitHook ? { husky: "^9.1.5", "lint-staged": "^15.2.2" } : {}),
+    ...(opts.knipDeadCodeDetection ? { knip: "^5.0.0" } : {}),
+    ...(opts.dpdmCircularCheck ? { dpdm: "^3.14.0" } : {}),
+    ...(opts.vitestUnitTesting ? { vitest: "^2.0.0" } : {}),
+    ...(opts.playwrightCriticalFlows ? { "@playwright/test": "^1.50.0" } : {}),
   };
-  if (opts.eslintLayerBoundaries || opts.featurePublicApiBarrier) {
-    devDeps["eslint-plugin-boundaries"] = "^7.0.0";
-  }
-  if (opts.huskyPreCommitHook) {
-    devDeps["husky"] = "^9.0.0";
-    devDeps["lint-staged"] = "^15.0.0";
-  }
-  if (opts.knipDeadCodeDetection) {
-    devDeps["knip"] = "^5.0.0";
-  }
-  if (opts.dpdmCircularCheck) {
-    devDeps["dpdm"] = "^3.14.0";
-  }
-  if (opts.vitestUnitTesting) {
-    devDeps["vitest"] = "^2.0.0";
-  }
-  if (opts.playwrightCriticalFlows) {
-    devDeps["@playwright/test"] = "^1.50.0";
-  }
 
-  const pkg = {
-    name: "governance-scaffolded-app",
-    private: true,
-    version: "0.1.0",
-    type: "module",
+  const pkg: Record<string, unknown> = {
+    name: "governance-scaffolded-app", private: true, version: "0.1.0", type: "module",
     scripts: {
-      lint: "eslint .",
-      typecheck: "tsc --noEmit",
+      dev: 'concurrently "vite --port=3060" "tsx server/index.ts"',
+      server: "tsx server/index.ts", build: "vite build", preview: "vite preview", clean: "rm -rf dist",
+      ...(opts.huskyPreCommitHook ? { prepare: "husky" } : {}),
+      lint: "tsc --noEmit && eslint .", typecheck: "tsc --noEmit",
       ...(opts.vitestUnitTesting ? { test: "vitest run", "test:watch": "vitest" } : {}),
       ...(opts.playwrightCriticalFlows ? { "test:e2e": "playwright test", "test:e2e:ui": "playwright test --ui" } : {}),
       ...(opts.knipDeadCodeDetection ? { knip: "knip" } : {}),
       ...(opts.dpdmCircularCheck ? { "check:circular": "dpdm --warning=false --tree=false --exit-code circular:1 src/" } : {}),
     },
-    ...(Object.keys(deps).length > 0 ? { dependencies: deps } : {}),
-    devDependencies: devDeps,
-    sideEffects: ["**/*.css", "**/*.scss"],
+    ...(opts.huskyPreCommitHook ? { "lint-staged": { "*.{ts,tsx,js,jsx}": ["eslint"] } } : {}),
+    dependencies: deps, devDependencies: devDeps, sideEffects: ["**/*.css", "**/*.scss"],
   };
   return JSON.stringify(pkg, null, 2);
 }

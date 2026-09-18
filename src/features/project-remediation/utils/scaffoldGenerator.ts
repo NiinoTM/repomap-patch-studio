@@ -7,10 +7,12 @@ import {
   buildKnipConfig,
   buildTelemetryAdapter,
   buildZodContractsStarter,
+  buildVitestConfig,
   buildVitestSampleTest,
   buildPlaywrightConfig,
   buildPlaywrightSmokeTest,
   buildPackageJson,
+  buildGitIgnore,
 } from "./scaffoldTemplates";
 
 function makeCreateBlock(file: string, replace: string): DiffBlock {
@@ -36,6 +38,7 @@ const SKELETON_DIRS = [
 
 export function generateGovernanceDiffBlocks(opts: GovernanceScaffoldOptions): DiffBlock[] {
   const blocks: DiffBlock[] = [
+    makeCreateBlock(".gitignore", buildGitIgnore()),
     makeCreateBlock("tsconfig.json", buildTsConfig(opts)),
     makeCreateBlock("eslint.config.js", buildEslintConfig(opts)),
     makeCreateBlock("package.json", buildPackageJson(opts)),
@@ -54,6 +57,7 @@ export function generateGovernanceDiffBlocks(opts: GovernanceScaffoldOptions): D
     blocks.push(makeCreateBlock("src/types/contracts.ts", buildZodContractsStarter()));
   }
   if (opts.vitestUnitTesting) {
+    blocks.push(makeCreateBlock("vitest.config.ts", buildVitestConfig()));
     blocks.push(makeCreateBlock("src/utils/sample.test.ts", buildVitestSampleTest()));
   }
   if (opts.playwrightCriticalFlows) {

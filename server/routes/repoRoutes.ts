@@ -22,7 +22,10 @@ import {
 import { generateRepoMap } from "../services/repoMapService";
 import { getDependencyMap } from "../services/dependencyService";
 import { openNativeFolderDialog } from "../adapters/osAdapter";
-import { bootstrapRepository } from "../adapters/packageManagerAdapter";
+import {
+  bootstrapRepository,
+  ensureGitRepository,
+} from "../adapters/packageManagerAdapter";
 
 export const repoRouter = Router();
 
@@ -84,6 +87,17 @@ repoRouter.post("/repo", (req: Request, res: Response) => {
     res
       .status(400)
       .json({ success: false, error: "Invalid or missing directory path." });
+  }
+});
+
+repoRouter.post("/repo/git-init", async (_req: Request, res: Response) => {
+  try {
+    const targetRepoPath = repoState.getRepoPath();
+    const output = await ensureGitRepository(targetRepoPath);
+    res.json({ success: true, output });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: message });
   }
 });
 

@@ -1,6 +1,7 @@
 import { getDirtyFiles } from "../adapters/gitAdapter";
 import { StageRunner } from "../utils/streamProgress";
 import { DiffBlockInput } from "./patchEngine";
+import { ensureGitRepository } from "../adapters/packageManagerAdapter";
 import {
   resolveEditWrites,
   validateMoveBlocks,
@@ -140,6 +141,8 @@ export async function runApplyPipeline(
   const editBlocks = blocks.filter((b) => b.type !== "move");
 
   try {
+    await ensureGitRepository(targetRepoPath);
+
     const { pendingWrites, validationErrors } = await validatePipeline(
       targetRepoPath,
       editBlocks,

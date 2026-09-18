@@ -41,6 +41,11 @@ export const repoApi = {
     fetch("/api/repo/bootstrap", {
       method: "POST",
     }).then(handleResponse<BootstrapResponse>),
+
+  initGitRepo: (): Promise<{ success: boolean; output?: string; error?: string }> =>
+    fetch("/api/repo/git-init", {
+      method: "POST",
+    }).then(handleResponse<{ success: boolean; output?: string; error?: string }>),
 };
 
 export const filesApi = {
