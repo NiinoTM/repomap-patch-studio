@@ -18,17 +18,7 @@ import { useBlueprintWorkflow } from "../hooks/useBlueprintWorkflow";
 import { useAtomicStepper } from "../hooks/useAtomicStepper";
 import { useSocraticGate } from "../hooks/useSocraticGate";
 import { useCompletenessGuard } from "../hooks/useCompletenessGuard";
-import {
-  buildArchitecturalBlueprintPrompt,
-  buildUnitTestPrompt,
-  formatActiveFilesContext,
-} from "../utils/promptTemplates";
-import {
-  buildSocraticConfrontationPrompt,
-  sanitizeSocraticAnswers,
-} from "../utils/socraticPrompt";
-import { buildStepScopedPrompt } from "../utils/stepperPrompt";
-import { ticketApi } from "../../../api/ticketApi";
+import { usePromptActions } from "../hooks/usePromptActions";
 import { parseFileList } from "../utils/diffParser";
 import { Ticket } from "../../../types/ticket";
 
@@ -55,25 +45,6 @@ interface PromptPanelProps {
   discoveredFiles: string[];
   onDiscoveredFilesConsumed: () => void;
   activeTicket?: Ticket | null;
-}
-
-async function persistSocraticRequirement(
-  ticket: Ticket | null | undefined,
-  answersText: string,
-) {
-  if (!ticket) return;
-  const check = sanitizeSocraticAnswers(answersText);
-  const currentReqs = ticket.requirements || [];
-  const newReq = `[Socratic] ${check.sanitized.slice(0, 120)}`;
-  if (!currentReqs.includes(newReq)) {
-    const updatedReqs = [...currentReqs, newReq];
-    try {
-      await ticketApi.updateTicket(ticket.id, { requirements: updatedReqs });
-      ticket.requirements = updatedReqs;
-    } catch (err) {
-      console.error("Failed to persist requirements to ticket on disk:", err);
-    }
-  }
 }
 
 export function PromptPanel({
@@ -171,57 +142,22 @@ export function PromptPanel({
     acceptAllSuggestions,
   });
 
-  const handleConfrontLogic = () => {
-    const prompt = buildSocraticConfrontationPrompt({
-      repoMap,
-      activeFilesText: formatActiveFilesContext(selectedFiles, {}),
-      userRequest: request || "Interrogate requirements for missing failure modes and routing.",
-      activeTicket,
-    });
-    onCopy(prompt);
-    socraticGate.openModal();
-  };
-
-  const handleApplyFortifiedCriteria = async () => {
-    await socraticGate.applyFortifiedCriteria(async (fortified) => {
-      setRequest((prev) => prev + fortified);
-      await persistSocraticRequirement(activeTicket, socraticGate.answersText);
-    });
-  };
-
-  const handleGenerateBlueprintPrompt = () => {
-    const prompt = buildArchitecturalBlueprintPrompt({
-      repoMap,
-      activeFilesText: formatActiveFilesContext(selectedFiles, {}),
-      userRequest: request || "Generate modular architecture following SRP.",
-    });
-    onCopy(prompt);
-  };
-
-  const handleCopyStepPrompt = () => {
-    if (!atomicStepper.currentStep) return;
-    const prompt = buildStepScopedPrompt({
-      stepNumber: atomicStepper.currentStepIndex + 1,
-      totalSteps: atomicStepper.totalSteps,
-      targetFile: atomicStepper.currentStep,
-      completedSteps: Array.from(atomicStepper.completedPaths),
-      activeFilesText: formatActiveFilesContext(selectedFiles, {}),
-      repoMap,
-      userRequest: request || "Implement step following SRP boundaries.",
-    });
-    onCopy(prompt);
-  };
-
-  const handleFinishAndGenerateTests = () => {
-    const testFiles = atomicStepper.steps
-      .map((s) => s.path)
-      .filter((p) => !p.endsWith(".d.ts") && !p.includes(".test."));
-    const prompt = buildUnitTestPrompt({
-      activeFilesText: formatActiveFilesContext(testFiles, {}),
-      userRequest: "Generate comprehensive Vitest unit tests for all implemented steps.",
-    });
-    onCopy(prompt);
-  };
+  const {
+    handleConfrontLogic,
+    handleApplyFortifiedCriteria,
+    handleGenerateBlueprintPrompt,
+    handleCopyStepPrompt,
+    handleFinishAndGenerateTests,
+  } = usePromptActions({
+    request,
+    setRequest,
+    selectedFiles,
+    repoMap,
+    activeTicket,
+    onCopy,
+    socraticGate,
+    atomicStepper,
+  });
 
   useEffect(() => {
     if (!discoveredFiles || discoveredFiles.length === 0) return;
@@ -246,20 +182,34 @@ export function PromptPanel({
       />
 
       {atomicStepper.steps.length > 0 && (
-        <AtomicStepTracker
-          currentStep={atomicStepper.currentStep}
-          currentStepIndex={atomicStepper.currentStepIndex}
-          totalSteps={atomicStepper.totalSteps}
-          progressPercent={atomicStepper.progressPercent}
-          isLastStep={atomicStepper.isLastStep}
-          isFinished={atomicStepper.isFinished}
-          hasErrorsOrUnapplied={missingDependencies.length > 0}
-          onCopyStepPrompt={handleCopyStepPrompt}
-          onNextStep={() => atomicStepper.nextStep()}
-          onPrevStep={atomicStepper.prevStep}
-          onAddAdHocStep={atomicStepper.addAdHocStep}
-          onFinishAndGenerateTests={handleFinishAndGenerateTests}
-        />
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between px-1">
+            <span className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
+              Mode: {atomicStepper.isBatchMode ? "Domain Batch" : "Single File"}
+            </span>
+            <button
+              onClick={atomicStepper.toggleBatchMode}
+              className="text-[10px] text-cyan-400 hover:text-cyan-300 font-medium cursor-pointer underline underline-offset-2"
+              title="Toggle between single-file atomic steps and cohesive domain batch steps"
+            >
+              Switch to {atomicStepper.isBatchMode ? "Single File" : "Domain Batch"}
+            </button>
+          </div>
+          <AtomicStepTracker
+            currentStep={atomicStepper.currentStep}
+            currentStepIndex={atomicStepper.isBatchMode ? atomicStepper.currentBatchIndex : atomicStepper.currentStepIndex}
+            totalSteps={atomicStepper.isBatchMode ? atomicStepper.totalBatches : atomicStepper.totalSteps}
+            progressPercent={atomicStepper.progressPercent}
+            isLastStep={atomicStepper.isLastStep}
+            isFinished={atomicStepper.isFinished}
+            hasErrorsOrUnapplied={missingDependencies.length > 0}
+            onCopyStepPrompt={handleCopyStepPrompt}
+            onNextStep={() => atomicStepper.nextStep()}
+            onPrevStep={atomicStepper.prevStep}
+            onAddAdHocStep={atomicStepper.addAdHocStep}
+            onFinishAndGenerateTests={handleFinishAndGenerateTests}
+          />
+        </div>
       )}
 
       <div className="space-y-2 relative">

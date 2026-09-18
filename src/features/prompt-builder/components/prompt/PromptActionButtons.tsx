@@ -1,6 +1,4 @@
-import { Shield, Layers, Copy, FileText, FlaskConical } from "lucide-react";
-
-import { Flame } from "lucide-react";
+import { Shield, Layers, Copy, FileText, FlaskConical, Flame } from "lucide-react";
 
 interface PromptActionButtonsProps {
   discoveryMode: boolean;
@@ -34,8 +32,6 @@ export function PromptActionButtons({
   hasConfrontation,
 }: PromptActionButtonsProps) {
   const isAnyCopying = isCopying || isCopyingFiles || isCopyingTests;
-  const isDirectPromptUnlocked =
-    isBlueprintApproved || discoveryMode || Boolean(hasConfrontation);
 
   return (
     <div className="space-y-2 shrink-0">
@@ -83,17 +79,13 @@ export function PromptActionButtons({
       <div className="flex space-x-2">
         <button
           onClick={onCopyFull}
-          disabled={isAnyCopying || !isDirectPromptUnlocked}
+          disabled={isAnyCopying}
           className={`flex-1 font-semibold py-2 rounded-lg shadow-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed text-[11px] ${
             discoveryMode
               ? "bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-indigo-500/10"
               : "bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700"
           }`}
-          title={
-            !isDirectPromptUnlocked
-              ? "Confront logic or approve blueprint to unlock implementation prompts"
-              : ""
-          }
+          title={discoveryMode ? "Ask AI what files are needed" : "Copy full prompt with repository context"}
         >
           <Copy className="w-3.5 h-3.5 shrink-0" />
           <span className="truncate">
@@ -101,24 +93,15 @@ export function PromptActionButtons({
               ? "Assembling..."
               : discoveryMode
                 ? "Ask AI What's Needed"
-                : `Phase 2: Full Code (${selectedFilesCount})`}
+                : `Full Code (${selectedFilesCount})`}
           </span>
         </button>
 
         <button
           onClick={onCopyFiles}
-          disabled={
-            isAnyCopying ||
-            selectedFilesCount === 0 ||
-            discoveryMode ||
-            !isDirectPromptUnlocked
-          }
+          disabled={isAnyCopying || selectedFilesCount === 0 || discoveryMode}
           className="flex-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-semibold py-2 rounded-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed border border-zinc-800 text-[11px]"
-          title={
-            !isDirectPromptUnlocked
-              ? "Confront logic or approve blueprint to unlock implementation prompts"
-              : ""
-          }
+          title="Copy active files context and user prompt only"
         >
           <FileText className="w-3.5 h-3.5 shrink-0" />
           <span className="truncate">
