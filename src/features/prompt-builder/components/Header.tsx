@@ -1,7 +1,9 @@
 import React, { useState } from "react";
+import { Shield, Sprout, ChevronDown } from "lucide-react";
 import { useHeaderActions } from "../hooks/useHeaderActions";
 import { useBranchManager } from "../../git-branch/hooks/useBranchManager";
-import { RemediationModal } from "../../project-remediation/components/RemediationModal";
+import { ProjectInitializerModal } from "../../project-initializer/components/ProjectInitializerModal";
+import { GovernanceDashboardModal } from "../../architecture-governance/components/GovernanceDashboardModal";
 import { BranchSelectorPill } from "../../git-branch/components/BranchSelectorPill";
 import { BranchManagerModal } from "../../git-branch/components/BranchManagerModal";
 import { CreateBranchDialog } from "../../git-branch/components/CreateBranchDialog";
@@ -49,29 +51,17 @@ function TokenBudgetWidget({
   availableScopes,
   onActiveScopeChange,
 }: TokenBudgetWidgetProps) {
-  let statusBg = "bg-emerald-500";
-  if (tokenStats.total > 30000) {
-    statusBg = "bg-rose-500";
-  } else if (tokenStats.total > 15000) {
-    statusBg = "bg-amber-500";
-  }
-
+  const statusBg = tokenStats.total > 30000 ? "bg-rose-500" : tokenStats.total > 15000 ? "bg-amber-500" : "bg-emerald-500";
   const formattedTotal =
-    tokenStats.total >= 1000
-      ? `${(tokenStats.total / 1000).toFixed(1)}k`
-      : String(tokenStats.total);
+    tokenStats.total >= 1000 ? `${(tokenStats.total / 1000).toFixed(1)}k` : String(tokenStats.total);
 
   return (
-    <div className="absolute left-1/2 -translate-x-1/2 flex items-center space-x-2.5 bg-zinc-900/95 border border-zinc-800 rounded-full px-3 py-1 shadow-sm shrink-0 z-10">
+    <div className="absolute left-1/2 -translate-x-1/2 flex items-center space-x-2 bg-zinc-900/95 border border-zinc-800 rounded-full px-2.5 py-0.5 shadow-sm shrink-0 z-10">
       <div
         className="flex items-center space-x-1.5 shrink-0"
         title={`Total Tokens: ${tokenStats.total.toLocaleString()} / 30,000 (Map: ${tokenStats.map.toLocaleString()} tks)`}
       >
-        <span
-          className={`w-1.5 h-1.5 rounded-full ${statusBg} ${
-            tokenStats.total > 15000 ? "animate-pulse" : ""
-          }`}
-        />
+        <span className={`w-1.5 h-1.5 rounded-full ${statusBg} ${tokenStats.total > 15000 ? "animate-pulse" : ""}`} />
         <span className="font-mono text-[10px] font-bold text-zinc-200">
           {formattedTotal}
           <span className="text-zinc-500 font-normal">/30k</span>
@@ -85,14 +75,12 @@ function TokenBudgetWidget({
         <select
           value={activeScope}
           onChange={(e) => onActiveScopeChange?.(e.target.value)}
-          className="bg-zinc-950 text-cyan-400 text-[10px] font-mono rounded px-1.5 py-0.5 border border-zinc-800 focus:outline-none focus:border-cyan-500 cursor-pointer max-w-[130px] truncate"
+          className="bg-zinc-950 text-cyan-400 text-[10px] font-mono rounded px-1 py-0.5 border border-zinc-800 focus:outline-none focus:border-cyan-500 cursor-pointer max-w-[110px] truncate"
           title="Filter Repo Map symbols to this domain (works on any size project)"
         >
           <option value="all">all (full repo)</option>
           {availableScopes.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
+            <option key={s} value={s}>{s}</option>
           ))}
         </select>
       </div>
@@ -138,38 +126,22 @@ export function Header({
 
   const branchManager = useBranchManager({ onBranchChange: onUndoSuccess });
   const ticketManager = useTickets(onUndoSuccess);
-  const [isRemediationOpen, setIsRemediationOpen] = useState(false);
-
-  // Manual path entry — an alternative to the native OS folder dialog.
-  // Useful under RDP/headless setups where ShowDialog() can hang or fail
-  // to render, but kept available generally as a faster option too.
+  const [isInitializerOpen, setIsInitializerOpen] = useState(false);
+  const [isGovernanceOpen, setIsGovernanceOpen] = useState(false);
+  const [isArchMenuOpen, setIsArchMenuOpen] = useState(false);
   const [isEditingPath, setIsEditingPath] = useState(false);
   const [manualPath, setManualPath] = useState(repoPath);
 
-  const startManualEdit = () => {
-    setManualPath(repoPath);
-    setIsEditingPath(true);
-  };
-
+  const startManualEdit = () => { setManualPath(repoPath); setIsEditingPath(true); };
+  const cancelManualEdit = () => { setManualPath(repoPath); setIsEditingPath(false); };
   const submitManualPath = () => {
     const trimmed = manualPath.trim();
-    if (trimmed && trimmed !== repoPath) {
-      onChangeRepo(trimmed);
-    }
+    if (trimmed && trimmed !== repoPath) onChangeRepo(trimmed);
     setIsEditingPath(false);
   };
-
-  const cancelManualEdit = () => {
-    setManualPath(repoPath);
-    setIsEditingPath(false);
-  };
-
   const handlePathKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      submitManualPath();
-    } else if (e.key === "Escape") {
-      cancelManualEdit();
-    }
+    if (e.key === "Enter") submitManualPath();
+    else if (e.key === "Escape") cancelManualEdit();
   };
 
   const availableScopes = extractAvailableScopes(repoFiles);
@@ -188,7 +160,7 @@ export function Header({
 
         <div className="h-4 w-[1px] bg-zinc-800 mx-2"></div>
 
-        <div className="flex items-center space-x-2 bg-zinc-900 border border-zinc-800 px-2 py-1 rounded text-xs max-w-[340px]">
+        <div className="flex items-center space-x-1.5 bg-zinc-900 border border-zinc-800 px-2 py-1 rounded text-xs max-w-[230px] min-w-0 shrink">
           {isEditingPath ? (
             <>
               <input
@@ -198,57 +170,61 @@ export function Header({
                 onChange={(e) => setManualPath(e.target.value)}
                 onKeyDown={handlePathKeyDown}
                 onBlur={cancelManualEdit}
-                placeholder="Type or paste a folder path..."
-                className="bg-zinc-950 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-200 text-xs w-[220px] focus:outline-none focus:border-cyan-500"
+                placeholder="Type path..."
+                className="bg-zinc-950 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-200 text-xs w-[140px] focus:outline-none focus:border-cyan-500"
               />
-              <button
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={submitManualPath}
-                className="text-emerald-500 hover:text-emerald-400 font-medium px-1 shrink-0"
-                title="Use this path (Enter)"
-              >
-                ✓
-              </button>
-              <button
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={cancelManualEdit}
-                className="text-zinc-500 hover:text-zinc-400 font-medium px-1 shrink-0"
-                title="Cancel (Esc)"
-              >
-                ✕
-              </button>
+              <button onMouseDown={(e) => e.preventDefault()} onClick={submitManualPath} className="text-emerald-500 hover:text-emerald-400 font-medium px-0.5 shrink-0" title="Use path">✓</button>
+              <button onMouseDown={(e) => e.preventDefault()} onClick={cancelManualEdit} className="text-zinc-500 hover:text-zinc-400 font-medium px-0.5 shrink-0" title="Cancel">✕</button>
             </>
           ) : (
             <>
-              <span className="text-zinc-500 truncate" title={repoPath}>
-                {repoPath}
-              </span>
-              <button
-                onClick={handleChangeRepo}
-                className="text-cyan-500 hover:text-cyan-400 font-medium px-1 shrink-0"
-                title="Browse using the native OS folder dialog"
-              >
-                Browse
-              </button>
-              <button
-                onClick={startManualEdit}
-                className="text-cyan-500 hover:text-cyan-400 font-medium px-1 shrink-0"
-                title="Type a folder path manually"
-              >
-                Type path
-              </button>
+              <span className="text-zinc-500 truncate" title={repoPath}>{repoPath}</span>
+              <button onClick={handleChangeRepo} className="text-cyan-500 hover:text-cyan-400 font-medium px-1 shrink-0" title="Browse folder">Browse</button>
+              <button onClick={startManualEdit} className="text-cyan-500 hover:text-cyan-400 font-medium px-1 shrink-0" title="Type path manually">Type</button>
             </>
           )}
         </div>
 
-        <button
-          onClick={() => setIsRemediationOpen(true)}
-          className="flex items-center space-x-1.5 bg-gradient-to-r from-purple-950/50 to-cyan-950/50 border border-purple-500/30 hover:border-purple-500/60 text-purple-300 px-2.5 py-1 rounded text-xs font-medium transition-all shadow-sm cursor-pointer shrink-0"
-          title="Open Project Remediation & Governance Studio"
-        >
-          <span className="text-xs">✨</span>
-          <span>Remediate Architecture</span>
-        </button>
+        <div className="relative shrink-0">
+          <button
+            onClick={() => setIsArchMenuOpen((prev) => !prev)}
+            className="flex items-center space-x-1.5 bg-gradient-to-r from-purple-950/60 to-emerald-950/60 border border-purple-500/40 hover:border-purple-400 text-purple-200 px-2.5 py-1 rounded text-xs font-medium transition-all shadow-sm cursor-pointer"
+            title="Architecture & Project Initialization Tools"
+          >
+            <Shield className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+            <span>Architecture</span>
+            <ChevronDown className="w-3 h-3 text-zinc-400 shrink-0" />
+          </button>
+
+          {isArchMenuOpen && (
+            <>
+              <div className="fixed inset-0 z-20" onClick={() => setIsArchMenuOpen(false)} />
+              <div className="absolute left-0 top-full mt-1.5 w-60 bg-zinc-950 border border-zinc-800 rounded-lg shadow-2xl p-1 z-30 font-sans animate-in fade-in zoom-in-95">
+                <button
+                  onClick={() => { setIsInitializerOpen(true); setIsArchMenuOpen(false); }}
+                  className="w-full text-left p-2 rounded hover:bg-zinc-900 transition-colors flex items-start space-x-2.5 text-xs cursor-pointer group"
+                >
+                  <Sprout className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+                  <div>
+                    <div className="font-semibold text-emerald-400 group-hover:text-emerald-300">Init Project</div>
+                    <div className="text-[10px] text-zinc-500">Create from zero (Greenfield)</div>
+                  </div>
+                </button>
+                <div className="h-[1px] bg-zinc-800/80 my-1" />
+                <button
+                  onClick={() => { setIsGovernanceOpen(true); setIsArchMenuOpen(false); }}
+                  className="w-full text-left p-2 rounded hover:bg-zinc-900 transition-colors flex items-start space-x-2.5 text-xs cursor-pointer group"
+                >
+                  <Shield className="w-4 h-4 text-purple-400 mt-0.5 shrink-0" />
+                  <div>
+                    <div className="font-semibold text-purple-400 group-hover:text-purple-300">Architecture Governance</div>
+                    <div className="text-[10px] text-zinc-500">Audit & refactor (Brownfield)</div>
+                  </div>
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {tokenStats && (
@@ -329,9 +305,14 @@ export function Header({
         </button>
       </div>
 
-      <RemediationModal
-        isOpen={isRemediationOpen}
-        onClose={() => setIsRemediationOpen(false)}
+      <ProjectInitializerModal
+        isOpen={isInitializerOpen}
+        onClose={() => setIsInitializerOpen(false)}
+      />
+
+      <GovernanceDashboardModal
+        isOpen={isGovernanceOpen}
+        onClose={() => setIsGovernanceOpen(false)}
       />
 
       <TicketManagerModal

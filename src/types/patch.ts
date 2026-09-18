@@ -3,7 +3,8 @@ export type DiffViewMode = "in-out" | "unified";
 export interface DiffBlock {
   id: string;
   file: string;
-  status: "match" | "no-match";
+  status: "match" | "no-match" | "collision" | "chained";
+  ignored?: boolean;
   search: string;
   replace: string;
   // "edit" (default, omitted) is a normal SEARCH/REPLACE block.

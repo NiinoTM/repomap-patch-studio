@@ -1,4 +1,7 @@
-import { FeatureBlueprintDomain } from "../../../../types/remediation";
+import {
+  FeatureBlueprintDomain,
+  RefactorStep,
+} from "../../../../types/remediation";
 import {
   FolderTree,
   Sparkles,
@@ -10,7 +13,7 @@ import {
 } from "lucide-react";
 
 interface ArchitectureRefactorTabProps {
-  step: "idle" | "analyzing" | "blueprint-ready" | "executing" | "done";
+  step: RefactorStep;
   blueprint: FeatureBlueprintDomain[];
   selectedMoveIds: Set<string>;
   onToggleMoveSelection: (id: string) => void;
@@ -34,13 +37,8 @@ export function ArchitectureRefactorTab({
           <span>Feature-Driven Architecture Restructuring</span>
         </h3>
         <p className="text-zinc-400 leading-relaxed">
-          Migrate flat, messy directories (
-          <code className="text-zinc-300">src/components/*</code>,{" "}
-          <code className="text-zinc-300">src/utils/*</code>) into cohesive
-          domain features (
-          <code className="text-purple-300">src/features/[domain]/*</code>).
-          RepoMap generates an AI blueprint and executes the moves safely using
-          verified <code className="text-cyan-400">MOVE</code> blocks.
+          Migrate flat, messy directories (<code className="text-zinc-300">src/components/*</code>, <code className="text-zinc-300">src/utils/*</code>) into cohesive domain features (<code className="text-purple-300">src/features/[domain]/*</code>).
+          Generates a verified blueprint and executes the moves safely with automated import updates.
         </p>
       </div>
 
@@ -48,12 +46,9 @@ export function ArchitectureRefactorTab({
         <div className="py-8 border-2 border-dashed border-zinc-800 rounded-xl flex flex-col items-center justify-center text-center space-y-3 bg-zinc-900/20">
           <Sparkles className="w-8 h-8 text-purple-400 animate-pulse" />
           <div className="space-y-1">
-            <p className="font-bold text-zinc-200">
-              Scan Codebase for Refactoring Blueprint
-            </p>
+            <p className="font-bold text-zinc-200">Scan Codebase for Refactoring Blueprint</p>
             <p className="text-zinc-500 max-w-sm text-[11px]">
-              Analyzes your Repo Map to group unorganized files into modular
-              feature folders with zero broken imports.
+              Analyzes dependencies to group unorganized files into modular feature folders with zero broken imports.
             </p>
           </div>
           <button
@@ -75,9 +70,7 @@ export function ArchitectureRefactorTab({
         </div>
       )}
 
-      {(step === "blueprint-ready" ||
-        step === "executing" ||
-        step === "done") && (
+      {(step === "blueprint-ready" || step === "executing" || step === "done") && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <span className="font-bold text-zinc-300 uppercase tracking-wider text-[11px]">
@@ -99,9 +92,7 @@ export function ArchitectureRefactorTab({
                     <span className="font-bold text-purple-300 font-mono text-xs">
                       {domain.proposedPath}/
                     </span>
-                    <p className="text-[10px] text-zinc-500">
-                      {domain.description}
-                    </p>
+                    <p className="text-[10px] text-zinc-500">{domain.description}</p>
                   </div>
                   <span className="text-[10px] bg-purple-950/60 text-purple-300 border border-purple-800/40 px-2 py-0.5 rounded font-mono">
                     {domain.filesToMove.length} files
@@ -129,9 +120,7 @@ export function ArchitectureRefactorTab({
                               <Square className="w-3.5 h-3.5" />
                             )}
                           </button>
-                          <span className="font-mono text-[11px] truncate">
-                            {move.sourcePath}
-                          </span>
+                          <span className="font-mono text-[11px] truncate">{move.sourcePath}</span>
                           <ArrowRight className="w-3 h-3 text-zinc-600 shrink-0" />
                           <span className="font-mono text-[11px] text-purple-300 truncate">
                             {move.targetPath}

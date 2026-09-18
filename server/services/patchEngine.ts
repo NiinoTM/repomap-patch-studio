@@ -61,7 +61,16 @@ export function applyBlocksSequentially(
       if (result.matchStrategy) matchStrategies.push(result.matchStrategy);
     } else if (result.error) {
       console.log(`[PatchEngine] ❌ Block ${bIdx + 1} FAILED: ${result.error}`);
-      blockErrors.push(result.error);
+      const initialMatch = block.search.trim()
+        ? applyBlockToContent(initialContent, block)
+        : null;
+      if (initialMatch && initialMatch.success) {
+        const collisionMsg = `Sequential collision in "${block.file}" (Block ${bIdx + 1}): The SEARCH block matches the original file on disk, but was altered by an earlier block in this changeset. Consider disabling one of the overlapping blocks.`;
+        console.log(`[PatchEngine] ⚠️ ${collisionMsg}`);
+        blockErrors.push(collisionMsg);
+      } else {
+        blockErrors.push(result.error);
+      }
     }
   }
 

@@ -34,12 +34,28 @@ export interface FeatureBlueprintDomain {
   filesToMove: ProposedFileMove[];
 }
 
+export type RefactorStep = "idle" | "analyzing" | "blueprint-ready" | "executing" | "done";
+
+export interface ProjectInitializerState {
+  scaffoldOptions: GovernanceScaffoldOptions;
+  isScaffolding: boolean;
+  isBootstrapping: boolean;
+  scaffoldDone: boolean;
+  bootstrapOutput: string | null;
+}
+
+export interface ArchitectureRefactorState {
+  refactorStep: RefactorStep;
+  blueprint: FeatureBlueprintDomain[];
+  selectedMoveIds: Set<string>;
+}
+
 export interface RemediationState {
   activeTab: "scaffold" | "refactor";
   scaffoldOptions: GovernanceScaffoldOptions;
   isScaffolding: boolean;
   scaffoldComplete: boolean;
-  refactorStep: "idle" | "analyzing" | "blueprint-ready" | "executing" | "done";
+  refactorStep: RefactorStep;
   blueprint: FeatureBlueprintDomain[];
   selectedMoveIds: Set<string>;
 }
