@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { DiffBlock } from "../../../types/patch";
 import { ApplyProgressEvent } from "../../../types/api";
 import { patchApi } from "../../../api/patchApi";
+import { isWarningMessage } from "../components/diff/ValidationErrorBanner";
 
 interface ApplyStageState {
   stage: string;
@@ -138,7 +139,11 @@ export function useApplyChanges({
     return () => clearTimeout(timer);
   }, [blocksJson, autoValidate]);
 
-  const applyChanges = async (shouldCommit: boolean, commitMessage: string) => {
+  const applyChanges = async (
+    shouldCommit: boolean,
+    commitMessage: string,
+    options?: { force?: boolean },
+  ) => {
     if (diffBlocks.length === 0 && !shouldCommit) {
       alert("No diff blocks detected to apply!");
       return false;
@@ -154,6 +159,7 @@ export function useApplyChanges({
           commitMessage: shouldCommit ? commitMessage : "",
           skipCommit: !shouldCommit,
           commit: shouldCommit,
+          force: options?.force,
         },
         handleProgress,
       );
@@ -179,8 +185,14 @@ export function useApplyChanges({
     }
   };
 
-  const validateDryRun = async () => {
-    if (diffBlocks.length === 0) return true;
+  const validateDryRun = async (): Promise<{
+    ok: boolean;
+    warnings: string[];
+    hardErrors: string[];
+  }> => {
+    if (diffBlocks.length === 0) {
+      return { ok: true, warnings: [], hardErrors: [] };
+    }
 
     setIsValidating(true);
     try {
@@ -192,20 +204,26 @@ export function useApplyChanges({
       if (data.success) {
         const warnings = data.warnings || data.details || [];
         setValidationErrors(warnings);
-        if (warnings.length > 0) {
-          alert(formatErrorDetails(data, "⚠️ Pre-flight validation passed with warnings:", "⚠️ Validation Warnings:"));
-        }
-        return true;
+        return { ok: true, warnings, hardErrors: [] };
       }
 
       const errors = data.details || [data.error || "Unknown error"];
+      const hardErrors = errors.filter((e) => !isWarningMessage(e));
+      const warnings = errors.filter((e) => isWarningMessage(e));
+
       setValidationErrors(errors);
       setAutoHealPrompt(data.autoHealPrompt || null);
-      alert(formatErrorDetails(data, "❌ Validation failed (0 files modified on disk):", "❌ Error validating edits:"));
-      return false;
+
+      if (hardErrors.length > 0) {
+        alert(formatErrorDetails(data, "❌ Validation failed (0 files modified on disk):", "❌ Error validating edits:"));
+        return { ok: false, warnings, hardErrors };
+      }
+
+      return { ok: true, warnings, hardErrors: [] };
     } catch (err: unknown) {
-      alert(`❌ ${getErrorMessage(err)}`);
-      return false;
+      const msg = getErrorMessage(err);
+      alert(`❌ ${msg}`);
+      return { ok: false, warnings: [], hardErrors: [msg] };
     } finally {
       setIsValidating(false);
     }

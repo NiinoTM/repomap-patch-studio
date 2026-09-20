@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { z } from "zod";
 import { repoState, gitUndo } from "../adapters/gitAdapter";
 import { DiffBlockInput } from "../services/patchEngine";
 import { resolveShouldCommit } from "../services/applyPatchService";
@@ -7,24 +8,36 @@ import { createStageRunner } from "../utils/streamProgress";
 
 export const patchRouter = Router();
 
-interface ApplyRequestBody {
-  blocks: DiffBlockInput[];
-  commitMessage?: string;
-  skipCommit?: boolean;
-  commit?: boolean;
-  dryRun?: boolean;
-}
+const applyRequestBodySchema = z.object({
+  blocks: z.array(z.any()).optional().default([]),
+  commitMessage: z.string().optional(),
+  skipCommit: z.boolean().optional(),
+  commit: z.boolean().optional(),
+  dryRun: z.boolean().optional(),
+  force: z.boolean().optional(),
+});
+
+type ApplyRequestBody = z.infer<typeof applyRequestBodySchema>;
 
 patchRouter.post("/apply", async (req: Request, res: Response) => {
+  const parseResult = applyRequestBodySchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res
+      .status(400)
+      .json({ success: false, error: "Invalid request payload: " + parseResult.error.message });
+  }
+
   const {
     blocks,
     commitMessage,
     skipCommit,
     commit,
     dryRun,
-  }: ApplyRequestBody = req.body;
+    force,
+  }: ApplyRequestBody = parseResult.data;
   const shouldCommit = resolveShouldCommit(commit, skipCommit);
   const isDryRun = dryRun === true;
+  const isForce = force === true;
   const targetRepoPath = repoState.getRepoPath();
 
   if (
@@ -50,8 +63,8 @@ patchRouter.post("/apply", async (req: Request, res: Response) => {
 
   await runApplyPipeline(
     targetRepoPath,
-    blocks,
-    { isDryRun, shouldCommit, commitMessage },
+    blocks as DiffBlockInput[],
+    { isDryRun, shouldCommit, commitMessage, force: isForce },
     stageRunner,
   );
 

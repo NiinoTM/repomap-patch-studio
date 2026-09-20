@@ -23,6 +23,7 @@ export interface ApplyPipelineOptions {
   isDryRun: boolean;
   shouldCommit: boolean;
   commitMessage?: string;
+  force?: boolean;
 }
 
 async function validatePipeline(
@@ -105,12 +106,28 @@ async function executeApplyWrites(
   return allChangedFiles;
 }
 
-function checkHardErrors(errors: string[]): boolean {
-  return errors.some(
-    (err) =>
-      !err.toLowerCase().startsWith("eslint warning") &&
-      !err.toLowerCase().includes("warning"),
+function isNonBreakingError(err: string): boolean {
+  const lower = err.toLowerCase();
+  const isHardError =
+    lower.includes("syntax error") ||
+    lower.includes("failed to parse") ||
+    lower.includes("cannot find") ||
+    lower.includes("could not find") ||
+    lower.includes("no matching file") ||
+    lower.includes("search block not found");
+
+  if (isHardError) return false;
+
+  return (
+    lower.includes("eslint") ||
+    lower.startsWith("eslint warning") ||
+    lower.includes("warning") ||
+    lower.includes("[warn]")
   );
+}
+
+function checkHardErrors(errors: string[]): boolean {
+  return errors.some((err) => !isNonBreakingError(err));
 }
 
 function buildPipelineAutoHealPrompt(
@@ -173,7 +190,7 @@ export async function runApplyPipeline(
       runStage,
     );
 
-    if (checkHardErrors(validationErrors)) {
+    if (!options.force && checkHardErrors(validationErrors)) {
       const autoHealPrompt = buildPipelineAutoHealPrompt(validationErrors, blocks);
       emit({
         type: "result",

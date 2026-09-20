@@ -9,9 +9,24 @@ interface ValidationErrorBannerProps {
   borderClass?: string;
 }
 
-function isWarningMessage(msg: string): boolean {
+export function isWarningMessage(msg: string): boolean {
   const lower = msg.toLowerCase();
-  return lower.startsWith("eslint warning") || lower.includes("warning") || lower.includes("[warn]");
+  const isHardError =
+    lower.includes("syntax error") ||
+    lower.includes("failed to parse") ||
+    lower.includes("cannot find") ||
+    lower.includes("could not find") ||
+    lower.includes("no matching file") ||
+    lower.includes("search block not found");
+
+  if (isHardError) return false;
+
+  return (
+    lower.includes("eslint") ||
+    lower.startsWith("eslint warning") ||
+    lower.includes("warning") ||
+    lower.includes("[warn]")
+  );
 }
 
 export function ValidationErrorBanner({

@@ -68,6 +68,7 @@ export interface ApplyPayload {
   skipCommit?: boolean;
   commit?: boolean;
   dryRun?: boolean;
+  force?: boolean;
 }
 
 export interface ApplyResponse {

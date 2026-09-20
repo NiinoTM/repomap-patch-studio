@@ -11,6 +11,10 @@ import {
 import { DiffBlock, HistoryLog } from "../../../types/patch";
 import { useApplyChanges } from "../hooks/useApplyChanges";
 import { generateCommitMessage } from "../utils/commitMessageGenerator";
+import { isWarningMessage } from "./diff/ValidationErrorBanner";
+import { ApplyWarningDialog } from "./diff/ApplyWarningDialog";
+import { FooterHistoryDrawer } from "./diff/FooterHistoryDrawer";
+import { CommitMessageDialog } from "./diff/CommitMessageDialog";
 
 interface FooterProps {
   logs: HistoryLog[];
@@ -30,9 +34,6 @@ export function Footer({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showProgressBanner, setShowProgressBanner] = useState(false);
   const [commitMessage, setCommitMessage] = useState("chore: update repository files");
-  const [modalCommitMessage, setModalCommitMessage] = useState(
-    "chore: update repository files",
-  );
   const commitDialogRef = useRef<HTMLDialogElement>(null);
   const prevRunningRef = useRef(false);
 
@@ -40,18 +41,26 @@ export function Footer({
     if (diffBlocks.length > 0) {
       const autoMsg = generateCommitMessage(diffBlocks);
       setCommitMessage(autoMsg);
-      setModalCommitMessage(autoMsg);
     }
   }, [diffBlocks]);
 
   const handleAutoGenerate = () => {
     const autoMsg = generateCommitMessage(diffBlocks);
     setCommitMessage(autoMsg);
-    setModalCommitMessage(autoMsg);
   };
 
-  const { isApplying, isValidating, stages, applyChanges, validateDryRun } =
-    useApplyChanges({ diffBlocks, onApplySuccess });
+  const [warningDialogOpen, setWarningDialogOpen] = useState(false);
+  const [pendingWarnings, setPendingWarnings] = useState<string[]>([]);
+  const [pendingAction, setPendingAction] = useState<"apply" | "commit" | null>(null);
+
+  const {
+    isApplying,
+    isValidating,
+    validationErrors,
+    stages,
+    applyChanges,
+    validateDryRun,
+  } = useApplyChanges({ diffBlocks, onApplySuccess });
 
   useEffect(() => {
     const isRunning = isApplying || isValidating;
@@ -75,53 +84,92 @@ export function Footer({
   const hasErrors = stages.some((s) => s.status === "error");
   const canCommit = hasChanges || !isClean;
 
+  const handleApplyButtonClick = async () => {
+    const hardErrors = validationErrors.filter((e) => !isWarningMessage(e));
+    if (hardErrors.length > 0) {
+      alert("❌ Cannot apply changes: Breaking errors detected. Please resolve them first.");
+      return;
+    }
+
+    const activeWarnings = validationErrors.filter(isWarningMessage);
+    if (activeWarnings.length > 0) {
+      setPendingWarnings(activeWarnings);
+      setPendingAction("apply");
+      setWarningDialogOpen(true);
+      return;
+    }
+
+    const res = await validateDryRun();
+    if (!res.ok) {
+      return;
+    }
+
+    if (res.warnings.length > 0) {
+      setPendingWarnings(res.warnings);
+      setPendingAction("apply");
+      setWarningDialogOpen(true);
+      return;
+    }
+
+    await applyChanges(false, commitMessage);
+  };
+
   const handleCommitButtonClick = async () => {
-    const ok = await validateDryRun();
-    if (ok) {
-      setModalCommitMessage(commitMessage);
+    const hardErrors = validationErrors.filter((e) => !isWarningMessage(e));
+    if (hardErrors.length > 0) {
+      alert("❌ Cannot commit: Breaking errors detected. Please resolve them first.");
+      return;
+    }
+
+    const activeWarnings = validationErrors.filter(isWarningMessage);
+    if (activeWarnings.length > 0) {
+      setPendingWarnings(activeWarnings);
+      setPendingAction("commit");
+      setWarningDialogOpen(true);
+      return;
+    }
+
+    const res = await validateDryRun();
+    if (!res.ok) {
+      return;
+    }
+
+    if (res.warnings.length > 0) {
+      setPendingWarnings(res.warnings);
+      setPendingAction("commit");
+      setWarningDialogOpen(true);
+      return;
+    }
+
+    commitDialogRef.current?.showModal();
+  };
+
+  const handleWarningConfirm = async () => {
+    setWarningDialogOpen(false);
+    const action = pendingAction;
+    setPendingAction(null);
+
+    if (action === "apply") {
+      await applyChanges(false, commitMessage, { force: true });
+    } else if (action === "commit") {
       commitDialogRef.current?.showModal();
     }
   };
 
-  const handleConfirmCommit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleWarningCancel = () => {
+    setWarningDialogOpen(false);
+    setPendingAction(null);
+  };
+
+  const handleConfirmCommit = async (message: string) => {
     commitDialogRef.current?.close();
-    setCommitMessage(modalCommitMessage);
-    await applyChanges(true, modalCommitMessage);
+    setCommitMessage(message);
+    await applyChanges(true, message, { force: true });
   };
 
   return (
     <footer className="relative shrink-0 flex flex-col z-10">
-      {drawerOpen && (
-        <div className="absolute bottom-full left-0 right-0 h-64 bg-zinc-950 border-t border-zinc-800 overflow-y-auto z-0 custom-scrollbar">
-          <div className="p-4 space-y-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500 mb-4 sticky top-0 bg-zinc-950 py-1">
-              Recent AI Edits
-            </h3>
-            {logs.map((log) => (
-              <div
-                key={log.id}
-                className="flex items-start justify-between bg-zinc-900 p-3 rounded-lg border border-zinc-800 group hover:border-zinc-700 transition-colors"
-              >
-                <div>
-                  <div className="flex items-center text-xs text-zinc-400 mb-1">
-                    <span className="font-mono mr-3 text-cyan-400/80">
-                      {log.id}
-                    </span>
-                    <span>{log.timestamp}</span>
-                  </div>
-                  <div className="text-sm text-zinc-200 mb-1">
-                    {log.message}
-                  </div>
-                  <div className="text-xs font-mono text-zinc-500">
-                    {log.files.join(", ")}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <FooterHistoryDrawer isOpen={drawerOpen} logs={logs} />
 
       {showProgressBanner && stages.length > 0 && (
         <div className="absolute bottom-full left-0 right-0 bg-zinc-950 border-t border-zinc-800 z-0 px-6 py-3">
@@ -214,8 +262,8 @@ export function Footer({
           </button>
 
           <button
-            onClick={() => applyChanges(false, commitMessage)}
-            disabled={!hasChanges || isApplying}
+            onClick={handleApplyButtonClick}
+            disabled={!hasChanges || isApplying || isValidating}
             className="bg-blue-600 hover:bg-blue-500 text-white px-6 h-12 rounded-lg font-bold shadow-lg shadow-blue-500/10 flex items-center space-x-2 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span>{isApplying ? "Applying..." : "Apply Changes"}</span>
@@ -241,58 +289,23 @@ export function Footer({
         </div>
       </div>
 
-      <dialog
-        ref={commitDialogRef}
-        className="bg-zinc-900 border border-zinc-800 rounded-lg p-0 backdrop:bg-black/60 m-auto"
+      <CommitMessageDialog
+        dialogRef={commitDialogRef}
+        defaultMessage={commitMessage}
+        diffBlocks={diffBlocks}
+        isApplying={isApplying}
+        onConfirm={handleConfirmCommit}
         onCancel={() => commitDialogRef.current?.close()}
-      >
-        <form
-          onSubmit={handleConfirmCommit}
-          className="w-full max-w-md p-6 space-y-4"
-        >
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-400">
-              Commit Message
-            </h3>
-            {diffBlocks.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setModalCommitMessage(generateCommitMessage(diffBlocks))}
-                className="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center space-x-1 font-mono transition-colors"
-                title="Regenerate message from changes"
-              >
-                <Sparkles className="w-3 h-3" />
-                <span>Auto-generate</span>
-              </button>
-            )}
-          </div>
-          <input
-            type="text"
-            autoFocus
-            value={modalCommitMessage}
-            onChange={(e) => setModalCommitMessage(e.target.value)}
-            className="w-full bg-zinc-950 border border-zinc-700 rounded-md px-3 py-2 text-sm text-zinc-100 font-mono focus:outline-none focus:ring-1 focus:ring-emerald-500"
-            placeholder="Commit message..."
-          />
-          <div className="flex justify-end space-x-3">
-            <button
-              type="button"
-              onClick={() => commitDialogRef.current?.close()}
-              className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={!modalCommitMessage.trim() || isApplying}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-md text-sm font-bold flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <GitCommit className="w-4 h-4" />
-              <span>Commit</span>
-            </button>
-          </div>
-        </form>
-      </dialog>
+      />
+
+      <ApplyWarningDialog
+        isOpen={warningDialogOpen}
+        warnings={pendingWarnings}
+        isCommitting={pendingAction === "commit"}
+        isApplying={isApplying}
+        onConfirm={handleWarningConfirm}
+        onCancel={handleWarningCancel}
+      />
     </footer>
   );
 }
