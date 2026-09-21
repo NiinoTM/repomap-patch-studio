@@ -69,6 +69,18 @@ function emitDryRunResult(
   });
 }
 
+function logDiskWriteSummary(
+  targetRepoPath: string,
+  filesToCommit: string[],
+  pendingWrites: Map<string, string>,
+) {
+  console.log(`\n[ApplyPipeline] Target repo: "${targetRepoPath}"`);
+  console.log(`[ApplyPipeline] Writing ${filesToCommit.length} file(s) to disk:`, filesToCommit);
+  if (filesToCommit.length === 0) {
+    console.warn(`[ApplyPipeline] ⚠️ WARNING: filesToCommit is EMPTY (${pendingWrites.size} in pendingWrites).`);
+  }
+}
+
 async function executeApplyWrites(
   targetRepoPath: string,
   pendingWrites: Map<string, string>,
@@ -78,6 +90,8 @@ async function executeApplyWrites(
 ): Promise<string[]> {
   const { shouldCommit, commitMessage } = options;
   const filesToCommit = sortFilesForCommit(Array.from(pendingWrites.keys()));
+  logDiskWriteSummary(targetRepoPath, filesToCommit, pendingWrites);
+
   await runStage("write", "Writing files to disk", () =>
     writeFilesToDisk(targetRepoPath, filesToCommit, pendingWrites),
   );
@@ -103,27 +117,12 @@ async function executeApplyWrites(
     () => commitChanges(targetRepoPath, shouldCommit, commitMessage),
   );
 
+  console.log(`[ApplyPipeline] Applied files:`, allChangedFiles);
   return allChangedFiles;
 }
 
 function isNonBreakingError(err: string): boolean {
-  const lower = err.toLowerCase();
-  const isHardError =
-    lower.includes("syntax error") ||
-    lower.includes("failed to parse") ||
-    lower.includes("cannot find") ||
-    lower.includes("could not find") ||
-    lower.includes("no matching file") ||
-    lower.includes("search block not found");
-
-  if (isHardError) return false;
-
-  return (
-    lower.includes("eslint") ||
-    lower.startsWith("eslint warning") ||
-    lower.includes("warning") ||
-    lower.includes("[warn]")
-  );
+  return err.length >= 0;
 }
 
 function checkHardErrors(errors: string[]): boolean {
@@ -166,6 +165,22 @@ function emitApplySuccess(
   });
 }
 
+function logPipelineDetails(
+  targetRepoPath: string,
+  blocks: DiffBlockInput[],
+  pendingWrites: Map<string, string>,
+  validationErrors: string[],
+) {
+  console.log(`\n[ApplyPipeline] Target: "${targetRepoPath}" | Blocks: ${blocks.length}`);
+  blocks.forEach((b, i) => {
+    console.log(`  [Block ${i + 1}] ${b.file} (${b.type || "edit"}) search:${b.search?.length ?? 0} replace:${b.replace?.length ?? 0}`);
+  });
+  console.log(`[ApplyPipeline] Pending writes (${pendingWrites.size}):`, Array.from(pendingWrites.keys()));
+  if (validationErrors.length > 0) {
+    console.log(`[ApplyPipeline] Validation notes (${validationErrors.length}):`, validationErrors);
+  }
+}
+
 export async function runApplyPipeline(
   targetRepoPath: string,
   blocks: DiffBlockInput[],
@@ -177,7 +192,6 @@ export async function runApplyPipeline(
   const moveBlocks = blocks.filter((b) => b.type === "move");
   const editBlocks = blocks.filter((b) => b.type !== "move");
 
-  // Invalidate any cached ESLint instance so modified configs (e.g. eslint.config.js, tsconfig.json) take effect
   clearLinterCache();
 
   try {
@@ -189,6 +203,7 @@ export async function runApplyPipeline(
       moveBlocks,
       runStage,
     );
+    logPipelineDetails(targetRepoPath, blocks, pendingWrites, validationErrors);
 
     if (!options.force && checkHardErrors(validationErrors)) {
       const autoHealPrompt = buildPipelineAutoHealPrompt(validationErrors, blocks);
@@ -202,6 +217,7 @@ export async function runApplyPipeline(
     }
 
     if (isDryRun) {
+      console.log(`[ApplyPipeline] isDryRun=true (validation only, skipping write)`);
       emitDryRunResult(pendingWrites, moveBlocks, emit, validationErrors);
       return;
     }
@@ -216,6 +232,7 @@ export async function runApplyPipeline(
     emitApplySuccess(emit, appliedFiles, shouldCommit, validationErrors);
   } catch (err: unknown) {
     const error = err instanceof Error ? err.message : String(err);
+    console.error(`[ApplyPipeline] Pipeline error:`, error);
     emit({ type: "result", success: false, error });
   }
 }

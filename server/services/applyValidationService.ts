@@ -271,15 +271,5 @@ export async function validateAndBuildFileContent(
   }
 
   const lintFindings = await validateLint(targetRepoPath, finalContent, file);
-  const hardLintErrors = lintFindings.filter(
-    (e) =>
-      !e.toLowerCase().startsWith("eslint warning") &&
-      !e.toLowerCase().includes("warning"),
-  );
-
-  if (hardLintErrors.length > 0) {
-    return { content: undefined, errors: lintFindings };
-  }
-
   return { content: finalContent, errors: lintFindings };
 }

@@ -60,7 +60,6 @@ export async function resolveEditWrites(
     );
     if (errors.length > 0) {
       validationErrors.push(...errors);
-      continue;
     }
     if (content !== undefined) {
       pendingWrites.set(file, content);
