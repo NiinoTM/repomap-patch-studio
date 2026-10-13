@@ -55,9 +55,9 @@ repoRouter.get("/repo", (_req: Request, res: Response) => {
 });
 
 repoRouter.post("/repo", (req: Request, res: Response) => {
-  const { newPath } = req.body;
-  if (typeof newPath === "string" && fileExists(newPath) && isDirectory(newPath)) {
-    repoState.setRepoPath(newPath);
+  const rawPath = typeof req.body?.newPath === "string" ? req.body.newPath.trim() : "";
+  if (rawPath && fileExists(rawPath) && isDirectory(rawPath)) {
+    repoState.setRepoPath(rawPath);
     res.json(buildRepoPayload(repoState.getRepoPath()));
   } else {
     res.status(400).json({ success: false, error: "Invalid or missing directory path." });
@@ -226,22 +226,6 @@ repoRouter.post(
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       res.json({ success: false, path: "", error: message });
-    }
-  },
-);
-
-repoRouter.post(
-  ["/extract-contracts", "/repo/extract-contracts"],
-  async (req: Request, res: Response) => {
-    try {
-      const targetRepoPath = repoState.getRepoPath();
-      const repoPath = (req.body.repoPath as string) || targetRepoPath || process.cwd();
-      const paths = Array.isArray(req.body.paths) ? (req.body.paths as string[]) : [];
-      const contracts = paths.length > 0 ? await extractExportContracts(repoPath, paths) : {};
-      res.json({ success: true, contracts });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ success: false, contracts: {}, error: message });
     }
   },
 );

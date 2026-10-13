@@ -18,7 +18,13 @@ function detectPackageManager(repoPath: string): string {
 
 function execCommand(command: string, cwd: string): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    exec(command, { cwd, windowsHide: true, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+    const isUNC = process.platform === "win32" && (cwd.startsWith("\\\\") || cwd.startsWith("//"));
+    const finalCmd = isUNC ? `pushd "${cwd}" && ${command} && popd` : command;
+    const execOptions = isUNC
+      ? { windowsHide: true, maxBuffer: 10 * 1024 * 1024 }
+      : { cwd, windowsHide: true, maxBuffer: 10 * 1024 * 1024 };
+
+    exec(finalCmd, execOptions, (err, stdout, stderr) => {
       if (err) {
         reject(new Error(stderr || stdout || err.message));
       } else {

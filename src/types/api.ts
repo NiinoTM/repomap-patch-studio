@@ -10,16 +10,6 @@ export interface ExtractContractsResponse {
   error?: string;
 }
 
-export interface ExtractContractsRequest {
-  paths: string[];
-}
-
-export interface ExtractContractsResponse {
-  success: boolean;
-  contracts: Record<string, string>;
-  error?: string;
-}
-
 export interface RepoContextResponse {
   success: boolean;
   path: string;

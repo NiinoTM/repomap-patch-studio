@@ -2,16 +2,21 @@ export interface BlueprintDiscoveryPromptParams {
   repoMap: string;
   activeFilesText?: string;
   userRequest: string;
+  searchFirstDirective?: boolean;
 }
 
 export function buildArchitecturalDiscoveryPrompt({
   repoMap,
   activeFilesText = "",
   userRequest,
+  searchFirstDirective = false,
 }: BlueprintDiscoveryPromptParams): string {
   const divider = "=".repeat(50);
   const activeContextSection = activeFilesText.trim()
     ? `CURRENT ACTIVE FILES CONTEXT:\n${activeFilesText}\n\n`
+    : "";
+  const searchDirectiveInstruction = searchFirstDirective
+    ? "\nSEARCH-FIRST MANDATE:\nIf direct matches are not immediately obvious or initial scan didn't find any files, search for files first across top-level barrels, domain services, contracts, and entrypoints before concluding no candidates exist.\n"
     : "";
 
   return `ROLE: Principal Architectural Reconnaissance & Discovery Engineer
@@ -19,7 +24,7 @@ You analyze large-scale codebases to discover key domain files, architectural bo
 Do NOT write application implementation code or diff blocks yet.
 
 TASK:
-Analyze the project REPO MAP against the USER REQUEST to discover relevant existing files, architectural boundaries, and dependencies required to properly architect this feature.
+Analyze the project REPO MAP against the USER REQUEST to discover relevant existing files, architectural boundaries, and dependencies required to properly architect this feature.${searchDirectiveInstruction}
 Conform strictly to the JSON Schema below.
 
 DISCOVERY JSON SCHEMA:
@@ -44,7 +49,7 @@ DISCOVERY JSON SCHEMA:
 DISCOVERY RULES:
 1. Reference ONLY real, existing file paths found in the REPO MAP below. Never invent speculative file paths.
 2. Prioritize root type definitions, domain services, and public barrel exports relevant to the user request.
-3. Recommend between 2 and 8 high-impact candidate files.
+3. Recommend between 2 and 8 high-impact candidate files. If you didn't find any direct match initially, search for files first in adjacent architectural layers.
 4. Output ONLY the raw JSON wrapped in a json markdown block:
 \`\`\`json
 { ... }

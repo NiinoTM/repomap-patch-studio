@@ -1,5 +1,4 @@
-import { execSync } from "child_process";
-import { repoState } from "./gitAdapter";
+import { repoState, gitExec } from "./gitAdapter";
 
 export interface BranchDetails {
   name: string;
@@ -15,9 +14,9 @@ export const getMergedBranches = (
   targetBranch: string = "main",
 ): string[] => {
   try {
-    const raw = execSync(
-      `git branch --merged "${targetBranch}" --format="%(refname:short)"`,
-      { cwd: basePath, encoding: "utf-8" },
+    const raw = gitExec(
+      ["branch", "--merged", targetBranch, "--format=%(refname:short)"],
+      basePath,
     );
     return raw
       .split(/\r?\n/)
@@ -37,9 +36,12 @@ export const getDetailedBranchList = (
     const targetBranch = allBranches.includes("main") ? "main" : "master";
     const mergedList = new Set(getMergedBranches(basePath, targetBranch));
 
-    const raw = execSync(
-      'git branch --format="%(refname:short)|%(HEAD)|%(objectname:short)|%(contents:subject)|%(upstream:short)"',
-      { cwd: basePath, encoding: "utf-8" },
+    const raw = gitExec(
+      [
+        "branch",
+        "--format=%(refname:short)|%(HEAD)|%(objectname:short)|%(contents:subject)|%(upstream:short)",
+      ],
+      basePath,
     );
     return raw
       .split(/\r?\n/)
@@ -68,10 +70,7 @@ export const getGitBranch = (
 ): string => {
   try {
     return (
-      execSync("git branch --show-current", {
-        cwd: basePath,
-        encoding: "utf-8",
-      }).trim() || "unknown"
+      gitExec(["branch", "--show-current"], basePath).trim() || "unknown"
     );
   } catch {
     return "unknown";
@@ -82,10 +81,10 @@ export const getGitBranches = (
   basePath: string = repoState.getRepoPath(),
 ): string[] => {
   try {
-    const raw = execSync('git branch --format="%(refname:short)"', {
-      cwd: basePath,
-      encoding: "utf-8",
-    });
+    const raw = gitExec(
+      ["branch", "--format=%(refname:short)"],
+      basePath,
+    );
     return raw
       .split(/\r?\n/)
       .map((b) => b.trim())
@@ -99,10 +98,7 @@ export const getGitStatusClean = (
   basePath: string = repoState.getRepoPath(),
 ): boolean => {
   try {
-    const raw = execSync("git status --porcelain", {
-      cwd: basePath,
-      encoding: "utf-8",
-    });
+    const raw = gitExec(["status", "--porcelain"], basePath);
     return raw.trim().length === 0;
   } catch {
     return true;
@@ -110,7 +106,7 @@ export const getGitStatusClean = (
 };
 
 export const gitSwitchBranch = (basePath: string, branch: string): void => {
-  execSync(`git checkout "${branch}"`, { cwd: basePath, stdio: "ignore" });
+  gitExec(["checkout", branch], basePath);
 };
 
 export const gitCreateBranch = (
@@ -118,10 +114,10 @@ export const gitCreateBranch = (
   name: string,
   startPoint?: string,
 ): void => {
-  const cmd = startPoint
-    ? `git checkout -b "${name}" "${startPoint}"`
-    : `git checkout -b "${name}"`;
-  execSync(cmd, { cwd: basePath, stdio: "ignore" });
+  const args = startPoint
+    ? ["checkout", "-b", name, startPoint]
+    : ["checkout", "-b", name];
+  gitExec(args, basePath);
 };
 
 export const gitRenameBranch = (
@@ -129,10 +125,7 @@ export const gitRenameBranch = (
   oldName: string,
   newName: string,
 ): void => {
-  execSync(`git branch -m "${oldName}" "${newName}"`, {
-    cwd: basePath,
-    stdio: "ignore",
-  });
+  gitExec(["branch", "-m", oldName, newName], basePath);
 };
 
 export const gitMergeBranch = (
@@ -140,13 +133,8 @@ export const gitMergeBranch = (
   sourceBranch: string,
   targetBranch: string = "main",
 ): void => {
-  // Checkout base branch first
-  execSync(`git checkout "${targetBranch}"`, { cwd: basePath, stdio: "ignore" });
-  // Merge the feature/ticket branch
-  execSync(`git merge "${sourceBranch}" --no-edit`, {
-    cwd: basePath,
-    encoding: "utf-8",
-  });
+  gitExec(["checkout", targetBranch], basePath);
+  gitExec(["merge", sourceBranch, "--no-edit"], basePath);
 };
 
 export const gitPruneMergedBranches = (
@@ -160,13 +148,10 @@ export const gitPruneMergedBranches = (
   for (const branch of merged) {
     if (branch !== targetBranch && branch !== current) {
       try {
-        execSync(`git branch -d "${branch}"`, {
-          cwd: basePath,
-          stdio: "ignore",
-        });
+        gitExec(["branch", "-d", branch], basePath);
         pruned.push(branch);
       } catch {
-        // Skip branch if it can't be safely deleted
+        // Skip branch if it cannot be safely deleted
       }
     }
   }
@@ -179,18 +164,12 @@ export const gitDeleteBranch = (
   force: boolean = false,
 ): void => {
   const flag = force ? "-D" : "-d";
-  execSync(`git branch ${flag} "${branch}"`, {
-    cwd: basePath,
-    stdio: "ignore",
-  });
+  gitExec(["branch", flag, branch], basePath);
 };
 
 export const gitStashChanges = (
   basePath: string,
   message: string = "Auto-stashed before branch switch",
 ): void => {
-  execSync(`git stash push -m "${message}"`, {
-    cwd: basePath,
-    stdio: "ignore",
-  });
+  gitExec(["stash", "push", "-m", message], basePath);
 };

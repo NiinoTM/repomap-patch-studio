@@ -8,6 +8,7 @@ export interface BlueprintDiscoveryModalProps {
   discoveryPayload: BlueprintDiscoveryPayload | null;
   onAcceptCandidates: (acceptedPaths: string[]) => void;
   onBypassDiscovery?: () => void;
+  onSearchFilesFirst?: () => void;
 }
 
 export function BlueprintDiscoveryModal({
@@ -111,9 +112,27 @@ export function BlueprintDiscoveryModal({
             </div>
 
             {candidates.length === 0 ? (
-              <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-6 text-center text-zinc-500 space-y-2">
-                <ShieldAlert className="w-6 h-6 mx-auto text-zinc-600" />
-                <p>No specific candidate files identified from the repo map.</p>
+              <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-6 text-center text-zinc-400 space-y-3">
+                <ShieldAlert className="w-7 h-7 mx-auto text-amber-400" />
+                <div className="space-y-1">
+                  <p className="font-semibold text-zinc-200">
+                    Didn't find any matching candidate files
+                  </p>
+                  <p className="text-xs text-zinc-400 max-w-md mx-auto">
+                    {discoveryPayload?.searchGuidance ||
+                      "Search for files first by expanding the discovery scope, identifying root entrypoints, or exploring related feature directories."}
+                  </p>
+                </div>
+                {onSearchFilesFirst && (
+                  <button
+                    type="button"
+                    onClick={onSearchFilesFirst}
+                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-cyan-950 hover:bg-cyan-900 border border-cyan-700/50 text-cyan-300 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                  >
+                    <Compass className="w-3.5 h-3.5" />
+                    <span>Search for Files First</span>
+                  </button>
+                )}
               </div>
             ) : (
               <div className="divide-y divide-zinc-800/80 border border-zinc-800 rounded-lg bg-zinc-950 max-h-60 overflow-y-auto">

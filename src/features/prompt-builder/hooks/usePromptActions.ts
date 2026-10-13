@@ -101,6 +101,42 @@ export function formatExtractedContracts(contracts: unknown): string {
     .join("\n\n");
 }
 
+function createStepPrompt(
+  atomicStepper: UseAtomicStepperReturn,
+  context: {
+    completedList: string[];
+    upstreamContracts: string;
+    activeFilesText: string;
+    repoMap: string;
+    request: string;
+  },
+): string | null {
+  const { completedList, upstreamContracts, activeFilesText, repoMap, request } = context;
+  if (atomicStepper.isBatchMode && atomicStepper.currentPhase) {
+    return buildPhaseBatchStepPrompt({
+      phaseNumber: atomicStepper.currentPhaseIndex + 1,
+      totalPhases: atomicStepper.totalPhases,
+      phase: atomicStepper.currentPhase,
+      completedSteps: completedList,
+      upstreamContracts,
+      activeFilesText,
+      repoMap,
+      userRequest: request || "Implement cohesive architectural phase following SRP boundaries.",
+    });
+  }
+  if (!atomicStepper.currentStep) return null;
+  return buildStepScopedPrompt({
+    stepNumber: atomicStepper.currentStepIndex + 1,
+    totalSteps: atomicStepper.totalSteps,
+    targetFile: atomicStepper.currentStep,
+    completedSteps: completedList,
+    upstreamContracts,
+    activeFilesText,
+    repoMap,
+    userRequest: request || "Implement step following SRP boundaries.",
+  });
+}
+
 export function usePromptActions({
   request,
   setRequest,
@@ -132,12 +168,13 @@ export function usePromptActions({
     });
   };
 
-  const handleGenerateDiscoveryPrompt = async () => {
+  const handleGenerateDiscoveryPrompt = async (searchFirstDirective = false) => {
     const activeFilesText = await fetchActiveFilesContent(selectedFiles);
     const prompt = buildArchitecturalDiscoveryPrompt({
       repoMap,
       activeFilesText,
       userRequest: request || "Discover relevant architectural files from repo map.",
+      searchFirstDirective: searchFirstDirective || selectedFiles.size === 0,
     });
     onCopy(prompt);
     blueprintWorkflow?.setPhase("blueprint_discovery");
@@ -146,7 +183,7 @@ export function usePromptActions({
 
   const handleGenerateBlueprintPrompt = async (bypassDiscovery = false) => {
     if (!bypassDiscovery && selectedFiles.size === 0) {
-      await handleGenerateDiscoveryPrompt();
+      await handleGenerateDiscoveryPrompt(true);
       return;
     }
 
@@ -168,33 +205,14 @@ export function usePromptActions({
     const completedList = Array.from(atomicStepper.completedPaths);
     const upstreamContracts = await fetchUpstreamContracts(completedList);
 
-    if (atomicStepper.isBatchMode && atomicStepper.currentPhase) {
-      const prompt = buildPhaseBatchStepPrompt({
-        phaseNumber: atomicStepper.currentPhaseIndex + 1,
-        totalPhases: atomicStepper.totalPhases,
-        phase: atomicStepper.currentPhase,
-        completedSteps: completedList,
-        upstreamContracts,
-        activeFilesText,
-        repoMap,
-        userRequest: request || "Implement cohesive architectural phase following SRP boundaries.",
-      });
-      onCopy(prompt);
-      return;
-    }
-
-    if (!atomicStepper.currentStep) return;
-    const prompt = buildStepScopedPrompt({
-      stepNumber: atomicStepper.currentStepIndex + 1,
-      totalSteps: atomicStepper.totalSteps,
-      targetFile: atomicStepper.currentStep,
-      completedSteps: completedList,
+    const prompt = createStepPrompt(atomicStepper, {
+      completedList,
       upstreamContracts,
       activeFilesText,
       repoMap,
-      userRequest: request || "Implement step following SRP boundaries.",
+      request,
     });
-    onCopy(prompt);
+    if (prompt) onCopy(prompt);
   };
 
   const handleExitStepExecution = (discard = false) => {
