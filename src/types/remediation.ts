@@ -140,6 +140,8 @@ export interface BlueprintDiscoveryPayload {
   summary: string;
   candidates: BlueprintDiscoveryCandidate[];
   suggestedPhases?: string[];
+  didNotFindAny?: boolean;
+  searchGuidance?: string;
 }
 
 export interface CohesionResult {

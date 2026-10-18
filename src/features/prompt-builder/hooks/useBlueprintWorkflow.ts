@@ -46,7 +46,7 @@ export function evaluateContextSufficiency(selectedCount: number): BlueprintPref
       isSufficient: false,
       fileCount: 0,
       recommendation: "discovery_required",
-      message: "No active context files selected. Discovery mode required to prevent hallucinated architecture.",
+      message: "No active context files selected. Discovery mode required to prevent hallucinated architecture. Search for files first.",
     };
   }
   if (selectedCount === 1) {

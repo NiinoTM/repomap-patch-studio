@@ -26,7 +26,6 @@ export interface BoundedReadResponse {
   linesCount: number;
   error?: string;
 }
-
 export interface RepoContextResponse {
   success: boolean;
   path: string;

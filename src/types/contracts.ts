@@ -152,33 +152,105 @@ export const BlueprintDiscoveryPayloadSchema = z.object({
   summary: z.string().default(""),
   candidates: z.array(BlueprintDiscoveryCandidateSchema).default([]),
   suggestedPhases: z.array(z.string()).default([]),
+  didNotFindAny: z.boolean().optional(),
+  searchGuidance: z.string().optional(),
 });
+
+const CANDIDATE_LINE_REGEX = /^[-*]\s+([a-zA-Z0-9_\-./]+\.[a-zA-Z0-9]+)\s*(?:[—–-]|:)\s*(.*)$/;
+
+function extractDomainFromPath(filePath: string): string {
+  const parts = filePath.split("/");
+  if (parts.length > 2 && parts[0] === "src" && parts[1] === "features") {
+    return parts[2];
+  }
+  return parts.length > 1 ? parts[parts.length - 2] : "core";
+}
+
+function parseCandidateLine(line: string): z.infer<typeof BlueprintDiscoveryCandidateSchema> | null {
+  const match = line.match(CANDIDATE_LINE_REGEX);
+  if (!match) return null;
+  const filePath = match[1].trim();
+  const reason = match[2]?.trim() || "Identified as prerequisite context for feature.";
+  return { path: filePath, domain: extractDomainFromPath(filePath), reason };
+}
+
+function extractDiscoveryCandidates(lines: string[]): {
+  candidates: z.infer<typeof BlueprintDiscoveryCandidateSchema>[];
+  hasFilesNeededHeader: boolean;
+} {
+  const candidates: z.infer<typeof BlueprintDiscoveryCandidateSchema>[] = [];
+  let hasFilesNeededHeader = false;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (/FILES NEEDED:/i.test(line)) {
+      hasFilesNeededHeader = true;
+      continue;
+    }
+    const candidate = parseCandidateLine(line);
+    if (candidate) candidates.push(candidate);
+  }
+
+  return { candidates, hasFilesNeededHeader };
+}
+
+function parseTextDiscovery(text: string): z.infer<typeof BlueprintDiscoveryPayloadSchema> | null {
+  const isNoFilesText = /didn'?t find any|no files found|no specific candidate files|search for files first/i.test(text);
+  const { candidates, hasFilesNeededHeader } = extractDiscoveryCandidates(text.split("\n"));
+
+  if (candidates.length === 0 && !hasFilesNeededHeader && !isNoFilesText) {
+    return null;
+  }
+
+  const empty = candidates.length === 0;
+  const summary = isNoFilesText && empty
+    ? "No candidate files identified from the current context. Search for files first to seed discovery."
+    : `Discovered ${candidates.length} candidate file(s) from architectural analysis.`;
+
+  return {
+    summary,
+    candidates,
+    suggestedPhases: [],
+    didNotFindAny: empty,
+    searchGuidance: empty
+      ? "Didn't find any matching files. Search for files first or broaden discovery scope."
+      : undefined,
+  };
+}
+
+function cleanFencedInput(rawText: string): string {
+  const trimmed = rawText.trim();
+  if (!trimmed.startsWith("```")) return trimmed;
+  return trimmed
+    .replace(/^```(?:json|context|text)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+}
+
+function parseDiscoveryInput(rawInput: unknown): { data?: unknown; error?: string } {
+  if (typeof rawInput !== "string") return { data: rawInput };
+  const cleanInput = cleanFencedInput(rawInput);
+  try {
+    return { data: JSON.parse(cleanInput) };
+  } catch {
+    const textResult = parseTextDiscovery(cleanInput);
+    return textResult
+      ? { data: textResult }
+      : { error: "Failed to parse discovery JSON or candidate file list." };
+  }
+}
 
 export function parseBlueprintDiscovery(rawInput: unknown): {
   success: boolean;
   data?: BlueprintDiscoveryPayload;
   error?: string;
 } {
-  let dataToParse = rawInput;
-  if (typeof rawInput === "string") {
-    let cleanInput = rawInput.trim();
-    if (cleanInput.startsWith("```")) {
-      cleanInput = cleanInput
-        .replace(/^```(?:json)?\s*/i, "")
-        .replace(/\s*```$/, "")
-        .trim();
-    }
-    try {
-      dataToParse = JSON.parse(cleanInput);
-    } catch (e) {
-      return {
-        success: false,
-        error: `Failed to parse discovery JSON: ${e instanceof Error ? e.message : String(e)}`,
-      };
-    }
+  const parsed = parseDiscoveryInput(rawInput);
+  if (parsed.error) {
+    return { success: false, error: parsed.error };
   }
 
-  const result = BlueprintDiscoveryPayloadSchema.safeParse(dataToParse);
+  const result = BlueprintDiscoveryPayloadSchema.safeParse(parsed.data);
   if (!result.success) {
     return {
       success: false,
@@ -188,8 +260,19 @@ export function parseBlueprintDiscovery(rawInput: unknown): {
     };
   }
 
+  const payload = result.data;
+  const isZeroCandidates = payload.candidates.length === 0;
   return {
     success: true,
-    data: result.data as BlueprintDiscoveryPayload,
+data: (isZeroCandidates
+      ? {
+          ...payload,
+          didNotFindAny: true,
+          searchGuidance:
+            payload.searchGuidance ||
+            "Didn't find any matching files. Search for files first or broaden discovery scope.",
+        }
+      : payload) as BlueprintDiscoveryPayload,
+
   };
 }

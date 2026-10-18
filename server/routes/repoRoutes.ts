@@ -56,9 +56,9 @@ repoRouter.get("/repo", (_req: Request, res: Response) => {
 });
 
 repoRouter.post("/repo", (req: Request, res: Response) => {
-  const { newPath } = req.body;
-  if (typeof newPath === "string" && fileExists(newPath) && isDirectory(newPath)) {
-    repoState.setRepoPath(newPath);
+  const rawPath = typeof req.body?.newPath === "string" ? req.body.newPath.trim() : "";
+  if (rawPath && fileExists(rawPath) && isDirectory(rawPath)) {
+    repoState.setRepoPath(rawPath);
     res.json(buildRepoPayload(repoState.getRepoPath()));
   } else {
     res.status(400).json({ success: false, error: "Invalid or missing directory path." });
