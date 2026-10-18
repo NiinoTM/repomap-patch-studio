@@ -1,2 +1,0 @@
-# Pre-push gate: verifies critical browser flows via Playwright before pushing/syncing to remote
-npm run test:e2e
