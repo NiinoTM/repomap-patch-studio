@@ -1,17 +1,11 @@
 import type React from "react";
 import { Ticket } from "../../../types/ticket";
-import { filesApi } from "../../../api/repoApi";
-import { ticketApi } from "../../../api/ticketApi";
 import {
   buildArchitecturalBlueprintPrompt,
   buildUnitTestPrompt,
-  formatActiveFilesContext,
 } from "../utils/promptTemplates";
 import { buildArchitecturalDiscoveryPrompt } from "../utils/blueprintDiscoveryPrompt";
-import {
-  buildSocraticConfrontationPrompt,
-  sanitizeSocraticAnswers,
-} from "../utils/socraticPrompt";
+import { buildSocraticConfrontationPrompt } from "../utils/socraticPrompt";
 import {
   buildStepScopedPrompt,
   buildPhaseBatchStepPrompt,
@@ -19,41 +13,19 @@ import {
 import type { UseAtomicStepperReturn } from "./useAtomicStepper";
 import type { UseBlueprintWorkflowReturn } from "./useBlueprintWorkflow";
 import type { UseSocraticGateReturn } from "./useSocraticGate";
+import {
+  fetchActiveFilesContent,
+  persistSocraticRequirement,
+  fetchUpstreamContracts,
+  formatExtractedContracts,
+} from "../utils/promptActionHelpers";
 
-export async function fetchActiveFilesContent(
-  selectedFiles: Set<string> | string[],
-): Promise<string> {
-  const filesArray = Array.from(selectedFiles);
-  if (filesArray.length === 0) {
-    return "No specific files selected.";
-  }
-  try {
-    const data = await filesApi.fetchFiles(filesArray);
-    return formatActiveFilesContext(selectedFiles, data.contents || {});
-  } catch (err) {
-    console.error("Failed to fetch active files content:", err);
-    return formatActiveFilesContext(selectedFiles, {});
-  }
-}
-
-export async function persistSocraticRequirement(
-  ticket: Ticket | null | undefined,
-  answersText: string,
-) {
-  if (!ticket) return;
-  const check = sanitizeSocraticAnswers(answersText);
-  const currentReqs = ticket.requirements || [];
-  const newReq = `[Socratic] ${check.sanitized.slice(0, 120)}`;
-  if (!currentReqs.includes(newReq)) {
-    const updatedReqs = [...currentReqs, newReq];
-    try {
-      await ticketApi.updateTicket(ticket.id, { requirements: updatedReqs });
-      ticket.requirements = updatedReqs;
-    } catch (err) {
-      console.error("Failed to persist requirements to ticket on disk:", err);
-    }
-  }
-}
+export {
+  fetchActiveFilesContent,
+  persistSocraticRequirement,
+  fetchUpstreamContracts,
+  formatExtractedContracts,
+};
 
 interface UsePromptActionsParams {
   request: string;
@@ -66,39 +38,6 @@ interface UsePromptActionsParams {
   atomicStepper: UseAtomicStepperReturn;
   blueprintWorkflow?: UseBlueprintWorkflowReturn;
   hasErrorsOrUnapplied?: boolean;
-}
-
-async function fetchUpstreamContracts(completedPaths: string[]): Promise<string> {
-  if (completedPaths.length === 0) return "";
-  try {
-    const res = await fetch("/api/repo/extract-contracts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paths: completedPaths }),
-    });
-    if (!res.ok) {
-      const fallback = await fetch("/api/extract-contracts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paths: completedPaths }),
-      });
-      if (!fallback.ok) return "";
-      const fbData = await fallback.json();
-      return formatExtractedContracts(fbData.contracts);
-    }
-    const data = await res.json();
-    return formatExtractedContracts(data.contracts);
-  } catch {
-    return "";
-  }
-}
-
-export function formatExtractedContracts(contracts: unknown): string {
-  if (!contracts || typeof contracts !== "object") return "";
-  return Object.entries(contracts as Record<string, string>)
-    .filter(([filePath, content]) => Boolean(filePath && content && content.trim()))
-    .map(([filePath, content]) => `// --- ${filePath} ---\n${content.trim()}`)
-    .join("\n\n");
 }
 
 export function usePromptActions({
@@ -114,7 +53,7 @@ export function usePromptActions({
   hasErrorsOrUnapplied,
 }: UsePromptActionsParams) {
   const handleConfrontLogic = async () => {
-    const activeFilesText = await fetchActiveFilesContent(selectedFiles);
+    const activeFilesText = await fetchActiveFilesContent(selectedFiles, request);
     const prompt = buildSocraticConfrontationPrompt({
       repoMap,
       activeFilesText,
@@ -133,7 +72,8 @@ export function usePromptActions({
   };
 
   const handleGenerateDiscoveryPrompt = async () => {
-    const activeFilesText = await fetchActiveFilesContent(selectedFiles);
+    const activeFilesText = await fetchActiveFilesContent(selectedFiles, request);
+
     const prompt = buildArchitecturalDiscoveryPrompt({
       repoMap,
       activeFilesText,
@@ -150,7 +90,8 @@ export function usePromptActions({
       return;
     }
 
-    const activeFilesText = await fetchActiveFilesContent(selectedFiles);
+    const activeFilesText = await fetchActiveFilesContent(selectedFiles, request);
+
     const prompt = buildArchitecturalBlueprintPrompt({
       repoMap,
       activeFilesText,
@@ -164,7 +105,7 @@ export function usePromptActions({
     if (hasErrorsOrUnapplied && atomicStepper.isBatchMode && atomicStepper.currentPhaseIndex > 0) {
       console.warn("[execution-gate] Active phase has unapplied diffs or validation warnings.");
     }
-    const activeFilesText = await fetchActiveFilesContent(selectedFiles);
+    const activeFilesText = await fetchActiveFilesContent(selectedFiles, request);
     const completedList = Array.from(atomicStepper.completedPaths);
     const upstreamContracts = await fetchUpstreamContracts(completedList);
 

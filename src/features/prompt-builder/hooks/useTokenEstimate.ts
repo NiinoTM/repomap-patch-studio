@@ -7,10 +7,12 @@ interface TokenStats {
   selectedCount: number;
 }
 
+import { parseContextItem, ContextSelectionSet } from "../../../types/contextSelection";
+
 interface UseTokenEstimateParams {
   repoMap: string;
   request: string;
-  selectedFiles: Set<string>;
+  selectedFiles: Set<string> | ContextSelectionSet;
   fileStats?: Record<string, { size: number; tokens: number }>;
   onTokenStatsChange?: (stats: TokenStats) => void;
 }
@@ -31,9 +33,24 @@ export function useTokenEstimate({
 
   const selectedFilesTokens = useMemo(() => {
     let total = 0;
-    selectedFiles.forEach((file) => {
-      total += fileStats?.[file]?.tokens || 0;
-    });
+    const items =
+      selectedFiles instanceof ContextSelectionSet
+        ? selectedFiles.getItems()
+        : Array.from(selectedFiles).map(
+            (f) => parseContextItem(f) ?? { type: "file" as const, path: f },
+          );
+
+    for (const item of items) {
+      const baseTokens = fileStats?.[item.path]?.tokens || 0;
+      if (item.type === "file") {
+        total += baseTokens;
+      } else if (item.type === "range") {
+        const lineCount = Math.max(1, item.end - item.start + 1);
+        total += Math.min(baseTokens, Math.ceil(lineCount * 12));
+      } else if (item.type === "symbol") {
+        total += Math.min(baseTokens, 250);
+      }
+    }
     return total;
   }, [selectedFiles, fileStats]);
 

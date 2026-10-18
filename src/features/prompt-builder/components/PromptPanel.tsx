@@ -12,7 +12,6 @@ import { ActiveTicketBanner } from "./prompt/ActiveTicketBanner";
 import { PromptPanelModals } from "./prompt/PromptPanelModals";
 import { useMentionPopup } from "../hooks/useMentionPopup";
 import { useSuggestedContext } from "../hooks/useSuggestedContext";
-import { useFileSelection } from "../hooks/useFileSelection";
 import { useTokenEstimate } from "../hooks/useTokenEstimate";
 import { useCopyPrompt } from "../hooks/useCopyPrompt";
 import { useBlueprintWorkflow } from "../hooks/useBlueprintWorkflow";
@@ -48,7 +47,33 @@ interface PromptPanelProps {
   activeTicket?: Ticket | null;
 }
 
-export function PromptPanel({
+import {
+  ContextSelectionProvider,
+  useContextSelectionActions,
+  useContextSelectionState,
+  useSelectedCount,
+} from "../context/ContextSelectionContext";
+
+export function PromptPanel(props: PromptPanelProps) {
+  const [request, setRequest] = useState("");
+
+  return (
+    <ContextSelectionProvider request={request} files={props.files}>
+      <PromptPanelContent
+        {...props}
+        request={request}
+        setRequest={setRequest}
+      />
+    </ContextSelectionProvider>
+  );
+}
+
+interface PromptPanelContentProps extends PromptPanelProps {
+  request: string;
+  setRequest: React.Dispatch<React.SetStateAction<string>>;
+}
+
+function PromptPanelContent({
   onCopy,
   onCopyMap,
   files,
@@ -61,22 +86,19 @@ export function PromptPanel({
   discoveredFiles,
   onDiscoveredFilesConsumed,
   activeTicket,
-}: PromptPanelProps) {
-  const [request, setRequest] = useState("");
+  request,
+  setRequest,
+}: PromptPanelContentProps) {
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   const {
-    seedFiles,
-    selectedFiles,
     addSeedFile,
-    toggleFile,
-    toggleFolder,
-    selectAll,
-    deselectAll,
     toggleSuggestion,
     acceptAllSuggestions,
-  } = useFileSelection({ request, files });
+  } = useContextSelectionActions();
+  const { seedFiles, selectedFiles } = useContextSelectionState();
+  const selectedCount = useSelectedCount();
 
   const {
     textareaRef,
@@ -251,7 +273,6 @@ export function PromptPanel({
           mentionMatches={mentionMatches}
           mentionPos={mentionPos}
           activeMentionIndex={activeMentionIndex}
-          selectedFiles={selectedFiles}
           mentionPopupRef={mentionPopupRef}
           onInsertMention={insertMention}
           onHoverMention={setActiveMentionIndex}
@@ -286,13 +307,8 @@ export function PromptPanel({
 
       <FileTree
         files={files}
-        selectedFiles={selectedFiles}
         searchQuery={searchQuery}
         onSearchQueryChange={setSearchQuery}
-        onSelectAll={selectAll}
-        onDeselectAll={deselectAll}
-        onToggleFile={toggleFile}
-        onToggleFolder={toggleFolder}
         onPasteSelection={handlePasteSelection}
       />
 
@@ -303,7 +319,7 @@ export function PromptPanel({
 
       <PromptActionButtons
         discoveryMode={discoveryMode}
-        selectedFilesCount={selectedFiles.size}
+        selectedFilesCount={selectedCount}
         isCopying={isCopying}
         isCopyingFiles={isCopyingFiles}
         isCopyingTests={isCopyingTests}
@@ -332,7 +348,6 @@ export function PromptPanel({
         onCopyAnyway={handleCopyAnyway}
         onCancelCompletenessWarning={handleCancelCompletenessWarning}
         files={files}
-        selectedFiles={selectedFiles}
         onAddDiscoveredFiles={acceptAllSuggestions}
       />
     </div>

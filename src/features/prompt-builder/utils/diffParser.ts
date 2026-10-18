@@ -172,6 +172,12 @@ export function parseDiffBlocks(rawText: string): DiffBlock[] {
  * response, not for the app. Deliberately much simpler than
  * parseDiffBlocks — no state machine needed for a flat list.
  */
+import {
+  parseContextItem,
+  getContextItemKey,
+  extractContextItemsFromText,
+} from "../../../types/contextSelection";
+
 export function parseFileList(
   rawText: string,
   validFiles?: string[],
@@ -180,30 +186,23 @@ export function parseFileList(
 
   const validSet =
     validFiles && validFiles.length > 0 ? new Set(validFiles) : null;
-  const lines = rawText.split(/\r\n|\n|\r/);
   const files: string[] = [];
 
-  const addFile = (candidate: string) => {
-    const cleaned = candidate
-      .trim()
-      .replace(/^[`"']|[`"']$/g, "")
-      .replace(/[,:]$/, "");
-    if (!cleaned) return;
+  const addParsedItem = (candidate: string) => {
+    const item = parseContextItem(candidate);
+    if (!item) return;
 
+    const key = getContextItemKey(item);
     if (validSet) {
-      if (validSet.has(cleaned) && !files.includes(cleaned)) {
-        files.push(cleaned);
+      if ((validSet.has(item.path) || validSet.has(key)) && !files.includes(key)) {
+        files.push(key);
       }
-    } else if (!files.includes(cleaned)) {
-      files.push(cleaned);
+    } else if (!files.includes(key)) {
+      files.push(key);
     }
   };
 
-  const lineRegex =
-    /^(?:-\s*|\*\s*|\d+\.\s*)?[`"']?([a-zA-Z0-9_./\\-]+)[`"']?(?:\s*(?:—|--|-|:)\s*.*)?$/;
-  const pathInLineRegex =
-    /[`"']?([a-zA-Z0-9_./\\-]+\.[a-zA-Z0-9]+|(?:\.[a-zA-Z0-9_/-]+|[a-zA-Z0-9_./\\-]*\/[a-zA-Z0-9_.-]+))[`"']?/g;
-
+  const lines = rawText.split(/\r\n|\n|\r/);
   for (const rawLine of lines) {
     const line = rawLine.trim();
     if (
@@ -213,14 +212,23 @@ export function parseFileList(
     )
       continue;
 
-    const match = line.match(lineRegex);
-    if (match) {
-      addFile(match[1]);
-    } else {
-      let m: RegExpExecArray | null;
-      while ((m = pathInLineRegex.exec(line)) !== null) {
-        addFile(m[1]);
+    // Check for inline directives or mentions
+    const inlineItems = extractContextItemsFromText(line);
+    if (inlineItems.length > 0) {
+      for (const item of inlineItems) {
+        addParsedItem(getContextItemKey(item));
       }
+      continue;
+    }
+
+    // Line with reasoning stripped: "- path/file.ext — reason"
+    const cleanedLine = line
+      .replace(/^(?:-\s*|\*\s*|\d+\.\s*)/, "")
+      .replace(/\s*(?:—|--|-|:)\s*.*$/, "")
+      .trim();
+
+    if (cleanedLine) {
+      addParsedItem(cleanedLine);
     }
   }
 

@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { filesApi } from "../../../api/repoApi";
+import { fetchActiveFilesContent } from "./usePromptActions";
 import {
-  formatActiveFilesContext,
   buildFullContextPrompt,
   buildFilesAndPromptOnly,
   buildDiscoveryPrompt,
@@ -33,11 +32,7 @@ export function useCopyPrompt({
   const [isCopyingTests, setIsCopyingTests] = useState(false);
 
   const fetchActiveFilesText = async () => {
-    if (selectedFiles.size === 0) {
-      return "No specific files selected.";
-    }
-    const data = await filesApi.fetchFiles(Array.from(selectedFiles));
-    return formatActiveFilesContext(selectedFiles, data.contents || {});
+    return fetchActiveFilesContent(selectedFiles, request);
   };
 
   const copyFullContext = async () => {

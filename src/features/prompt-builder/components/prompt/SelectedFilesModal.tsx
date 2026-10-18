@@ -76,10 +76,20 @@ export function SelectedFilesModal({
                 <div className="flex items-center space-x-2 min-w-0 pr-2">
                   <FileText className="w-3.5 h-3.5 text-cyan-500/80 shrink-0" />
                   <span
-                    className="text-zinc-200 font-mono text-[11px] truncate"
+                    className="text-zinc-200 font-mono text-[11px] truncate flex items-center"
                     title={filePath}
                   >
-                    {filePath}
+                    {filePath.split(/(:\[|#)/)[0]}
+                    {filePath.includes(":[") && (
+                      <span className="ml-1.5 bg-indigo-500/20 text-indigo-300 px-1 py-0.5 rounded border border-indigo-500/30 text-[9px] font-bold">
+                        {filePath.slice(filePath.indexOf(":["))}
+                      </span>
+                    )}
+                    {filePath.includes("#") && (
+                      <span className="ml-1.5 bg-emerald-500/20 text-emerald-300 px-1 py-0.5 rounded border border-emerald-500/30 text-[9px] font-bold">
+                        {filePath.slice(filePath.indexOf("#"))}
+                      </span>
+                    )}
                   </span>
                 </div>
                 <button

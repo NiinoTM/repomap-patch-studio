@@ -1,27 +1,27 @@
 import { Router, Request, Response } from "express";
+import { z } from "zod";
 import {
   fileExists,
   isDirectory,
   readTextFile,
   joinPath,
+  resolvePath,
 } from "../adapters/fsAdapter";
 import { repoState, getAllFiles, getFileStats } from "../adapters/gitAdapter";
 import {
   getGitBranch,
   getGitBranches,
   getGitStatusClean,
-  getDetailedBranchList,
-  gitSwitchBranch,
-  gitCreateBranch,
-  gitRenameBranch,
-  gitDeleteBranch,
-  gitStashChanges,
-  gitMergeBranch,
-  gitPruneMergedBranches,
 } from "../adapters/gitBranchAdapter";
+import { branchRouter } from "./branchRoutes";
 import { generateRepoMap } from "../services/repoMapService";
 import { getDependencyMap } from "../services/dependencyService";
-import { extractExportContracts } from "../services/contractExtractorService";
+import {
+  extractExportContracts,
+  extractFileExportContracts,
+  extractSymbolBody,
+  extractLineRange,
+} from "../services/contractExtractorService";
 import { openNativeFolderDialog } from "../adapters/osAdapter";
 import {
   bootstrapRepository,
@@ -29,6 +29,7 @@ import {
 } from "../adapters/packageManagerAdapter";
 
 export const repoRouter = Router();
+repoRouter.use(branchRouter);
 
 function buildRepoPayload(targetRepoPath: string) {
   const files = getAllFiles(targetRepoPath);
@@ -102,116 +103,7 @@ repoRouter.post("/files", (req: Request, res: Response) => {
   res.json({ success: true, contents });
 });
 
-repoRouter.get("/branches", (_req: Request, res: Response) => {
-  try {
-    const targetRepoPath = repoState.getRepoPath();
-    const currentBranch = getGitBranch(targetRepoPath);
-    const branches = getDetailedBranchList(targetRepoPath);
-    const isClean = getGitStatusClean(targetRepoPath);
-    res.json({ success: true, currentBranch, branches, isClean });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ success: false, error: message });
-  }
-});
 
-repoRouter.post("/branches/switch", (req: Request, res: Response) => {
-  const { branch, stash } = req.body;
-  if (!branch || typeof branch !== "string") {
-    res.status(400).json({ success: false, error: "Invalid branch name" });
-    return;
-  }
-  try {
-    const targetRepoPath = repoState.getRepoPath();
-    if (stash) {
-      gitStashChanges(targetRepoPath);
-    }
-    gitSwitchBranch(targetRepoPath, branch);
-    res.json({ success: true });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ success: false, error: message });
-  }
-});
-
-repoRouter.post("/branches/create", (req: Request, res: Response) => {
-  const { name, startPoint } = req.body;
-  if (!name || typeof name !== "string") {
-    res.status(400).json({ success: false, error: "Invalid branch name" });
-    return;
-  }
-  try {
-    const targetRepoPath = repoState.getRepoPath();
-    gitCreateBranch(targetRepoPath, name, startPoint);
-    res.json({ success: true });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ success: false, error: message });
-  }
-});
-
-repoRouter.put("/branches/rename", (req: Request, res: Response) => {
-  const { oldName, newName } = req.body;
-  if (!oldName || !newName || typeof oldName !== "string" || typeof newName !== "string") {
-    res.status(400).json({ success: false, error: "Invalid branch names for rename" });
-    return;
-  }
-  try {
-    const targetRepoPath = repoState.getRepoPath();
-    gitRenameBranch(targetRepoPath, oldName, newName);
-    res.json({ success: true });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ success: false, error: message });
-  }
-});
-
-repoRouter.post("/branches/merge", (req: Request, res: Response) => {
-  const { sourceBranch, targetBranch = "main" } = req.body;
-  if (!sourceBranch || typeof sourceBranch !== "string") {
-    res.status(400).json({ success: false, error: "Invalid source branch name" });
-    return;
-  }
-  try {
-    const targetRepoPath = repoState.getRepoPath();
-    gitMergeBranch(targetRepoPath, sourceBranch, targetBranch);
-    res.json({
-      success: true,
-      message: `Successfully merged ${sourceBranch} into ${targetBranch}`,
-    });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ success: false, error: message });
-  }
-});
-
-repoRouter.post("/branches/prune-merged", (req: Request, res: Response) => {
-  const { targetBranch = "main" } = req.body || {};
-  try {
-    const targetRepoPath = repoState.getRepoPath();
-    const pruned = gitPruneMergedBranches(targetRepoPath, targetBranch);
-    res.json({ success: true, pruned });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ success: false, error: message });
-  }
-});
-
-repoRouter.delete("/branches/delete", (req: Request, res: Response) => {
-  const { branch, force } = req.body;
-  if (!branch || typeof branch !== "string") {
-    res.status(400).json({ success: false, error: "Invalid branch name" });
-    return;
-  }
-  try {
-    const targetRepoPath = repoState.getRepoPath();
-    gitDeleteBranch(targetRepoPath, branch, Boolean(force));
-    res.json({ success: true });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ success: false, error: message });
-  }
-});
 
 repoRouter.post(
   "/native-folder-dialog",
@@ -246,18 +138,92 @@ repoRouter.post(
   },
 );
 
+const boundedReadSchema = z.object({
+  repoPath: z.string().optional(),
+  filePath: z.string().min(1, "filePath is required"),
+  range: z.tuple([z.number(), z.number()]).optional(),
+  symbolName: z.string().optional(),
+  symbol: z.string().optional(),
+  startLine: z.number().optional(),
+  endLine: z.number().optional(),
+});
+
+type BoundedReadInput = z.infer<typeof boundedReadSchema>;
+
+function resolveTargetRange(input: BoundedReadInput): [number, number] | undefined {
+  if (input.range) return [input.range[0], input.range[1]];
+  if (typeof input.startLine === "number" && typeof input.endLine === "number") {
+    return [input.startLine, input.endLine];
+  }
+  return undefined;
+}
+
+function resolveTargetFullPath(repoPath: string | undefined, filePath: string): string {
+  const basePath = repoPath || repoState.getRepoPath() || process.cwd();
+  return resolvePath(basePath, filePath);
+}
+
+function extractBoundedContent(
+  fileText: string,
+  filePath: string,
+  symbol?: string,
+  range?: [number, number],
+): string {
+  if (symbol) {
+    const extracted = extractSymbolBody(fileText, filePath, symbol);
+    if (extracted) return extracted;
+    const contracts = extractFileExportContracts(fileText, filePath);
+    return contracts
+      ? `// Symbol "${symbol}" not found in ${filePath}. Returning file export contracts:\n${contracts}`
+      : `// Symbol "${symbol}" not found in ${filePath} (no export contracts found).`;
+  }
+  if (range) {
+    return extractLineRange(fileText, range[0], range[1], filePath);
+  }
+  return fileText;
+}
+
 repoRouter.post(
-  ["/extract-contracts", "/repo/extract-contracts"],
-  async (req: Request, res: Response) => {
+  [
+    "/bounded-read",
+    "/repo/bounded-read",
+    "/inspect-symbol",
+    "/repo/inspect-symbol",
+    "/read-range",
+    "/repo/read-range",
+  ],
+  (req: Request, res: Response) => {
+    const parsed = boundedReadSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        success: false,
+        error: parsed.error.issues.map((i) => i.message).join(", "),
+      });
+      return;
+    }
+
+    const { repoPath, filePath, symbolName, symbol } = parsed.data;
+    const targetSymbol = symbolName || symbol;
+    const targetRange = resolveTargetRange(parsed.data);
+    const fullPath = resolveTargetFullPath(repoPath, filePath);
+
+    if (!fileExists(fullPath) || isDirectory(fullPath)) {
+      res.status(404).json({ success: false, error: `File not found: ${filePath}` });
+      return;
+    }
+
     try {
-      const targetRepoPath = repoState.getRepoPath();
-      const repoPath = (req.body.repoPath as string) || targetRepoPath || process.cwd();
-      const paths = Array.isArray(req.body.paths) ? (req.body.paths as string[]) : [];
-      const contracts = paths.length > 0 ? await extractExportContracts(repoPath, paths) : {};
-      res.json({ success: true, contracts });
+      const fileText = readTextFile(fullPath);
+      const content = extractBoundedContent(fileText, filePath, targetSymbol, targetRange);
+
+      res.json({
+        success: true,
+        content,
+        linesCount: content.split(/\r?\n/).length,
+      });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      res.status(500).json({ success: false, contracts: {}, error: message });
+      res.status(500).json({ success: false, error: message });
     }
   },
 );

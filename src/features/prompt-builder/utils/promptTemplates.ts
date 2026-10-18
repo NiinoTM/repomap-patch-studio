@@ -9,7 +9,23 @@ export function formatActiveFilesContext(
 
   let activeFilesText = "";
   for (const f of filesArray) {
-    activeFilesText += `--- START OF FILE ${f} ---\n${contents[f] || ""}\n--- END OF FILE ${f} ---\n\n`;
+    const isBounded = Boolean(
+      f.includes(":[") ||
+        f.includes("#") ||
+        /^READ:/i.test(f) ||
+        /^INSPECT:/i.test(f) ||
+        (contents[f] &&
+          (contents[f].startsWith("// --- Lines") || contents[f].startsWith("// Symbol"))),
+    );
+    const contentBody = contents[f]?.trim()
+      ? contents[f]
+      : `// Unable to load content for ${f}`;
+
+    if (isBounded) {
+      activeFilesText += `--- START OF BOUNDED CONTEXT ${f} ---\n${contentBody}\n--- END OF BOUNDED CONTEXT ${f} ---\n\n`;
+    } else {
+      activeFilesText += `--- START OF FILE ${f} ---\n${contentBody}\n--- END OF FILE ${f} ---\n\n`;
+    }
   }
   return activeFilesText;
 }
@@ -160,13 +176,14 @@ RULES:
 1. Base your answer only on the REPO MAP below (file paths and their exported symbols) and the USER REQUEST. Do not invent files that aren't listed in the REPO MAP.
 2. List every file whose actual content would change how you write the edit — files you'd be editing directly, plus files whose types/props/exports the edit depends on (e.g. a shared type definition, a hook a component consumes, a sibling file with a signature you'd need to match).
 3. Do not list files that are merely "related" but wouldn't change your implementation.
-4. If the request is simple enough that no additional context is needed, output "FILES NEEDED:" followed by nothing.
+4. If the request is simple enough that no additional context is needed, output "SUFFICIENT CONTEXT:" followed by a response.
 
 OUTPUT FORMAT (nothing else — no preamble, no code outside the block):
 \`\`\`context
 FILES NEEDED:
 - path/to/file.ext — one-line reason you need to see it
-- path/to/other/file.ext — one-line reason you need to see it
+- READ: 'path/to/other/file.ext:[10-50]' — reason for specific line range
+- INSPECT: 'functionName' IN 'path/to/other/file.ext' — reason for specific symbol
 \`\`\`
 
 ==================================================

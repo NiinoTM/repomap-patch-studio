@@ -2,6 +2,9 @@ import { RefObject, useEffect, useRef } from "react";
 import { FileText } from "lucide-react";
 import { FuzzyResult } from "../../utils/fuzzySearch";
 
+import { useOptionalContextSelectionState } from "../../context/ContextSelectionContext";
+import { ContextSelectionSet } from "../../../../types/contextSelection";
+
 interface MentionDropdownProps {
   mentionQuery: string | null;
   mentionMatches: FuzzyResult[];
@@ -13,7 +16,7 @@ interface MentionDropdownProps {
     direction: "up" | "down";
   } | null;
   activeMentionIndex: number;
-  selectedFiles: Set<string>;
+  selectedFiles?: Set<string> | ContextSelectionSet;
   mentionPopupRef: RefObject<HTMLDivElement | null>;
   onInsertMention: (filePath: string) => void;
   onHoverMention: (index: number) => void;
@@ -24,11 +27,13 @@ export function MentionDropdown({
   mentionMatches,
   mentionPos,
   activeMentionIndex,
-  selectedFiles,
+  selectedFiles: propSelectedFiles,
   mentionPopupRef,
   onInsertMention,
   onHoverMention,
 }: MentionDropdownProps) {
+  const state = useOptionalContextSelectionState();
+  const selectedFiles = propSelectedFiles ?? state?.selectedFiles;
   const listRef = useRef<HTMLUListElement>(null);
 
   useEffect(() => {
@@ -120,7 +125,7 @@ export function MentionDropdown({
       >
         {mentionMatches.map((match, i) => {
           const isActive = i === activeMentionIndex;
-          const isSelected = selectedFiles.has(match.filePath);
+          const isSelected = selectedFiles ? selectedFiles.has(match.filePath) : false;
 
           return (
             <li

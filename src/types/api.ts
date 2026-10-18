@@ -10,13 +10,20 @@ export interface ExtractContractsResponse {
   error?: string;
 }
 
-export interface ExtractContractsRequest {
-  paths: string[];
+export interface BoundedReadRequest {
+  repoPath?: string;
+  filePath: string;
+  range?: [number, number];
+  symbolName?: string;
+  symbol?: string;
+  startLine?: number;
+  endLine?: number;
 }
 
-export interface ExtractContractsResponse {
+export interface BoundedReadResponse {
   success: boolean;
-  contracts: Record<string, string>;
+  content: string;
+  linesCount: number;
   error?: string;
 }
 

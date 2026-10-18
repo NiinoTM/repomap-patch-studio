@@ -101,11 +101,11 @@ export function PromptActionButtons({
           onClick={onCopyFiles}
           disabled={isAnyCopying || selectedFilesCount === 0 || discoveryMode}
           className="flex-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-semibold py-2 rounded-lg flex items-center justify-center space-x-1.5 active:scale-[0.98] transition-all disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed border border-zinc-800 text-[11px]"
-          title="Copy active files context and user prompt only"
+          title="Copy active context and user prompt only"
         >
           <FileText className="w-3.5 h-3.5 shrink-0" />
           <span className="truncate">
-            {isCopyingFiles ? "Fetching..." : `Files Only (${selectedFilesCount})`}
+            {isCopyingFiles ? "Fetching..." : `Context Only (${selectedFilesCount})`}
           </span>
         </button>
 

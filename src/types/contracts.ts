@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { StructuredBlueprint } from "./remediation";
+import type { StructuredBlueprint, BlueprintDiscoveryPayload } from "./remediation";
 
 export const SubpathExportConfigSchema = z.object({
   rootEntry: z.string().default("./src/index.ts"),
@@ -156,7 +156,7 @@ export const BlueprintDiscoveryPayloadSchema = z.object({
 
 export function parseBlueprintDiscovery(rawInput: unknown): {
   success: boolean;
-  data?: z.infer<typeof BlueprintDiscoveryPayloadSchema>;
+  data?: BlueprintDiscoveryPayload;
   error?: string;
 } {
   let dataToParse = rawInput;
@@ -190,6 +190,6 @@ export function parseBlueprintDiscovery(rawInput: unknown): {
 
   return {
     success: true,
-    data: result.data,
+    data: result.data as BlueprintDiscoveryPayload,
   };
 }

@@ -4,8 +4,15 @@ import {
   fileExists,
   isDirectory,
   resolvePath,
-  extnamePath,
 } from "../adapters/fsAdapter";
+import {
+  extractSymbolBody,
+  extractLineRange,
+  isSupportedScriptFile,
+  resolveScriptKind,
+} from "./symbolExtractorService";
+
+export { extractSymbolBody, extractLineRange };
 
 function hasExportModifier(node: ts.Node): boolean {
   if ((ts.getCombinedModifierFlags(node as ts.Declaration) & ts.ModifierFlags.Export) !== 0) {
@@ -134,19 +141,6 @@ function extractStatementSignature(
     return null;
   }
   return extractExportedDeclaration(statement, sourceFile);
-}
-
-function isSupportedScriptFile(filePath: string): boolean {
-  const ext = extnamePath(filePath).toLowerCase();
-  return [".ts", ".tsx", ".js", ".jsx", ".d.ts", ""].includes(ext);
-}
-
-function resolveScriptKind(filePath: string): ts.ScriptKind {
-  const ext = extnamePath(filePath).toLowerCase();
-  if (ext.includes("tsx") || ext.includes("jsx")) {
-    return ts.ScriptKind.TSX;
-  }
-  return ts.ScriptKind.TS;
 }
 
 function collectStatementSignatures(sourceFile: ts.SourceFile): string[] {

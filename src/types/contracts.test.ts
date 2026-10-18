@@ -7,6 +7,10 @@ import {
   BlueprintDiscoveryPayloadSchema,
 } from "./contracts";
 import type { StructuredBlueprint } from "./remediation";
+import {
+  parseContextItem,
+  extractContextItemsFromText,
+} from "./contextSelection";
 
 const validBlueprint: StructuredBlueprint = {
   title: "Auth Refactor Blueprint",
@@ -187,5 +191,47 @@ describe("parseBlueprintDiscovery - schema validation constraints", () => {
     expect(result.success).toBe(true);
     expect(result.data?.candidates).toEqual([]);
     expect(result.data?.suggestedPhases).toEqual([]);
+  });
+});
+
+describe("extractContextItemsFromText & parseContextItem - AI output resilience", () => {
+  it("parses all directive variations and file paths with em-dash reasons", () => {
+    const aiOutput = `
+FILES NEEDED:
+- package.json — check dependencies and test tooling
+- src/features/prompt-builder/components/prompt/BlueprintDiscoveryModal.test.tsx — inspect test implementation
+- READ: 'server/routes/repoRoutes.ts:[260-310]' — inspect boundedReadSchema
+- INSPECT: 'parseBlueprintDiscovery' IN 'src/types/contracts.ts' — check schema
+- INSPECT: 'src/types/contracts.ts:parseBlueprintDiscovery' — alternate format
+    `;
+
+    const items = extractContextItemsFromText(aiOutput);
+
+    expect(items).toContainEqual({ type: "file", path: "package.json" });
+    expect(items).toContainEqual({
+      type: "file",
+      path: "src/features/prompt-builder/components/prompt/BlueprintDiscoveryModal.test.tsx",
+    });
+    expect(items).toContainEqual({
+      type: "range",
+      path: "server/routes/repoRoutes.ts",
+      start: 260,
+      end: 310,
+    });
+    expect(items).toContainEqual({
+      type: "symbol",
+      path: "src/types/contracts.ts",
+      symbol: "parseBlueprintDiscovery",
+    });
+  });
+
+  it("safely handles non-string and object inputs in parseContextItem without trim errors", () => {
+    const item = parseContextItem({
+      type: "file",
+      path: "src/index.ts",
+    });
+    expect(item).toEqual({ type: "file", path: "src/index.ts" });
+
+    expect(parseContextItem(null as unknown as string)).toBeNull();
   });
 });

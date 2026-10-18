@@ -15,30 +15,42 @@ import {
 } from "lucide-react";
 import { buildFileTree, TreeNode } from "../../utils/treeBuilder";
 import { SelectedFilesModal } from "./SelectedFilesModal";
+import {
+  useOptionalContextSelectionActions,
+  useOptionalContextSelectionState,
+} from "../../context/ContextSelectionContext";
+import { ContextSelectionSet } from "../../../../types/contextSelection";
 
 interface FileTreeProps {
   files: string[];
-  selectedFiles: Set<string>;
+  selectedFiles?: Set<string> | ContextSelectionSet;
   searchQuery: string;
   onSearchQueryChange: (query: string) => void;
-  onSelectAll: () => void;
-  onDeselectAll: () => void;
-  onToggleFile: (filePath: string) => void;
-  onToggleFolder: (folderFiles: string[], shouldSelect: boolean) => void;
+  onSelectAll?: () => void;
+  onDeselectAll?: () => void;
+  onToggleFile?: (filePath: string) => void;
+  onToggleFolder?: (folderFiles: string[], shouldSelect: boolean) => void;
   onPasteSelection?: () => void;
 }
 
 export function FileTree({
   files,
-  selectedFiles,
+  selectedFiles: propSelectedFiles,
   searchQuery,
   onSearchQueryChange,
-  onSelectAll,
-  onDeselectAll,
-  onToggleFile,
-  onToggleFolder,
+  onSelectAll: propOnSelectAll,
+  onDeselectAll: propOnDeselectAll,
+  onToggleFile: propOnToggleFile,
+  onToggleFolder: propOnToggleFolder,
   onPasteSelection,
 }: FileTreeProps) {
+  const actions = useOptionalContextSelectionActions();
+  const state = useOptionalContextSelectionState();
+  const selectedFiles = propSelectedFiles ?? state?.selectedFiles ?? new Set<string>();
+  const onSelectAll = propOnSelectAll ?? actions?.selectAll ?? (() => {});
+  const onDeselectAll = propOnDeselectAll ?? actions?.deselectAll ?? (() => {});
+  const onToggleFile = propOnToggleFile ?? actions?.toggleFile ?? (() => {});
+  const onToggleFolder = propOnToggleFolder ?? actions?.toggleFolder ?? (() => {});
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     new Set(["root"]),
   );

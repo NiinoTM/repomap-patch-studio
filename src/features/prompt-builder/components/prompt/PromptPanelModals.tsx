@@ -6,6 +6,8 @@ import { CompletenessWarningModal } from "./CompletenessWarningModal";
 import type { UseSocraticGateReturn } from "../../hooks/useSocraticGate";
 import type { UseBlueprintWorkflowReturn } from "../../hooks/useBlueprintWorkflow";
 import type { MissingDependency } from "../../utils/completenessCheck";
+import { useOptionalContextSelectionState } from "../../context/ContextSelectionContext";
+import { ContextSelectionSet } from "../../../../types/contextSelection";
 
 interface PromptPanelModalsProps {
   socraticGate: UseSocraticGateReturn;
@@ -22,7 +24,7 @@ interface PromptPanelModalsProps {
   onCopyAnyway: () => void;
   onCancelCompletenessWarning: () => void;
   files?: string[];
-  selectedFiles?: Set<string>;
+  selectedFiles?: Set<string> | ContextSelectionSet;
   onAddDiscoveredFiles?: (files: string[]) => void;
 }
 
@@ -41,9 +43,11 @@ export function PromptPanelModals({
   onCopyAnyway,
   onCancelCompletenessWarning,
   files,
-  selectedFiles,
+  selectedFiles: propSelectedFiles,
   onAddDiscoveredFiles,
 }: PromptPanelModalsProps) {
+  const state = useOptionalContextSelectionState();
+  const selectedFiles = propSelectedFiles ?? state?.selectedFiles;
   return (
     <>
       <SocraticConfrontationModal

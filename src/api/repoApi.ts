@@ -55,4 +55,22 @@ export const filesApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ files }),
     }).then(handleResponse<FilesResponse>),
+
+  fetchBoundedContext: (
+    filePath: string,
+    range?: [number, number],
+    symbolName?: string,
+  ): Promise<{ success: boolean; content: string; linesCount: number; error?: string }> =>
+    fetch("/api/bounded-read", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filePath, range, symbolName }),
+    }).then(
+      handleResponse<{
+        success: boolean;
+        content: string;
+        linesCount: number;
+        error?: string;
+      }>,
+    ),
 };
