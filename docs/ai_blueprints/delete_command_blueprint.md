@@ -1,4 +1,5 @@
 # AI Execution Blueprint: First-Class `DELETE` Command
+> **Status:** COMPLETED / IN PRODUCTION
 
 ## 1. Overview & Objective
 This blueprint defines the architectural changes, validation rules, and atomic execution prompts required to introduce a native `DELETE` directive to the patch engine.
@@ -125,9 +126,9 @@ Emit exact SEARCH/REPLACE blocks.
 
 ## 5. Acceptance Criteria Checklist
 
-- [ ] `DELETE: 'src/oldFile.ts'` parses into a `DiffBlock` with `changeType: "DELETE"`.
-- [ ] `RM: src/oldFile.ts` (without quotes) parses identically.
-- [ ] File exists check runs during preflight; missing file raises clear validation error.
-- [ ] Attempting to delete `package.json` or `tsconfig.json` triggers a critical file rejection.
-- [ ] Applying changes calls `git rm` and deletes the file from disk.
-- [ ] The committed git changeset records the file deletion cleanly.
+- [x] `DELETE: 'src/oldFile.ts'` parses into a `DiffBlock` with `changeType: "DELETE"`.
+- [x] `RM: src/oldFile.ts` (without quotes) parses identically.
+- [x] File exists check runs during preflight; missing file raises clear validation error.
+- [x] Attempting to delete `package.json` or `tsconfig.json` triggers a critical file rejection.
+- [x] Applying changes calls `git rm` and deletes the file from disk.
+- [x] The committed git changeset records the file deletion cleanly.

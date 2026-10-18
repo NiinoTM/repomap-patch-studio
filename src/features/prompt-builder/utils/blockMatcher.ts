@@ -36,6 +36,62 @@ function validateMoveBlock(
   };
 }
 
+function validateDeleteBlock(
+  block: DiffBlock,
+  contents: Record<string, string>,
+  hasConflict: boolean,
+): DiffBlock {
+  const isInvalidFile = !block.file || block.file === "Active File";
+  const fileExists = !isInvalidFile && Boolean(contents[block.file]);
+  const errors = [...(block.errors || [])];
+
+  if (isInvalidFile) {
+    errors.push("Invalid DELETE block: missing target file path.");
+  } else if (!fileExists) {
+    errors.push(`DELETE failed: file not found on disk: ${block.file}`);
+  }
+
+  if (hasConflict) {
+    errors.push(
+      `Conflicting operations: cannot edit and delete "${block.file}" in the same changeset.`,
+    );
+  }
+
+  return {
+    ...block,
+    status: hasConflict ? "collision" : fileExists ? "match" : "no-match",
+    errors: errors.length > 0 ? errors : undefined,
+  };
+}
+
+function findConflictingFiles(blocks: DiffBlock[]): Set<string> {
+  const deleteFiles = new Set(
+    blocks
+      .filter(
+        (b) =>
+          (b.type === "delete" || b.changeType === "DELETE") &&
+          b.file &&
+          b.file !== "Active File",
+      )
+      .map((b) => b.file),
+  );
+  const seenDeletes = new Set<string>();
+  const conflicts = new Set<string>();
+
+  for (const block of blocks) {
+    if (!block.file || block.file === "Active File") continue;
+    const isDelete = block.type === "delete" || block.changeType === "DELETE";
+    if (isDelete) {
+      if (seenDeletes.has(block.file)) conflicts.add(block.file);
+      seenDeletes.add(block.file);
+    } else if (deleteFiles.has(block.file)) {
+      conflicts.add(block.file);
+    }
+  }
+
+  return conflicts;
+}
+
 function resolveTargetFile(
   block: DiffBlock,
   contents: Record<string, string>,
@@ -135,10 +191,33 @@ export function validateBlocks(
   contents: Record<string, string>,
 ): DiffBlock[] {
   const simulatedContents: Record<string, string> = { ...contents };
+  const conflictingFiles = findConflictingFiles(blocks);
 
   return blocks.map((block) => {
+    const isDelete = block.type === "delete" || block.changeType === "DELETE";
+    if (isDelete) {
+      const hasConflict = conflictingFiles.has(block.file);
+      const validated = validateDeleteBlock(block, contents, hasConflict);
+      if (!block.ignored && !hasConflict) {
+        delete simulatedContents[block.file];
+      }
+      return validated;
+    }
+
     if (block.type === "move") {
       return validateMoveBlock(block, contents);
+    }
+
+    if (conflictingFiles.has(block.file)) {
+      const errors = [
+        ...(block.errors || []),
+        `Conflicting operations: cannot edit file "${block.file}" because it is marked for deletion in this changeset.`,
+      ];
+      return {
+        ...block,
+        status: "collision",
+        errors,
+      };
     }
 
     const { targetFile, isCodeMatched } = resolveTargetFile(

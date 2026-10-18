@@ -32,11 +32,17 @@ export const readDir = (dirPath: string): string[] => {
   }
 };
 
-export const removeFile = (fullPath: string): void => {
+export const deleteFile = (fullPath: string): void => {
   if (fs.existsSync(fullPath)) {
-    fs.unlinkSync(fullPath);
+    try {
+      fs.unlinkSync(fullPath);
+    } catch {
+      // Guard against concurrently unlinked or missing files
+    }
   }
 };
+
+export const removeFile = deleteFile;
 
 export const joinPath = (...segments: string[]): string => path.join(...segments);
 export const resolvePath = (...segments: string[]): string => path.resolve(...segments);

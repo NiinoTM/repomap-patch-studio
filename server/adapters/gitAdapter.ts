@@ -15,14 +15,7 @@ export const isSecretFile = (fileName: string): boolean =>
   /^\.env(\..+)?$/.test(fileName);
 
 const HEAVY_DIR_SEGMENTS = new Set([
-  "node_modules",
-  ".git",
-  "dist",
-  "build",
-  "coverage",
-  ".vscode",
-  ".idea",
-  "backups",
+  "node_modules", ".git", "dist", "build", "coverage", ".vscode", ".idea", "backups",
 ]);
 
 const HEAVY_FILE_EXTENSIONS = new Set([".sqlite", ".sqlite3", ".db", ".log"]);
@@ -45,17 +38,7 @@ export const getAllFilesFallback = (
     const filePath = path.join(dir, file);
     const stat = fs.statSync(filePath);
     if (stat.isDirectory()) {
-      if (
-        ![
-          "node_modules",
-          ".git",
-          "dist",
-          "build",
-          "coverage",
-          ".vscode",
-          ".idea",
-        ].includes(file)
-      ) {
+      if (!HEAVY_DIR_SEGMENTS.has(file)) {
         getAllFilesFallback(filePath, basePath, fileList);
       }
     } else if (!isSecretFile(file)) {
@@ -188,19 +171,8 @@ export const getGitHistory = (
 
 export const gitUndo = (basePath: string = targetRepoPath): void => {
   const isClean = getGitStatusClean(basePath);
-  if (!isClean) {
-    // Revert uncommitted draft edits in working directory
-    execSync("git checkout -- . && git clean -fd", {
-      cwd: basePath,
-      stdio: "ignore",
-    });
-  } else {
-    // Revert last actual Git commit
-    execSync("git reset --hard HEAD~1", {
-      cwd: basePath,
-      stdio: "ignore",
-    });
-  }
+  const cmd = !isClean ? "git checkout -- . && git clean -fd" : "git reset --hard HEAD~1";
+  execSync(cmd, { cwd: basePath, stdio: "ignore" });
 };
 
 export const gitSwitchBranch = (basePath: string, branch: string): void => {
@@ -214,15 +186,10 @@ export const gitMoveFile = (
 ): void => {
   const destFullPath = path.resolve(basePath, destRel);
   const destDir = path.dirname(destFullPath);
-  if (!fs.existsSync(destDir)) {
-    fs.mkdirSync(destDir, { recursive: true });
-  }
+  if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
 
   try {
-    execSync(`git mv -f "${sourceRel}" "${destRel}"`, {
-      cwd: basePath,
-      stdio: "ignore",
-    });
+    execSync(`git mv -f "${sourceRel}" "${destRel}"`, { cwd: basePath, stdio: "ignore" });
   } catch {
     fs.renameSync(path.resolve(basePath, sourceRel), destFullPath);
   }

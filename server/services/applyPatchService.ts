@@ -4,8 +4,13 @@ import {
   ensureDir,
   resolvePath,
   dirnamePath,
+  deleteFile,
 } from "../adapters/fsAdapter";
-import { gitMoveFile, formatFiles, gitCommit } from "../adapters/gitAdapter";
+import {
+  gitMoveFile,
+  formatFiles,
+  gitCommit,
+} from "../adapters/gitAdapter";
 import { DiffBlockInput } from "./patchEngine";
 import { validateAndBuildFileContent } from "./applyValidationService";
 
@@ -93,6 +98,32 @@ export function validateMoveBlocks(
   return errors;
 }
 
+export function validateDeleteBlocks(
+  targetRepoPath: string,
+  deleteBlocks: DiffBlockInput[],
+): string[] {
+  const errors: string[] = [];
+
+  for (const block of deleteBlocks) {
+    if (!block.file || block.file === "Active File") {
+      errors.push("Invalid DELETE block: missing target file path.");
+      continue;
+    }
+    if (CRITICAL_FILES.some((cf) => block.file.endsWith(cf))) {
+      errors.push(
+        `DELETE rejected: protected system file cannot be deleted: ${block.file}`,
+      );
+      continue;
+    }
+    const fullPath = resolvePath(targetRepoPath, block.file);
+    if (!fileExists(fullPath)) {
+      errors.push(`DELETE failed: file not found on disk: ${block.file}`);
+    }
+  }
+
+  return errors;
+}
+
 export function sortFilesForCommit(files: string[]): string[] {
   return [...files].sort((a, b) => {
     const isACritical = CRITICAL_FILES.some((f) => a.endsWith(f));
@@ -129,6 +160,20 @@ export function applyMoveBlocks(
     movedFiles.push(block.moveTo);
   }
   return movedFiles;
+}
+
+export function applyDeleteBlocks(
+  targetRepoPath: string,
+  deleteBlocks: DiffBlockInput[],
+): string[] {
+  const deletedFiles: string[] = [];
+  for (const block of deleteBlocks) {
+    if (!block.file) continue;
+    const fullPath = resolvePath(targetRepoPath, block.file);
+    deleteFile(fullPath);
+    deletedFiles.push(block.file);
+  }
+  return deletedFiles;
 }
 
 export function formatChangedFiles(

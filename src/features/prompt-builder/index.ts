@@ -25,9 +25,6 @@ export {
   groupTargetFilesByPhase,
   type PhaseBatchStepPromptParams,
 } from "./utils/stepperPrompt";
-export type {
-  UseAtomicStepperReturn,
-} from "./hooks/useAtomicStepper";
 
 // Custom Hooks
 export { useBlueprintWorkflow } from "./hooks/useBlueprintWorkflow";

@@ -6,9 +6,11 @@ import { clearLinterCache } from "./lintService";
 import {
   resolveEditWrites,
   validateMoveBlocks,
+  validateDeleteBlocks,
   sortFilesForCommit,
   writeFilesToDisk,
   applyMoveBlocks,
+  applyDeleteBlocks,
   formatChangedFiles,
   commitChanges,
   buildValidationErrorResponse,
@@ -30,6 +32,7 @@ async function validatePipeline(
   targetRepoPath: string,
   editBlocks: DiffBlockInput[],
   moveBlocks: DiffBlockInput[],
+  deleteBlocks: DiffBlockInput[],
   runStage: StageRunner["runStage"],
 ) {
   const { pendingWrites, validationErrors: editErrors } = await runStage(
@@ -42,15 +45,21 @@ async function validatePipeline(
     "Checking move targets",
     () => validateMoveBlocks(targetRepoPath, moveBlocks),
   );
+  const deleteErrors = await runStage(
+    "validate-deletes",
+    "Checking delete targets",
+    () => validateDeleteBlocks(targetRepoPath, deleteBlocks),
+  );
   return {
     pendingWrites,
-    validationErrors: [...editErrors, ...moveErrors],
+    validationErrors: [...editErrors, ...moveErrors, ...deleteErrors],
   };
 }
 
 function emitDryRunResult(
   pendingWrites: Map<string, string>,
   moveBlocks: DiffBlockInput[],
+  deleteBlocks: DiffBlockInput[],
   emit: StageRunner["emit"],
   warnings: string[] = [],
 ) {
@@ -64,6 +73,7 @@ function emitDryRunResult(
         : "✅ Pre-flight validation passed. No files were modified.",
     validatedFiles: Array.from(pendingWrites.keys()),
     validatedMoves: moveBlocks.map((b) => `${b.file} -> ${b.moveTo}`),
+    validatedDeletes: deleteBlocks.map((b) => b.file),
     details: warnings.length > 0 ? warnings : undefined,
     warnings: warnings.length > 0 ? warnings : undefined,
   });
@@ -85,6 +95,7 @@ async function executeApplyWrites(
   targetRepoPath: string,
   pendingWrites: Map<string, string>,
   moveBlocks: DiffBlockInput[],
+  deleteBlocks: DiffBlockInput[],
   options: { shouldCommit: boolean; commitMessage?: string },
   runStage: StageRunner["runStage"],
 ): Promise<string[]> {
@@ -99,13 +110,19 @@ async function executeApplyWrites(
   const movedFiles = await runStage("move", "Applying file moves", () =>
     applyMoveBlocks(targetRepoPath, moveBlocks),
   );
-  const allChangedFiles = [...filesToCommit, ...movedFiles];
+
+  const deletedFiles = await runStage("delete", "Deleting removed files", () =>
+    applyDeleteBlocks(targetRepoPath, deleteBlocks),
+  );
+
+  const allChangedFiles = [...filesToCommit, ...movedFiles, ...deletedFiles];
 
   if (shouldCommit) {
     const dirtyFiles = getDirtyFiles(targetRepoPath);
+    const deletedSet = new Set(deletedFiles);
     const filesToFormat = Array.from(
       new Set([...allChangedFiles, ...dirtyFiles]),
-    );
+    ).filter((f) => !deletedSet.has(f));
 
     await runStage("format", "Formatting changed files", () =>
       formatChangedFiles(targetRepoPath, filesToFormat),
@@ -181,16 +198,43 @@ function logPipelineDetails(
   }
 }
 
+function partitionBlocks(blocks: DiffBlockInput[]) {
+  const moveBlocks = blocks.filter((b) => b.type === "move");
+  const deleteBlocks = blocks.filter(
+    (b) => b.type === "delete" || (b as { changeType?: string }).changeType === "DELETE",
+  );
+  const editBlocks = blocks.filter(
+    (b) =>
+      b.type !== "move" &&
+      b.type !== "delete" &&
+      (b as { changeType?: string }).changeType !== "DELETE",
+  );
+  return { moveBlocks, deleteBlocks, editBlocks };
+}
+
+function handleValidationFailure(
+  emit: StageRunner["emit"],
+  validationErrors: string[],
+  blocks: DiffBlockInput[],
+): void {
+  const autoHealPrompt = buildPipelineAutoHealPrompt(validationErrors, blocks);
+  emit({
+    type: "result",
+    success: false,
+    ...buildValidationErrorResponse(validationErrors),
+    autoHealPrompt,
+  });
+}
+
 export async function runApplyPipeline(
   targetRepoPath: string,
   blocks: DiffBlockInput[],
   options: ApplyPipelineOptions,
   runner: StageRunner,
 ): Promise<void> {
-  const { isDryRun, shouldCommit, commitMessage } = options;
+  const { isDryRun, shouldCommit, commitMessage, force } = options;
   const { emit, runStage } = runner;
-  const moveBlocks = blocks.filter((b) => b.type === "move");
-  const editBlocks = blocks.filter((b) => b.type !== "move");
+  const { moveBlocks, deleteBlocks, editBlocks } = partitionBlocks(blocks);
 
   clearLinterCache();
 
@@ -201,24 +245,19 @@ export async function runApplyPipeline(
       targetRepoPath,
       editBlocks,
       moveBlocks,
+      deleteBlocks,
       runStage,
     );
     logPipelineDetails(targetRepoPath, blocks, pendingWrites, validationErrors);
 
-    if (!options.force && checkHardErrors(validationErrors)) {
-      const autoHealPrompt = buildPipelineAutoHealPrompt(validationErrors, blocks);
-      emit({
-        type: "result",
-        success: false,
-        ...buildValidationErrorResponse(validationErrors),
-        autoHealPrompt,
-      });
+    if (!force && checkHardErrors(validationErrors)) {
+      handleValidationFailure(emit, validationErrors, blocks);
       return;
     }
 
     if (isDryRun) {
       console.log(`[ApplyPipeline] isDryRun=true (validation only, skipping write)`);
-      emitDryRunResult(pendingWrites, moveBlocks, emit, validationErrors);
+      emitDryRunResult(pendingWrites, moveBlocks, deleteBlocks, emit, validationErrors);
       return;
     }
 
@@ -226,6 +265,7 @@ export async function runApplyPipeline(
       targetRepoPath,
       pendingWrites,
       moveBlocks,
+      deleteBlocks,
       { shouldCommit, commitMessage },
       runStage,
     );

@@ -1,5 +1,6 @@
 import { DiffBlock, DiffViewMode } from "../../../../types/patch";
 import { MoveBlockCard } from "./MoveBlockCard";
+import { DeleteBlockCard } from "./DeleteBlockCard";
 import { DiffBlockHeader } from "./DiffBlockHeader";
 import { ValidationErrorBanner } from "./ValidationErrorBanner";
 import { DiffBlockBody } from "./DiffBlockBody";
@@ -48,6 +49,19 @@ export function DiffBlockCard({
   if (block.type === "move") {
     return (
       <MoveBlockCard
+        block={block}
+        validationErrors={validationErrors}
+        isIgnored={isIgnored}
+        copiedErrorId={copiedErrorId}
+        onToggleBlock={onToggleBlock}
+        onCopyBlockWithError={onCopyBlockWithError}
+      />
+    );
+  }
+
+  if (block.type === "delete" || block.changeType === "DELETE") {
+    return (
+      <DeleteBlockCard
         block={block}
         validationErrors={validationErrors}
         isIgnored={isIgnored}

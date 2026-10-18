@@ -10,7 +10,11 @@ interface StatusBadgeProps {
   // content, so a MATCH FOUND / NOT FOUND pill would be misleading — show
   // a neutral "NEW FILE" pill instead. Any other changeType (or omitted)
   // falls back to the existing match-status pill.
-  changeType?: "CREATE" | "EDIT" | "MOVE" | "RENAME";
+    // When "CREATE", a real search/match was never attempted against file
+  // content, so a MATCH FOUND / NOT FOUND pill would be misleading — show
+  // a neutral "NEW FILE" pill instead. Any other changeType (or omitted)
+  // falls back to the existing match-status pill.
+  changeType?: "CREATE" | "EDIT" | "MOVE" | "RENAME" | "DELETE";
 }
 
 export function StatusBadge({
@@ -23,7 +27,11 @@ export function StatusBadge({
 }: StatusBadgeProps) {
   return (
     <div className="flex items-center space-x-1.5 shrink-0">
-      {changeType === "CREATE" ? (
+      {changeType === "DELETE" ? (
+        <span className="bg-rose-500/20 text-rose-400 text-[10px] px-1.5 py-0.5 rounded border border-rose-500/20 font-bold uppercase shrink-0">
+          Delete
+        </span>
+      ) : changeType === "CREATE" ? (
         <span className="bg-blue-500/20 text-blue-400 text-[10px] px-1.5 py-0.5 rounded border border-blue-500/20 font-bold uppercase shrink-0">
           New File
         </span>

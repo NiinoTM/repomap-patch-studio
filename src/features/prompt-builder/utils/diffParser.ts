@@ -4,6 +4,7 @@ interface IdleParseResult {
   nextFile: string;
   nextState?: "SEARCH";
   moveBlock?: DiffBlock;
+  deleteBlock?: DiffBlock;
 }
 
 function parseIdleLine(trimmed: string, currentFile: string): IdleParseResult {
@@ -32,11 +33,29 @@ function parseIdleLine(trimmed: string, currentFile: string): IdleParseResult {
     };
   }
 
+  const deleteMatch = trimmed.match(
+    /^(DELETE|RM|Delete|Rm)\s*:?\s*[`"']?([^`"'\n]+?)[`"']?$/i,
+  );
+
+  let deleteBlock: DiffBlock | undefined;
+  if (deleteMatch) {
+    deleteBlock = {
+      id: "",
+      file: deleteMatch[2].trim(),
+      status: "match",
+      search: "",
+      replace: "",
+      type: "delete",
+      changeType: "DELETE",
+    };
+  }
+
   const isSearchStart = trimmed === "<<<<<<< SEARCH";
   return {
     nextFile,
     nextState: isSearchStart ? "SEARCH" : undefined,
     moveBlock,
+    deleteBlock,
   };
 }
 
@@ -88,7 +107,7 @@ export function parseDiffBlocks(rawText: string): DiffBlock[] {
     const trimmed = line.trim();
 
     if (state === "IDLE") {
-      const { nextFile, nextState, moveBlock } = parseIdleLine(
+      const { nextFile, nextState, moveBlock, deleteBlock } = parseIdleLine(
         trimmed,
         currentFile,
       );
@@ -96,6 +115,10 @@ export function parseDiffBlocks(rawText: string): DiffBlock[] {
       if (moveBlock) {
         moveBlock.id = String(index++);
         blocks.push(moveBlock);
+      }
+      if (deleteBlock) {
+        deleteBlock.id = String(index++);
+        blocks.push(deleteBlock);
       }
       if (nextState) {
         state = nextState;

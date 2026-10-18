@@ -2,7 +2,7 @@ export interface DiffBlockInput {
   file: string;
   search: string;
   replace: string;
-  type?: "edit" | "move";
+  type?: "edit" | "move" | "delete";
   moveTo?: string;
 }
 
