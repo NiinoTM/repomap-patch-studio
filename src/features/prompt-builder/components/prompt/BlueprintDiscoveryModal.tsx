@@ -17,6 +17,7 @@ export function BlueprintDiscoveryModal({
   discoveryPayload,
   onAcceptCandidates,
   onBypassDiscovery,
+  onSearchFilesFirst,
 }: BlueprintDiscoveryModalProps) {
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
 
